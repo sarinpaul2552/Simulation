@@ -10,6 +10,7 @@ type Mode = 'mode-select' | 'facilitator-setup' | 'team-join' | 'team-game' | 'f
 export default function App() {
   const [mode, setMode] = useState<Mode>('mode-select');
   const [sessionCode, setSessionCode] = useState<string | null>(null);
+  const [adminPin, setAdminPin] = useState<string | null>(null);
 
   return (
     <GameProvider>
@@ -33,8 +34,9 @@ export default function App() {
 
         {mode === 'facilitator-setup' && (
           <SetupScreen
-            onSessionCreated={(code) => {
+            onSessionCreated={(code, pin) => {
               setSessionCode(code);
+              setAdminPin(pin || null);
               setMode('facilitator-game');
             }}
             onCancel={() => setMode('mode-select')}
@@ -59,9 +61,10 @@ export default function App() {
           />
         )}
 
-        {mode === 'facilitator-game' && sessionCode && (
+        {mode === 'facilitator-game' && sessionCode && adminPin && (
           <FacilitatorScreen
             sessionCode={sessionCode}
+            adminPin={adminPin}
             onExit={() => setMode('mode-select')}
           />
         )}

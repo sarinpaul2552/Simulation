@@ -6,10 +6,11 @@ import gameplayContent from '../content/gameplay.json';
 
 interface FacilitatorScreenProps {
   sessionCode: string;
+  adminPin: string | null;
   onExit: () => void;
 }
 
-export default function FacilitatorScreen({ sessionCode, onExit }: FacilitatorScreenProps) {
+export default function FacilitatorScreen({ sessionCode, adminPin, onExit }: FacilitatorScreenProps) {
   const game = useGame();
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<TeamData[]>([]);
@@ -18,8 +19,11 @@ export default function FacilitatorScreen({ sessionCode, onExit }: FacilitatorSc
   useEffect(() => {
     const initialize = async () => {
       try {
+        if (!adminPin) throw new Error('Missing admin PIN');
+        
         const { data: sessionData, error } = await supabase.rpc('get_session_details', {
-          p_session_code: sessionCode
+          p_session_code: sessionCode,
+          p_admin_pin: adminPin
         });
 
         if (error) throw error;

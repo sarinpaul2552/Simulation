@@ -4,7 +4,7 @@ import { supabase } from '../services/supabase';
 
 interface SetupScreenProps {
   isStudent?: boolean;
-  onSessionCreated: (sessionCode: string) => void;
+  onSessionCreated: (sessionCode: string, adminPin?: string) => void;
   onCancel: () => void;
 }
 
@@ -14,6 +14,7 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
   const [email, setEmail] = useState('');
   const [teamCount, setTeamCount] = useState(2);
   const [teamNames, setTeamNames] = useState<string[]>(['Team A', 'Team B']);
+  const [adminPin, setAdminPin] = useState('');
   const [joinSessionCode, setJoinSessionCode] = useState('');
   const [teamCode, setTeamCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,6 +36,9 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
       game.setSessionCode(data.session_code);
       game.setSessionId(data.session_id);
       game.setTeamCount(teamCount);
+      
+      // Store admin_pin locally for subsequent facilitator RPCs
+      setAdminPin(data.admin_pin);
 
       setStep('teams');
     } catch (err: any) {
@@ -50,11 +54,12 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
     setError(null);
     try {
       const sessionCode = game.sessionCode;
-      if (!sessionCode) throw new Error('No session code');
+      if (!sessionCode || !adminPin) throw new Error('No session code or admin PIN');
 
       const teamPromises = teamNames.map(name =>
         supabase.rpc('create_team_with_code', {
           p_session_code: sessionCode,
+          p_admin_pin: adminPin,
           p_team_name: name
         })
       );
@@ -82,7 +87,7 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
       game.setCurrentQuarter(1);
       game.setQuarterPhase('event');
 
-      onSessionCreated(sessionCode);
+      onSessionCreated(sessionCode, adminPin);
     } catch (err: any) {
       setError(err.message || 'Failed to create teams');
     } finally {

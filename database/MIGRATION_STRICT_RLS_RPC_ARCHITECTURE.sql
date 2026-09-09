@@ -2,12 +2,18 @@
 -- MIGRATION: Strict RLS + RPC Architecture for Access-Code Security
 -- ============================================================================
 -- This migration enforces database-level team/session isolation via:
--- 1. Access codes registry (session_code, team_code, admin_pin)
--- 2. Strict RLS policies (all direct queries blocked)
--- 3. RPC functions as only trusted data gateway (SECURITY DEFINER)
+-- 1. Access codes registry (session_code, team_code, admin_pin) with RLS
+-- 2. Strict RLS policies (all direct queries blocked, including access_codes)
+-- 3. RPC functions as only trusted data gateway (SECURITY DEFINER + search_path)
+-- 4. Facilitator authentication via session_code + admin_pin (not session_code alone)
+-- 5. Consistent expiry/active checks in all student RPCs
 --
--- BREAKING CHANGE: All data access must go through RPC functions.
--- Direct SQL queries to sessions/teams/decisions will fail RLS check.
+-- SECURITY PROPERTIES:
+-- ✓ Codes cannot be enumerated (access_codes has block-all RLS)
+-- ✓ Facilitator must provide admin_pin (no session_code-only access)
+-- ✓ Expired codes rejected consistently (every RPC checks expiry)
+-- ✓ Function injection prevented (safe search_path)
+-- ✓ Team isolation enforced (team_code validated per RPC)
 -- ============================================================================
 
 -- ============================================================================
@@ -28,6 +34,7 @@ ALTER TABLE decisions DISABLE ROW LEVEL SECURITY;
 -- ============================================================================
 -- This table tracks all valid codes (session_code, team_code, admin_pin)
 -- RPC functions verify codes against this table before allowing access
+-- RLS blocks direct access; only SECURITY DEFINER functions can read it
 
 CREATE TABLE IF NOT EXISTS access_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,27 +44,40 @@ CREATE TABLE IF NOT EXISTS access_codes (
   team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
   active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '48 hours'),
-  
-  -- Uniqueness constraints
-  CONSTRAINT unique_session_code UNIQUE (session_id, code_type) WHERE code_type IN ('session_code', 'admin_pin'),
-  CONSTRAINT unique_team_code UNIQUE (team_id, code_type) WHERE code_type = 'team_code',
-  CONSTRAINT unique_code_value UNIQUE (code_value)
+  expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '48 hours')
 );
+
+-- Use partial unique indexes instead of constraints (more robust)
+CREATE UNIQUE INDEX idx_unique_session_code 
+  ON access_codes(session_id) 
+  WHERE code_type = 'session_code' AND active = true;
+
+CREATE UNIQUE INDEX idx_unique_admin_pin 
+  ON access_codes(session_id) 
+  WHERE code_type = 'admin_pin' AND active = true;
+
+CREATE UNIQUE INDEX idx_unique_team_code 
+  ON access_codes(team_id) 
+  WHERE code_type = 'team_code' AND active = true;
+
+CREATE UNIQUE INDEX idx_unique_code_value 
+  ON access_codes(code_value) 
+  WHERE active = true;
 
 CREATE INDEX idx_access_codes_value ON access_codes(code_value);
 CREATE INDEX idx_access_codes_session ON access_codes(session_id);
 CREATE INDEX idx_access_codes_team ON access_codes(team_id);
-CREATE INDEX idx_access_codes_active ON access_codes(active) WHERE active = true;
+CREATE INDEX idx_access_codes_active ON access_codes(active, expires_at);
 
 -- ============================================================================
--- STEP 3: Re-enable RLS with Strict Block-All Policies
+-- STEP 3: Enable RLS with Strict Block-All Policies
 -- ============================================================================
 -- Direct queries are not allowed. Only RPC functions (SECURITY DEFINER) bypass.
 
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE access_codes ENABLE ROW LEVEL SECURITY;
 
 -- Sessions: Block all direct access
 CREATE POLICY sessions_block_all ON sessions
@@ -71,12 +91,19 @@ CREATE POLICY teams_block_all ON teams
 CREATE POLICY decisions_block_all ON decisions
   FOR ALL USING (false) WITH CHECK (false);
 
+-- Access Codes: Block all direct access (prevent code enumeration)
+CREATE POLICY access_codes_block_all ON access_codes
+  FOR ALL USING (false) WITH CHECK (false);
+
 -- ============================================================================
 -- STEP 4: Helper Function - Generate Unique Codes
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION generate_code(prefix TEXT)
-RETURNS TEXT AS $$
+RETURNS TEXT
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 BEGIN
   RETURN prefix || '-' || 
     UPPER(SUBSTRING(MD5(RANDOM()::TEXT || CLOCK_TIMESTAMP()::TEXT), 1, 6));
@@ -84,15 +111,20 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================================
--- STEP 5: RPC Functions (Trusted Gateways)
+-- STEP 5: RPC Functions (Trusted Gateways with Strict Security)
 -- ============================================================================
 
--- ===== RPC: Create Session (Facilitator) =====
+-- ===== RPC: Create Session (Facilitator Only) =====
+-- Requires NO authentication (first-time facilitator setup)
+-- Returns: session_id, session_code, admin_pin
 CREATE OR REPLACE FUNCTION create_session(
   p_facilitator_email TEXT,
   p_team_count INT
 )
-RETURNS json AS $$
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_session_id UUID;
   v_session_code TEXT;
@@ -117,19 +149,25 @@ BEGIN
     'admin_pin', v_admin_pin
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
--- ===== RPC: Create Team with Auto Code (Facilitator) =====
+-- ===== RPC: Create Team with Auto Code (Facilitator Only) =====
+-- REQUIRES: session_code + admin_pin (both required for authentication)
 CREATE OR REPLACE FUNCTION create_team_with_code(
   p_session_code TEXT,
+  p_admin_pin TEXT,
   p_team_name TEXT
 )
-RETURNS json AS $$
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_session_id UUID;
   v_team_id UUID;
   v_team_code TEXT;
 BEGIN
+  -- Verify BOTH session_code AND admin_pin (facilitator authentication)
   SELECT session_id INTO v_session_id
   FROM access_codes
   WHERE code_value = p_session_code
@@ -141,12 +179,27 @@ BEGIN
     RAISE EXCEPTION 'Invalid or expired session code';
   END IF;
   
+  -- Verify admin_pin for this session
+  IF NOT EXISTS (
+    SELECT 1 FROM access_codes
+    WHERE session_id = v_session_id
+    AND code_value = p_admin_pin
+    AND code_type = 'admin_pin'
+    AND active = true
+    AND (expires_at IS NULL OR expires_at > NOW())
+  ) THEN
+    RAISE EXCEPTION 'Invalid admin PIN';
+  END IF;
+  
+  -- Generate team_code
   v_team_code := generate_code('TEAM');
   
+  -- Insert team
   INSERT INTO teams (session_id, team_name, team_code)
   VALUES (v_session_id, p_team_name, v_team_code)
   RETURNING id INTO v_team_id;
   
+  -- Register team_code in access_codes
   INSERT INTO access_codes (code_type, code_value, team_id, session_id, active)
   VALUES ('team_code', v_team_code, v_team_id, v_session_id, true);
   
@@ -156,15 +209,23 @@ BEGIN
     'team_name', p_team_name
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
--- ===== RPC: Get Session Details (Facilitator) =====
-CREATE OR REPLACE FUNCTION get_session_details(p_session_code TEXT)
-RETURNS json AS $$
+-- ===== RPC: Get Session Details (Facilitator Only) =====
+-- REQUIRES: session_code + admin_pin (both required for authentication)
+CREATE OR REPLACE FUNCTION get_session_details(
+  p_session_code TEXT,
+  p_admin_pin TEXT
+)
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_session_id UUID;
   v_session json;
 BEGIN
+  -- Verify BOTH session_code AND admin_pin (facilitator authentication)
   SELECT sessions.id INTO v_session_id
   FROM sessions
   JOIN access_codes ON access_codes.session_id = sessions.id
@@ -177,6 +238,19 @@ BEGIN
     RAISE EXCEPTION 'Invalid session code';
   END IF;
   
+  -- Verify admin_pin for this session
+  IF NOT EXISTS (
+    SELECT 1 FROM access_codes
+    WHERE session_id = v_session_id
+    AND code_value = p_admin_pin
+    AND code_type = 'admin_pin'
+    AND active = true
+    AND (expires_at IS NULL OR expires_at > NOW())
+  ) THEN
+    RAISE EXCEPTION 'Invalid admin PIN';
+  END IF;
+  
+  -- Return session + all teams
   SELECT json_build_object(
     'session_id', sessions.id,
     'session_code', sessions.session_code,
@@ -199,7 +273,7 @@ BEGIN
         )
       )
       FROM teams t
-      LEFT JOIN access_codes ac ON ac.team_id = t.id AND ac.code_type = 'team_code'
+      LEFT JOIN access_codes ac ON ac.team_id = t.id AND ac.code_type = 'team_code' AND ac.active = true
       WHERE t.session_id = sessions.id
     ), '[]'::json)
   ) INTO v_session
@@ -208,19 +282,24 @@ BEGIN
   
   RETURN v_session;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 -- ===== RPC: Join Session (Student) =====
+-- Validates: session_code + team_code (no admin_pin needed)
 CREATE OR REPLACE FUNCTION join_session(
   p_session_code TEXT,
   p_team_code TEXT
 )
-RETURNS json AS $$
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_team_id UUID;
   v_session_id UUID;
   v_team_name TEXT;
 BEGIN
+  -- Verify session_code (active + not expired)
   SELECT session_id INTO v_session_id
   FROM access_codes
   WHERE code_value = p_session_code
@@ -229,9 +308,10 @@ BEGIN
   AND (expires_at IS NULL OR expires_at > NOW());
   
   IF v_session_id IS NULL THEN
-    RAISE EXCEPTION 'Invalid session code';
+    RAISE EXCEPTION 'Invalid or expired session code';
   END IF;
   
+  -- Verify team_code belongs to this session (active + not expired)
   SELECT t.id, t.team_name INTO v_team_id, v_team_name
   FROM teams t
   JOIN access_codes ac ON ac.team_id = t.id
@@ -242,9 +322,10 @@ BEGIN
   AND (ac.expires_at IS NULL OR ac.expires_at > NOW());
   
   IF v_team_id IS NULL THEN
-    RAISE EXCEPTION 'Invalid team code or team not in session';
+    RAISE EXCEPTION 'Invalid or expired team code, or team not in session';
   END IF;
   
+  -- Return team + session context
   RETURN json_build_object(
     'team_id', v_team_id,
     'team_name', v_team_name,
@@ -253,14 +334,19 @@ BEGIN
     'team_code', p_team_code
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
--- ===== RPC: Get Team State (Student/Facilitator) =====
+-- ===== RPC: Get Team State (Student) =====
+-- Validates: team_code (active + not expired)
 CREATE OR REPLACE FUNCTION get_team_state(p_team_code TEXT)
-RETURNS json AS $$
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_team_id UUID;
 BEGIN
+  -- Verify team_code (active + not expired)
   SELECT t.id INTO v_team_id
   FROM teams t
   JOIN access_codes ac ON ac.team_id = t.id
@@ -270,9 +356,10 @@ BEGIN
   AND (ac.expires_at IS NULL OR ac.expires_at > NOW());
   
   IF v_team_id IS NULL THEN
-    RAISE EXCEPTION 'Invalid team code';
+    RAISE EXCEPTION 'Invalid or expired team code';
   END IF;
   
+  -- Return team state
   RETURN (
     SELECT json_build_object(
       'team_id', t.id,
@@ -300,9 +387,10 @@ BEGIN
     WHERE t.id = v_team_id
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 -- ===== RPC: Submit Allocation (Student) =====
+-- Validates: team_code (active + not expired)
 CREATE OR REPLACE FUNCTION submit_allocation(
   p_team_code TEXT,
   p_quarter INT,
@@ -310,22 +398,28 @@ CREATE OR REPLACE FUNCTION submit_allocation(
   p_belief_response VARCHAR DEFAULT NULL,
   p_risks_json JSONB DEFAULT NULL
 )
-RETURNS json AS $$
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_team_id UUID;
   v_decision_id UUID;
 BEGIN
+  -- Verify team_code (active + not expired)
   SELECT t.id INTO v_team_id
   FROM teams t
   JOIN access_codes ac ON ac.team_id = t.id
   WHERE ac.code_value = p_team_code
   AND ac.code_type = 'team_code'
-  AND ac.active = true;
+  AND ac.active = true
+  AND (ac.expires_at IS NULL OR ac.expires_at > NOW());
   
   IF v_team_id IS NULL THEN
-    RAISE EXCEPTION 'Invalid team code';
+    RAISE EXCEPTION 'Invalid or expired team code';
   END IF;
   
+  -- Insert decision
   INSERT INTO decisions (
     team_id, quarter, allocation_json, belief_response, risks_json, submitted_at
   )
@@ -338,9 +432,10 @@ BEGIN
     'quarter', p_quarter
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 -- ===== RPC: Update Decision (Student) =====
+-- Validates: team_code (active + not expired) + decision belongs to team
 CREATE OR REPLACE FUNCTION update_decision(
   p_team_code TEXT,
   p_decision_id UUID,
@@ -350,22 +445,28 @@ CREATE OR REPLACE FUNCTION update_decision(
   p_team_check_dissenting_roles VARCHAR DEFAULT NULL,
   p_reflection_response VARCHAR DEFAULT NULL
 )
-RETURNS json AS $$
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_team_id UUID;
   v_decision_team_id UUID;
 BEGIN
+  -- Verify team_code (active + not expired)
   SELECT t.id INTO v_team_id
   FROM teams t
   JOIN access_codes ac ON ac.team_id = t.id
   WHERE ac.code_value = p_team_code
   AND ac.code_type = 'team_code'
-  AND ac.active = true;
+  AND ac.active = true
+  AND (ac.expires_at IS NULL OR ac.expires_at > NOW());
   
   IF v_team_id IS NULL THEN
-    RAISE EXCEPTION 'Invalid team code';
+    RAISE EXCEPTION 'Invalid or expired team code';
   END IF;
   
+  -- Verify decision belongs to this team
   SELECT team_id INTO v_decision_team_id
   FROM decisions
   WHERE id = p_decision_id;
@@ -374,6 +475,7 @@ BEGIN
     RAISE EXCEPTION 'Cannot access another team''s decision';
   END IF;
   
+  -- Update decision
   UPDATE decisions
   SET
     votes_json = COALESCE(p_votes_json, votes_json),
@@ -385,29 +487,36 @@ BEGIN
   
   RETURN json_build_object('success', true, 'decision_id', p_decision_id);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
--- ===== RPC: Get Decision (Student/Facilitator) =====
+-- ===== RPC: Get Decision (Student) =====
+-- Validates: team_code (active + not expired) + decision belongs to team
 CREATE OR REPLACE FUNCTION get_decision(
   p_team_code TEXT,
   p_decision_id UUID
 )
-RETURNS json AS $$
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_team_id UUID;
   v_decision_team_id UUID;
 BEGIN
+  -- Verify team_code (active + not expired)
   SELECT t.id INTO v_team_id
   FROM teams t
   JOIN access_codes ac ON ac.team_id = t.id
   WHERE ac.code_value = p_team_code
   AND ac.code_type = 'team_code'
-  AND ac.active = true;
+  AND ac.active = true
+  AND (ac.expires_at IS NULL OR ac.expires_at > NOW());
   
   IF v_team_id IS NULL THEN
-    RAISE EXCEPTION 'Invalid team code';
+    RAISE EXCEPTION 'Invalid or expired team code';
   END IF;
   
+  -- Verify decision belongs to this team
   SELECT team_id INTO v_decision_team_id
   FROM decisions
   WHERE id = p_decision_id;
@@ -416,6 +525,7 @@ BEGIN
     RAISE EXCEPTION 'Cannot access another team''s decision';
   END IF;
   
+  -- Return decision
   RETURN (
     SELECT json_build_object(
       'decision_id', d.id,
@@ -439,28 +549,35 @@ BEGIN
     WHERE d.id = p_decision_id
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
--- ===== RPC: Update Team State (Consequence Calculation) =====
+-- ===== RPC: Update Team State (Student - Consequence Calculation) =====
+-- Validates: team_code (active + not expired)
 CREATE OR REPLACE FUNCTION update_team_state(
   p_team_code TEXT,
   p_updates JSONB
 )
-RETURNS json AS $$
+RETURNS json
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_team_id UUID;
 BEGIN
+  -- Verify team_code (active + not expired)
   SELECT t.id INTO v_team_id
   FROM teams t
   JOIN access_codes ac ON ac.team_id = t.id
   WHERE ac.code_value = p_team_code
   AND ac.code_type = 'team_code'
-  AND ac.active = true;
+  AND ac.active = true
+  AND (ac.expires_at IS NULL OR ac.expires_at > NOW());
   
   IF v_team_id IS NULL THEN
-    RAISE EXCEPTION 'Invalid team code';
+    RAISE EXCEPTION 'Invalid or expired team code';
   END IF;
   
+  -- Update team with JSON keys from p_updates
   UPDATE teams
   SET
     revenue = COALESCE((p_updates->>'revenue')::DECIMAL, revenue),
@@ -483,17 +600,17 @@ BEGIN
   
   RETURN json_build_object('success', true, 'team_id', v_team_id);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql;
 
 -- ============================================================================
 -- VERIFICATION COMMENTS
 -- ============================================================================
 -- After running this migration:
--- 1. All direct SELECT/INSERT/UPDATE queries to sessions/teams/decisions FAIL
--- 2. All data access must use RPC functions (listed above)
--- 3. RPC functions validate codes against access_codes table
--- 4. RPC functions bypass RLS (SECURITY DEFINER)
--- 5. Students cannot access another team's data (team_code validation in RPC)
--- 6. Facilitators can access all their session's teams (session_code validation)
+-- 1. access_codes table exists with RLS block-all (no direct enumeration)
+-- 2. All direct SELECT/INSERT/UPDATE queries to sessions/teams/decisions FAIL
+-- 3. Facilitator RPCs require admin_pin + session_code (no session_code-only)
+-- 4. Student RPCs require valid (active + non-expired) team_code
+-- 5. Every RPC has safe search_path to prevent SQL injection
+-- 6. All RPC functions use SECURITY DEFINER for trusted execution
 -- ============================================================================
 
