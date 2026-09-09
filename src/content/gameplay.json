@@ -1,0 +1,157 @@
+{
+  "q1": {
+    "event_title": "Growth Looks Easy",
+    "event_description": "Coursera sits at the peak of online learning. ChatGPT doesn't exist yet. Enterprise is emerging as an opportunity. No major threats visible.",
+    "available_capital": 30,
+    "belief": {
+      "prompt": "What is your hypothesis about the consumer market over the next 8 quarters?",
+      "options": [
+        {
+          "value": "stable_dominant",
+          "label": "Stable & dominant. Consumer will remain our core."
+        },
+        {
+          "value": "gradual_shift",
+          "label": "Gradual shift. Some move to enterprise, but consumer stays significant."
+        },
+        {
+          "value": "need_evidence",
+          "label": "Uncertain. Need more evidence before betting."
+        }
+      ]
+    },
+    "risks": {
+      "prompt": "What are the top risks you're taking with this allocation?",
+      "options": [
+        {
+          "value": "consumer_disruption",
+          "label": "Consumer market disruption (new entrants, technology shift)",
+          "description": "Real risk in online learning market"
+        },
+        {
+          "value": "talent_retention",
+          "label": "Instructor/talent attrition",
+          "description": "Key creators may leave if not invested in"
+        },
+        {
+          "value": "enterprise_sales",
+          "label": "Enterprise sales cycles longer than expected",
+          "description": "B2B adoption may be slower than forecast"
+        },
+        {
+          "value": "cash_runway",
+          "label": "Insufficient cash reserves",
+          "description": "Spending too aggressively in early quarters"
+        },
+        {
+          "value": "technology_lag",
+          "label": "Technology capabilities falling behind",
+          "description": "Not investing enough in product modernization"
+        }
+      ]
+    },
+    "reflect": {
+      "prompt": "What did you learn from Q1?",
+      "options": [
+        {
+          "value": "strategy_validated",
+          "label": "Our strategy validated. We're on the right track."
+        },
+        {
+          "value": "surprised_by_results",
+          "label": "Surprised by results. Need to adjust perspective."
+        },
+        {
+          "value": "unclear",
+          "label": "Still unclear. Need more data."
+        }
+      ]
+    },
+    "role_hints": {
+      "ceo": "You are the CEO. You own the overall strategy and final decision. Are you confident in this allocation?",
+      "cfo": "You are the CFO. Cash is your concern. Will this allocation maintain healthy runway?",
+      "product": "You are the Chief Product Officer. Product quality and innovation are your domain. Is this investment in product/AI sufficient?",
+      "people": "You are the Chief People Officer. Instructor/talent satisfaction drives retention. Is this enough to keep creators happy?",
+      "growth": "You are the Chief Growth Officer. You own revenue and market expansion. Can this allocation drive the growth targets?"
+    }
+  },
+  "q2": {
+    "event_title": "ChatGPT Arrives",
+    "event_description": "OpenAI releases ChatGPT. Within weeks, it reaches 100M users. The market wakes up to generative AI as a real force. Consumer willingness to pay begins weakening. Enterprise suddenly sees opportunity in AI-enabled workforce learning.",
+    "available_capital": 30,
+    "belief": {
+      "prompt": "How do you interpret ChatGPT's arrival?",
+      "options": [
+        {
+          "value": "noise",
+          "label": "Noise. A cool tool, but not a threat to our business model."
+        },
+        {
+          "value": "opportune",
+          "label": "Opportune. We can use AI to strengthen our position."
+        },
+        {
+          "value": "threat",
+          "label": "Threat. Students have free alternatives now. We need to respond urgently."
+        },
+        {
+          "value": "mixed",
+          "label": "Mixed. Both threat and opportunity, unclear which dominates."
+        }
+      ]
+    },
+    "risks": {
+      "prompt": "What new risks emerge from ChatGPT?",
+      "options": [
+        {
+          "value": "consumer_churn",
+          "label": "Consumer churn to free AI alternatives",
+          "description": "Students may cancel paid subscriptions"
+        },
+        {
+          "value": "implementation_delay",
+          "label": "AI implementation delays our response",
+          "description": "Building/integrating AI takes longer than expected"
+        },
+        {
+          "value": "culture_shock",
+          "label": "Culture shock from rapid change",
+          "description": "Team overloaded by pace of disruption"
+        },
+        {
+          "value": "enterprise_pause",
+          "label": "Enterprise sales pause while they evaluate",
+          "description": "Buyers wait to see what you do with AI"
+        }
+      ]
+    },
+    "reflect": {
+      "prompt": "Based on Q2 evidence, how has your view of the market changed?",
+      "options": [
+        {
+          "value": "belief_confirmed",
+          "label": "My belief from Q1 was confirmed. Proceeding as planned."
+        },
+        {
+          "value": "belief_wrong",
+          "label": "My Q1 belief was wrong. I need to change strategy."
+        },
+        {
+          "value": "partial_shift",
+          "label": "Partial shift. Some adjustments, but staying mostly the course."
+        },
+        {
+          "value": "still_unclear",
+          "label": "Still unclear. Need more evidence."
+        }
+      ]
+    },
+    "role_hints": {
+      "ceo": "The market has moved. Do we have the right strategy, or do we need to pivot?",
+      "cfo": "Cash is tight. We're spending on both old model and new. Can we sustain this?",
+      "product": "AI is now table stakes. Is our current product investment sufficient?",
+      "people": "Our team is stressed by rapid change. Culture may suffer. How do we support them?",
+      "growth": "Revenue is under pressure from consumer churn, but enterprise is waking up. Where is your growth focus?"
+    }
+  }
+}

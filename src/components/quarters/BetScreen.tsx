@@ -1,0 +1,101 @@
+import React, { useState, useEffect } from 'react';
+import { useGame } from '../../context/GameContext';
+import { Allocation } from '../../simulation/engine';
+import gameplayContent from '../../content/gameplay.json';
+
+export default function BetScreen() {
+  const game = useGame();
+  const eventContent = game.currentQuarter === 1 ? gameplayContent.q1 : gameplayContent.q2;
+  const capitalAvailable = eventContent.available_capital;
+
+  const [allocation, setAllocation] = useState<Allocation>({
+    consumerGrowth: 5,
+    enterpriseSales: 5,
+    aiProduct: 5,
+    instructorPeople: 5,
+    universityCredential: 3,
+    customerSuccess: 2,
+    marketing: capitalAvailable - 25,
+    cash: 0,
+  });
+
+  const categories = [
+    { key: 'consumerGrowth' as const, label: 'Consumer Growth', hint: 'Customer acquisition & retention in mass market' },
+    { key: 'enterpriseSales' as const, label: 'Enterprise Sales', hint: 'B2B sales team & account management' },
+    { key: 'aiProduct' as const, label: 'AI Product', hint: 'R&D for AI/product modernization' },
+    { key: 'instructorPeople' as const, label: 'Instructor/People', hint: 'Talent acquisition & creator partnerships' },
+    { key: 'universityCredential' as const, label: 'University/Credential', hint: 'Institutional partnerships & credentialing' },
+    { key: 'customerSuccess' as const, label: 'Customer Success', hint: 'Support & retention programs' },
+    { key: 'marketing' as const, label: 'Marketing', hint: 'Brand, advertising, awareness campaigns' },
+    { key: 'cash' as const, label: 'Cash Reserve', hint: 'Retain as liquidity' },
+  ];
+
+  const total = Object.values(allocation).reduce((a, b) => a + b, 0);
+  const isValid = Math.abs(total - capitalAvailable) < 0.01;
+  const runwayMonths = game.currentTeam ? (game.currentTeam.cash / game.currentTeam.operating_cost) * 3 : 0; // approx quarters
+
+  const handleAllocationChange = (key: keyof Allocation, value: number) => {
+    setAllocation(prev => ({
+      ...prev,
+      [key]: Math.max(0, Math.min(capitalAvailable, value)),
+    }));
+  };
+
+  const handleProceed = () => {
+    if (isValid) {
+      game.setCurrentAllocation(allocation);
+      game.setQuarterPhase('belief');
+    }
+  };
+
+  return (
+    <div className="quarter-screen bet-screen">
+      <div className="card">
+        <h2>Q{game.currentQuarter} Capital Allocation</h2>
+        <p>Allocate ${capitalAvailable}M across strategic categories:</p>
+
+        <div className="allocation-form">
+          {categories.map(cat => (
+            <div key={cat.key} className="allocation-row">
+              <div className="allocation-label">
+                <label>{cat.label}</label>
+                <span className="hint">{cat.hint}</span>
+              </div>
+              <div className="allocation-input">
+                <input
+                  type="range"
+                  min="0"
+                  max={capitalAvailable}
+                  step="0.1"
+                  value={allocation[cat.key]}
+                  onChange={(e) => handleAllocationChange(cat.key, parseFloat(e.target.value))}
+                  className="slider"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max={capitalAvailable}
+                  step="0.1"
+                  value={allocation[cat.key].toFixed(1)}
+                  onChange={(e) => handleAllocationChange(cat.key, parseFloat(e.target.value))}
+                  className="number-input"
+                />
+                <span className="unit">$M</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className={`allocation-summary ${isValid ? 'valid' : 'invalid'}`}>
+          <p><strong>Total Allocated:</strong> ${total.toFixed(1)}M / ${capitalAvailable}M</p>
+          {!isValid && <p className="error">Allocation must total exactly ${capitalAvailable}M</p>}
+          <p><strong>Current Cash Runway:</strong> ~{runwayMonths.toFixed(1)} quarters</p>
+        </div>
+
+        <button onClick={handleProceed} disabled={!isValid} className="btn-primary">
+          Allocation Confirmed → Next
+        </button>
+      </div>
+    </div>
+  );
+}
