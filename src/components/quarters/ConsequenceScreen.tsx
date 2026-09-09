@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
-import { updateTeamState } from '../../../services/supabase';
-import { getQ2EventContext } from '../../../simulation/engine';
+import { updateTeamState } from '../../services/supabase';
+import { getQ2EventContext } from '../../simulation/engine';
 
 export default function ConsequenceScreen() {
   const game = useGame();
@@ -97,6 +97,7 @@ export default function ConsequenceScreen() {
                     </span>
                   </div>
                 ) : null}
+              </div>
 
               <div className="capability-changes">
                 <h3>Capability Development</h3>
