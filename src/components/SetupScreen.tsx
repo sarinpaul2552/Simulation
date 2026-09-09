@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { getSession, createTeam } from '../services/supabase';
+import { createSession, getSession, createTeam } from '../services/supabase';
 
 interface SetupScreenProps {
   isStudent?: boolean;
@@ -35,6 +35,28 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
       onSessionCreated(session.session_code);
     } catch (err: any) {
       setError(err.message || 'Failed to join session');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProceedToTeamNaming = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Create the session in Supabase
+      const session = await createSession(email, teamCount);
+      
+      // Store session in game context
+      game.setFacilitatorEmail(email);
+      game.setSessionCode(session.session_code);
+      game.setSessionId(session.id);
+      game.setTeamCount(teamCount);
+      
+      // Move to team naming step
+      setStep('teams');
+    } catch (err: any) {
+      setError(err.message || 'Failed to create session');
     } finally {
       setLoading(false);
     }
@@ -114,7 +136,7 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
         {step === 'input' && (
           <>
             <h2>Create a New Simulation Session</h2>
-            <form onSubmit={(e) => { e.preventDefault(); setStep('teams'); }}>
+            <form onSubmit={(e) => { e.preventDefault(); handleProceedToTeamNaming(); }}>
               <div className="form-group">
                 <label>Your Email:</label>
                 <input
@@ -145,8 +167,8 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
               {error && <div className="error">{error}</div>}
 
               <div className="button-group">
-                <button type="submit" className="btn-primary">
-                  Next: Name Teams
+                <button type="submit" disabled={loading} className="btn-primary">
+                  {loading ? 'Creating Session...' : 'Next: Name Teams'}
                 </button>
                 <button type="button" onClick={onCancel} className="btn-secondary">
                   Back
