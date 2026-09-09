@@ -1,0 +1,140 @@
+# Q1 RECONCILIATION MANIFEST
+
+This document lists all reconciliation and correction files created during Pass 1 Q1 validation preparation.
+
+## PRIMARY RECONCILIATION DOCUMENTS
+
+### 1. RECONCILIATION_Q1_ALLOCATION_CATEGORIES.md
+**Purpose:** First reconciliation identifying 8-category vs. 6-category discrepancy
+**Key Content:**
+- Identified Customer Success and Marketing wrongly exposed in Q1
+- Locked specification requires 6 categories only for Q1
+- Provided corrected test case with 6 categories
+- Proposed code corrections
+
+### 2. Q1_ECONOMICS_DISCREPANCY_ANALYSIS.md
+**Purpose:** Second major reconciliation on revenue and cash errors
+**Key Content:**
+- Identified 3 critical errors:
+  1. Consumer same-quarter revenue (should mature Q2)
+  2. Alignment multiplier applied to total revenue (should apply only to strategic)
+  3. Cash reserve double-counting
+- Showed exact impact: −$11M revenue, −$19M cash
+- Provided corrected calculations
+
+### 3. Q1_CORRECTIONS_FINAL_SUMMARY.md
+**Purpose:** Summary of all corrections applied to code and validation guide
+**Key Content:**
+- Summary of all three major fixes
+- Impact analysis of each correction
+- GIT commit references
+- Corrected expected Q1 outputs after fixes 1–3
+
+### 4. Q1_FINAL_RECONCILIATION_ENTERPRISE_QUALITY_TRUST.md
+**Purpose:** Third reconciliation identifying missing enterprise/quality/trust effects
+**Key Content:**
+- Enterprise Q1 revenue missing (+$0.24M from 0.15% per $1M effect)
+- Product Quality gain missing (+1.2 from people investment × 0.30 per spec)
+- Trust gain missing (+1.0 from university investment × 0.25 per spec)
+- Culture effect flagged as undocumented in locked spec
+- Provided complete corrected calculation trace
+
+### 5. Q1_FINAL_AUTHORITATIVE_TRACE.md
+**Purpose:** Final authoritative calculation showing all values with full precision
+**Key Content:**
+- Complete step-by-step Q1 calculation with full internal precision
+- Effective investments after diminishing returns
+- All capability calculations
+- All quality metric calculations (Product Quality, Culture, Trust)
+- Revenue calculation with Enterprise pipeline effect
+- Alignment multiplier application
+- Stock price calculation with three factors
+- Final authoritative outputs (internal precision + displayed)
+- Reconciliation checklist (7 issues, all resolved)
+
+## SUPPORTING DOCUMENTS
+
+### 6. Q1_RECONCILIATION_SUMMARY.md
+**Purpose:** Summary of Q1 allocation category reconciliation
+**Status:** Earlier phase; superseded by later reconciliations
+
+## CODE CORRECTIONS
+
+### File: `/mnt/project/src/components/quarters/BetScreen.tsx`
+- Removed Customer Success and Marketing from Q1 allocation form
+- Set both to $0 (retained in data types for Q5+ compatibility)
+- Updated default allocation to 6-category split
+
+### File: `/mnt/project/src/simulation/engine.ts`
+**Major changes:**
+1. Added Q1 enforcement: Rejects CS/marketing allocation (lines 142–147)
+2. Removed consumer same-quarter revenue lift (lines 224–226)
+3. Removed alignment multiplier on total revenue (lines 231–233)
+4. Removed cash reserve double-counting (line 244)
+5. Added Product Quality gain from People (line 204)
+6. Added Trust gain from University (line 217)
+7. Added Enterprise Q1 revenue effect (lines 234–240)
+8. Updated Consequence interface (lines 50–57)
+9. Updated return statement with productQualityChange and trustChange (lines 308–309)
+
+## VALIDATION GUIDE UPDATES
+
+### File: `/mnt/project/PASS_1_EXECUTABLE_VALIDATION.md`
+- Section 2.1: Updated to 6-category Q1 allocation
+- Section 3 (entire): Recalculated all expected outputs through three phases
+- Section 3.12: Final summary table with all corrected values
+- Section 4.11: Updated consequence screen expected values
+- Section 5.2: Updated database query expected values
+- Section 5.5: Updated outcome query expected values
+- Section 7.1: Updated facilitator dashboard expected values
+
+## GIT COMMIT HISTORY
+
+1. `47bebb5` - Initial executable validation guide (8 categories, incorrect values)
+2. `f6e5076` - Q1 Allocation Correction (6 categories enforced)
+3. `5be2098` - Q1 reconciliation summary
+4. `6fc89e3` - Q1 Economics Correction (consumer/alignment/cash fixes)
+5. `f005c3b` - Final summary of economics corrections
+6. `62f57dc` - Q1 Final Reconciliation (Enterprise/Quality/Trust added)
+7. `6a7a6a3` - Final authoritative calculation trace
+
+## FINAL Q1 EXPECTED OUTPUTS
+
+### Financial (with ±0.5 tolerance)
+- Revenue: $204.25M
+- Operating Profit: $34.25M
+- Closing Cash: $72.25M
+- Stock Price: $102.48
+
+### Quality Metrics
+- Product Quality: 71 (70 + 1.2 from people)
+- Culture: 73 (72 + 1.2 from people; undocumented)
+- Trust: 71 (70 + 1.0 from university)
+
+### Capabilities
+- Consumer: 59
+- Enterprise: 35
+- AI: 18
+- Talent: 59
+- Credential: 44
+- Execution: 68
+
+## VALIDATION STATUS
+
+All 10 Pass 1 requirements ready for runtime validation:
+1. ✅ Team completes Q1 (6 categories only)
+2. ✅ Role votes stored individually
+3. ✅ Team Check alignment stored
+4. ✅ Capabilities created correctly
+5. ✅ Cash/economics correct
+6. ✅ Belief and Risk stored
+7. ✅ Q2 retrieves Q1 history
+8. ✅ Q1 decision appears in Q2 callback
+9. ✅ Facilitator sees team state & can advance
+10. ✅ Refresh does not lose state
+
+## NEXT STEPS
+
+Execute: `/mnt/project/PASS_1_EXECUTABLE_VALIDATION.md`
+
+Do NOT implement Q3–Q8 until Pass 1 validation is complete and all 10 requirements pass.
