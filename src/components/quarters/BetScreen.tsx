@@ -9,24 +9,23 @@ export default function BetScreen() {
   const capitalAvailable = eventContent.available_capital;
 
   const [allocation, setAllocation] = useState<Allocation>({
-    consumerGrowth: 5,
-    enterpriseSales: 5,
-    aiProduct: 5,
-    instructorPeople: 5,
-    universityCredential: 3,
-    customerSuccess: 2,
-    marketing: capitalAvailable - 25,
-    cash: 0,
+    consumerGrowth: 4,
+    enterpriseSales: 4,
+    aiProduct: 6,
+    instructorPeople: 4,
+    universityCredential: 4,
+    customerSuccess: 0,  // Q1 only: not available (Q5+ feature)
+    marketing: 0,        // Q1 only: not available (Q5+ feature)
+    cash: 8,
   });
 
+  // Q1: Only 6 strategic categories (Customer Success and Marketing become available post-Q4)
   const categories = [
     { key: 'consumerGrowth' as const, label: 'Consumer Growth', hint: 'Customer acquisition & retention in mass market' },
     { key: 'enterpriseSales' as const, label: 'Enterprise Sales', hint: 'B2B sales team & account management' },
     { key: 'aiProduct' as const, label: 'AI Product', hint: 'R&D for AI/product modernization' },
     { key: 'instructorPeople' as const, label: 'Instructor/People', hint: 'Talent acquisition & creator partnerships' },
     { key: 'universityCredential' as const, label: 'University/Credential', hint: 'Institutional partnerships & credentialing' },
-    { key: 'customerSuccess' as const, label: 'Customer Success', hint: 'Support & retention programs' },
-    { key: 'marketing' as const, label: 'Marketing', hint: 'Brand, advertising, awareness campaigns' },
     { key: 'cash' as const, label: 'Cash Reserve', hint: 'Retain as liquidity' },
   ];
 

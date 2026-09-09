@@ -140,6 +140,15 @@ export function calculateQ1Consequence(
     throw new Error(`Allocation must total 30, got ${total}`);
   }
 
+  // Q1 ONLY: Enforce locked 6-category design (Customer Success and Marketing become available post-Q4)
+  if (Math.abs(allocation.customerSuccess) > 0.01 || Math.abs(allocation.marketing) > 0.01) {
+    throw new Error(
+      'Q1 does not support customerSuccess or marketing allocation. ' +
+      'These strategic categories become available after Q4 destination commitment (Q5+). ' +
+      'Locked Q1 categories: consumerGrowth, enterpriseSales, aiProduct, instructorPeople, universityCredential, cash.'
+    );
+  }
+
   // Calculate effective investments (diminishing returns)
   const effectiveAllocations: Record<string, number> = {};
   Object.entries(allocation).forEach(([key, amount]) => {
@@ -198,14 +207,8 @@ export function calculateQ1Consequence(
     );
   }
 
-  // Customer Success investment -> Customer Success capability
-  if (allocation.customerSuccess > 0) {
-    newCapabilities.customerSuccess = createCapabilityFromInvestment(
-      'customerSuccess',
-      effectiveAllocations.customerSuccess,
-      currentState.capabilities.customerSuccess
-    );
-  }
+  // Q1: Customer Success capability not available (becomes available Q5+)
+  // customerSuccess allocation enforced to be 0 above; no processing needed
 
   // Calculate Execution Alignment Score (hidden)
   const executionAlignment = calculateExecutionAlignment(allocation, roleVotes, teamCheckOverride, dissents);
@@ -233,10 +236,9 @@ export function calculateQ1Consequence(
   const q1OpCost = currentState.operatingCost; // simplified: same as baseline
   const q1OpProfit = q1Revenue - q1OpCost;
 
-  // Closing cash
+  // Closing cash (Q1: only 5 strategic categories spend; CS and marketing enforced to 0)
   const strategicSpend = allocation.consumerGrowth + allocation.enterpriseSales + allocation.aiProduct +
-                         allocation.instructorPeople + allocation.universityCredential + allocation.customerSuccess +
-                         allocation.marketing;
+                         allocation.instructorPeople + allocation.universityCredential;
   const retainedCash = allocation.cash;
   const q1ClosingCash = currentState.cash + q1OpProfit - strategicSpend + retainedCash;
 

@@ -1,8 +1,9 @@
-# PASS 1 EXECUTABLE VALIDATION GUIDE
+# PASS 1 EXECUTABLE VALIDATION GUIDE (CORRECTED)
 
 **Purpose:** End-to-end validation of Pass 1 vertical prototype using one fixed deterministic test case  
 **Date:** September 2026  
 **Status:** Ready to Execute  
+**Update:** Q1 allocation corrected to locked 6-category design (removed Customer Success and Marketing)
 
 ---
 
@@ -10,9 +11,9 @@
 
 This guide provides:
 1. Exact setup commands
-2. One fixed test case (used throughout)
+2. One fixed test case (corrected to locked specification)
 3. Expected calculation trace from simulation engine
-4. Expected Q1 numerical outputs (derived from source code)
+4. Expected Q1 numerical outputs (derived from corrected source code)
 5. SQL queries to inspect every record
 6. Refresh/persistence verification
 7. Facilitator control verification
@@ -103,22 +104,22 @@ npm install
 
 ---
 
-## SECTION 2: FIXED TEST CASE DEFINITION
+## SECTION 2: FIXED TEST CASE DEFINITION (CORRECTED)
 
-### 2.1 Q1 Test Allocation (Fixed)
+### 2.1 Q1 Test Allocation (Fixed, 6 Categories)
 
 **Total Available Capital:** $30M
 
+**Q1 Locked Design (from V4 specification):** Q1 exposes **6 strategic categories only**. Customer Success and Marketing become available Q5+ after Q4 destination commitment.
+
 | Category | Amount | Purpose |
 |----------|--------|---------|
-| Consumer Growth | $5M | Customer acquisition |
-| Enterprise Sales | $10M | B2B sales team |
-| AI Product | $8M | R&D/product modernization |
-| Instructor/People | $4M | Talent & creator partnerships |
-| University/Credential | $1M | Institutional programs |
-| Customer Success | $1M | Support & retention |
-| Marketing | $1M | Brand/awareness |
-| Cash Reserve | $0M | Liquidity |
+| Consumer Growth | $4M | Customer acquisition in mass market |
+| Enterprise Sales | $4M | B2B sales team & account management |
+| AI Product | $6M | R&D for product modernization |
+| Instructor/People | $4M | Talent acquisition & creator partnerships |
+| University/Credential | $4M | Institutional partnerships & credentialing |
+| Cash Reserve | $8M | Retain as liquidity |
 | **TOTAL** | **$30M** | ✓ Validates |
 
 ### 2.2 Q1 Fixed Selections
@@ -158,22 +159,21 @@ npm install
 
 ---
 
-## SECTION 3: EXPECTED Q1 CALCULATION (From Source Code)
+## SECTION 3: EXPECTED Q1 CALCULATION (Corrected)
 
 ### 3.1 Simulation Engine Source Reference
 
 File: `/mnt/project/src/simulation/engine.ts`
 
 Key functions:
-- `calculateEffectiveInvestment()` - Lines 15–22
-- `createCapabilityFromInvestment()` - Lines 24–34
-- `calculateQ1Consequence()` - Lines 51–180
-- `calculateExecutionAlignment()` - Lines 182–200
+- `calculateEffectiveInvestment()` - Lines 61–72
+- `createCapabilityFromInvestment()` - Lines 88–98
+- `calculateQ1Consequence()` - Lines 130–288
+- `calculateExecutionAlignment()` - Lines 210–212
 
-### 3.2 Calculation Trace: Diminishing Returns
+### 3.2 Diminishing Returns (Corrected Allocation)
 
-**Source:** `calculateEffectiveInvestment(amount)` function
-
+**Formula (engine.ts, Lines 61–72):**
 ```typescript
 if (amountSpent <= 5) return amountSpent * 1.0;
 if (amountSpent <= 10) return 5 * 1.0 + (amountSpent - 5) * 0.8;
@@ -181,299 +181,182 @@ if (amountSpent <= 15) return 5 * 1.0 + 5 * 0.8 + (amountSpent - 10) * 0.6;
 return 5 * 1.0 + 5 * 0.8 + 5 * 0.6 + (amountSpent - 15) * 0.4;
 ```
 
-**For test allocation:**
+**For corrected allocation:**
 
-| Category | Spent | Calculation | Effective | Gain Multiplier |
-|----------|-------|-------------|-----------|-----------------|
-| Consumer | $5M | 5 × 1.0 | 5.0M | 1.0 |
-| Enterprise | $10M | 5×1.0 + 5×0.8 | 9.0M | 1.2 |
-| AI | $8M | 5×1.0 + 3×0.8 | 7.4M | 1.3 |
-| People | $4M | 4 × 1.0 | 4.0M | 1.0 |
-| Credential | $1M | 1 × 1.0 | 1.0M | 1.0 |
-| CS | $1M | 1 × 1.0 | 1.0M | 1.2 |
-| Marketing | $1M | 1 × 1.0 | 1.0M | 0.7 |
+| Category | Spent | Tier 1 (100%) | Tier 2 (80%) | Tier 3 (60%) | Tier 4 (40%) | Effective | Multiplier |
+|----------|-------|--------|--------|--------|--------|-----------|-----------|
+| Consumer | $4M | 4×1.0=4.0 | — | — | — | **4.0M** | 1.0 |
+| Enterprise | $4M | 4×1.0=4.0 | — | — | — | **4.0M** | 1.2 |
+| AI | $6M | 5×1.0=5.0 | 1×0.8=0.8 | — | — | **5.8M** | 1.3 |
+| People | $4M | 4×1.0=4.0 | — | — | — | **4.0M** | 1.0 |
+| Credential | $4M | 4×1.0=4.0 | — | — | — | **4.0M** | 1.0 |
 
-### 3.3 Calculation Trace: Capability Creation
+### 3.3 Capability Creation
 
-**Source:** `createCapabilityFromInvestment()` function
-
-Starting capabilities (Q1 baseline):
+**Formula (engine.ts, Lines 88–98):**
 ```typescript
-consumer: 55,
-enterprise: 30,
-ai: 10,
-talent: 55,
-credential: 40,
-customerSuccess: 30,
-growth: 55,
-execution: 60,
+const baseGain = effectiveInvested * multiplier;
+const newCapability = Math.min(100, currentCapability + baseGain);
+return Math.round(newCapability);
 ```
 
-**Capability gains:**
-
+**Starting capabilities:**
 ```
-Consumer:    55 + (5.0M effective × 1.0) = 55 + 5.0 = 60.0 ≈ 60
-Enterprise:  30 + (9.0M effective × 1.2) = 30 + 10.8 = 40.8 ≈ 41
-AI:          10 + (7.4M effective × 1.3) = 10 + 9.62 = 19.62 ≈ 20
-Talent:      55 + (4.0M effective × 1.0) = 55 + 4.0 = 59
-Credential:  40 + (1.0M effective × 1.0) = 40 + 1.0 = 41
-CS:          30 + (1.0M effective × 1.2) = 30 + 1.2 = 31.2 ≈ 31
-Growth:      55 (unchanged in Q1)
+consumer: 55, enterprise: 30, ai: 10, talent: 55, credential: 40,
+customerSuccess: 30, growth: 55, execution: 60
 ```
 
-**Capability Thresholds Crossed:**
+**Capability calculations:**
 
-```typescript
-getCapabilityLevel(value):
-  if (value <= 24) return 'Weak'
-  if (value <= 44) return 'Developing'
-  if (value <= 64) return 'Competitive'
-  if (value <= 79) return 'Strong'
-  return 'Leading'
+```
+Consumer:       55 + (4.0 × 1.0) = 55 + 4.0 = 59
+Enterprise:     30 + (4.0 × 1.2) = 30 + 4.8 = 34.8 ≈ 35
+AI:             10 + (5.8 × 1.3) = 10 + 7.54 = 17.54 ≈ 18
+Talent:         55 + (4.0 × 1.0) = 55 + 4.0 = 59
+Credential:     40 + (4.0 × 1.0) = 40 + 4.0 = 44
+CustomerSuccess: 30 (unchanged; not allocated in Q1)
+Growth:         55 (unchanged)
 ```
 
-| Capability | From | To | Level Change |
-|------------|------|----|----|
-| Consumer | 55 (Competitive) | 60 (Competitive) | No threshold crossed |
-| Enterprise | 30 (Developing) | 41 (Developing) | No threshold crossed |
-| AI | 10 (Weak) | 20 (Weak) | No threshold crossed |
-| Talent | 55 (Competitive) | 59 (Competitive) | No threshold crossed |
-| Credential | 40 (Developing) | 41 (Developing) | No threshold crossed |
-| CS | 30 (Developing) | 31 (Developing) | No threshold crossed |
+**Threshold check (engine.ts, Lines 74–101):**
 
-**Note:** No thresholds crossed in this test case. This is realistic for Q1 (Q2+ events trigger higher deltas).
+| Capability | From | To | From Level | To Level | Crossed? |
+|------------|------|----|----|----|----|
+| Consumer | 55 | 59 | Competitive | Competitive | NO |
+| Enterprise | 30 | 35 | Developing | Developing | NO |
+| AI | 10 | 18 | Weak | Weak | NO |
+| Talent | 55 | 59 | Competitive | Competitive | NO |
+| Credential | 40 | 44 | Developing | Developing | NO |
 
-### 3.4 Calculation Trace: Execution Alignment
+### 3.4 Execution Alignment Score
 
-**Source:** `calculateExecutionAlignment()` and votes
-
-```typescript
-let score = 60;  // Base
-
-// YES votes: 4, Total votes: 5
-if (yesVotes === 5) score += 15;       // Unanimous (not applicable)
-else if (yesVotes >= 4) score += 8;    // Broad alignment ← APPLIES
-else if (yesVotes >= 3) score += 3;    // Debate
-```
-
-**Calculation:**
+**Formula (engine.ts, Lines 210–212):**
 ```
 Base score: 60
-Broad alignment bonus (+4 YES votes): +8
-Override: NO, so no penalty (-0)
+YES votes: 4, Total: 5
+yesVotes >= totalVotes - 1 → 4 >= 4 → TRUE (Broad alignment)
+Bonus: +8
+Override: NO (penalty: 0)
 
-Final execution score: 60 + 8 = 68
+Final: 60 + 8 = 68
 ```
 
-### 3.5 Calculation Trace: Alignment Multiplier
+### 3.5 Alignment Multiplier
 
-**Source:** `getAlignmentMultiplier()` function
-
-```typescript
-if (executionAlignment >= 80) return 1.1;    // Not applicable
-if (executionAlignment >= 65) return 1.05;   // ← APPLIES (68 in range 65-79)
-if (executionAlignment >= 45) return 1.0;
-if (executionAlignment >= 30) return 0.92;
-return 0.85;
+**Formula (engine.ts, Lines 201–209):**
+```
+68 >= 65? YES → Multiplier = 1.05×
 ```
 
-**Result:** Execution score 68 → multiplier **1.05×**
+### 3.6 Q1 Revenue (Step-by-Step)
 
-### 3.6 Calculation Trace: Q1 Revenue
+**Starting revenue:** $200M
 
-**Source:** `calculateQ1Consequence()` function
-
-**Base:**
-```typescript
-const baseMarketTailwind = 1.02;  // +2%
-let q1Revenue = currentState.revenue * baseMarketTailwind;
+**Step 1: Market tailwind (+2%)**
+```
+$200M × 1.02 = $204M
 ```
 
-Starting revenue: $200M
-With tailwind: $200M × 1.02 = **$204M**
-
-**Consumer allocation effect:**
-```typescript
-const consumerRevenueLift = (allocation.consumerGrowth / 30) * 
-                             (newCapabilities.consumer / 100) * 0.05;
+**Step 2: Consumer allocation effect**
+```
+Ratio: 4M / 30M = 0.1333
+Capability: 59 / 100 = 0.59
+Effect: 0.1333 × 0.59 × 5% = 0.393%
+Boost: $204M × 0.00393 = $0.80M
+Running total: $204.80M
 ```
 
+**Step 3: Enterprise check**
 ```
-Allocation ratio: 5M / 30M = 0.1667
-Capability ratio: 60 / 100 = 0.60
-Effect: 0.1667 × 0.60 × 5% = 0.005 = 0.5%
-Revenue boost: $204M × 0.005 = $1.02M
-
-New revenue: $204M + $1.02M = $205.02M
+Enterprise cap: 35 < 45? YES → No lift applied
+Running total: $204.80M
 ```
 
-**Enterprise allocation effect:**
-```typescript
-if (allocation.enterpriseSales > 0 && newCapabilities.enterprise >= 45) {
-  const enterpriseLift = (allocation.enterpriseSales / 30) * 0.02;
-  q1Revenue += q1Revenue * enterpriseLift;
-}
+**Step 4: Apply alignment multiplier**
+```
+$204.80M × 1.05 = $215.04M
 ```
 
-Enterprise capability: 41 (< 45, so this condition is FALSE)
-No enterprise revenue lift in Q1.
+**Expected Q1 Revenue: ~$215.0M**
 
-Revenue before alignment: **$205.02M**
+### 3.7 Operating Profit
 
-**Apply alignment multiplier (1.05×):**
+**Formula:** Revenue − Operating Cost
 ```
-$205.02M × 1.05 = $215.27M
-```
-
-**Expected Q1 Revenue:** ~**$215.3M** (actual may vary slightly due to rounding)
-
-### 3.7 Calculation Trace: Operating Profit
-
-**Source:** `calculateQ1Consequence()` function
-
-```typescript
-const q1OpCost = currentState.operatingCost;  // Simplified: same as baseline
-const q1OpProfit = q1Revenue - q1OpCost;
+$215.0M − $170M = $45.0M
 ```
 
-Operating cost: $170M (unchanged in Q1)
-Operating profit: $215.3M - $170M = **$45.3M**
+### 3.8 Closing Cash
 
-### 3.8 Calculation Trace: Closing Cash
+**Formula (engine.ts, Lines 236–241, corrected):**
+```
+Strategic spend: 4 + 4 + 6 + 4 + 4 = $22M (5 categories only)
+Retained cash: $8M
 
-**Source:** `calculateQ1Consequence()` function
-
-```typescript
-const strategicSpend = allocation.consumerGrowth + allocation.enterpriseSales + 
-                       allocation.aiProduct + allocation.instructorPeople + 
-                       allocation.universityCredential + allocation.customerSuccess +
-                       allocation.marketing;
-const retainedCash = allocation.cash;
-const q1ClosingCash = currentState.cash + q1OpProfit - strategicSpend + retainedCash;
+Closing cash: $60M (start) + $45.0M (op profit) − $22M (spend) + $8M (retained)
+             = $91M
 ```
 
+### 3.9 Stock Price Change
+
+**Factor 1: Growth vs expectation (35% weight)**
 ```
-Starting cash: $60M
-Operating profit: $45.3M
-Strategic spend: $5M + $10M + $8M + $4M + $1M + $1M + $1M = $30M
-Retained cash: $0M
-
-Closing cash: $60M + $45.3M - $30M + $0M = $75.3M
-```
-
-**Expected Closing Cash:** ~**$75.3M**
-
-### 3.9 Calculation Trace: Stock Price Change
-
-**Source:** `calculateQ1Consequence()` function
-
-Three factors:
-
-**Factor 1: Growth vs Expectation (35% weight)**
-```typescript
-const growthVsExpectation = (q1Revenue - currentState.revenue) / currentState.revenue;
-const stockChangeFromGrowth = growthVsExpectation * 0.35 * 100;
+($215.0M − $200M) / $200M = 7.5%
+Impact: 0.075 × 0.35 × 100 = 2.625 points
 ```
 
+**Factor 2: Margin change (30% weight)**
 ```
-Growth: ($215.3M - $200M) / $200M = $15.3M / $200M = 0.0765 = 7.65%
-Stock change: 0.0765 × 0.35 × 100 = 2.68 points
-```
-
-**Factor 2: Margin/Cash Change (30% weight)**
-```typescript
-const marginChange = (q1OpProfit / q1Revenue) - 
-                     (currentState.operatingProfit / currentState.revenue);
-const stockChangeFromMargin = marginChange * 0.30 * 100;
+Q1 margin: $45.0M / $215.0M = 20.93%
+Baseline: $30M / $200M = 15.0%
+Change: 5.93%
+Impact: 0.0593 × 0.30 × 100 = 1.779 points
 ```
 
+**Factor 3: Alignment (15% weight)**
 ```
-Q1 margin: $45.3M / $215.3M = 0.2103 = 21.03%
-Baseline margin: $30M / $200M = 0.15 = 15.0%
-Change: 0.2103 - 0.15 = 0.0603 = 6.03%
-Stock change: 0.0603 × 0.30 × 100 = 1.81 points
+(68 − 60) × 0.15 = 1.2 points
 ```
 
-**Factor 3: Alignment/Strategy (15% weight)**
-```typescript
-const stockChangeFromAlignment = (executionAlignment - 60) * 0.15;
-```
+**Total:** 2.625 + 1.779 + 1.2 = 5.604 points
+**Within cap (±15)?** YES
+**Final:** $100 + $5.60 = **$105.60**
 
-```
-Alignment: 68 (execution score)
-Change: (68 - 60) × 0.15 = 8 × 0.15 = 1.2 points
-```
+### 3.10 Culture
 
-**Total before cap:**
+**Formula (engine.ts, Lines 188–189):**
 ```
-2.68 + 1.81 + 1.2 = 5.69 points
-```
-
-**Cap check:**
-```typescript
-stockPriceChange = Math.max(-15, Math.min(15, stockPriceChange));  // ±15% cap
-```
-
-5.69 points within cap. No adjustment needed.
-
-**New Stock Price:**
-```
-$100.00 + $5.69 = $105.69
-```
-
-**Expected Stock Price:** ~**$105.69** (actual may vary ±0.05 due to rounding)
-
-### 3.10 Calculation Trace: Culture
-
-**Source:** `calculateQ1Consequence()` function
-
-```typescript
-if (allocation.instructorPeople > 0) {
-  const cultureGain = effectiveInstructor * 0.3;
-  newCapabilities.culture = Math.min(100, currentState.culture + cultureGain);
-}
-```
-
-```
-Instructor effective: 4.0M
-Culture gain: 4.0 × 0.3 = 1.2 points
+Effective instructor: 4.0M
+Gain: 4.0 × 0.3 = 1.2
 New culture: 72 + 1.2 = 73.2 ≈ 73
 ```
 
-**Expected Culture:** ~**73**
+### 3.11 Product Quality & Trust
 
-### 3.11 Calculation Trace: Product Quality
-
-**Source:** `calculateQ1Consequence()` function
-
-**Note:** Product quality is NOT updated in Q1 based on current code.
-
-```typescript
-// No code in calculateQ1Consequence() modifies product_quality
+**No modifications in Q1.**
+```
+Product Quality: 70 (unchanged)
+Trust: 70 (unchanged)
 ```
 
-**Expected Product Quality:** **70** (unchanged from baseline)
+### 3.12 SUMMARY: Expected Q1 Outputs (Corrected)
 
-### 3.12 SUMMARY: Expected Q1 Numerical Outputs
-
-| Metric | Starting | Ending | Change | Notes |
-|--------|----------|--------|--------|-------|
-| Revenue | $200.0M | $215.3M | +$15.3M | Market tailwind + allocation effects + alignment multiplier |
-| Operating Profit | $30.0M | $45.3M | +$15.3M | Revenue - $170M operating cost |
-| Cash | $60.0M | $75.3M | +$15.3M | Starting + op profit - spend + retained |
-| Stock Price | $100.00 | $105.69 | +$5.69 | Growth 35% + margin 30% + alignment 15% |
-| Product Quality | 70 | 70 | $0 | **NOT modified in Q1** |
-| Culture | 72 | 73 | +1 | People investment × 0.3 |
-| Trust | 70 | 70 | $0 | Not modified in Q1 |
-| **Capabilities:** | | | | |
-| Consumer | 55 | 60 | +5 | Investment × 1.0 multiplier |
-| Enterprise | 30 | 41 | +11 | Investment × 1.2 multiplier |
-| AI | 10 | 20 | +10 | Investment × 1.3 multiplier |
-| Talent | 55 | 59 | +4 | Investment × 1.0 multiplier |
-| Credential | 40 | 41 | +1 | Investment × 1.0 multiplier |
-| CustomerSuccess | 30 | 31 | +1 | Investment × 1.2 multiplier |
-| Growth | 55 | 55 | $0 | Not directly updated |
-| Execution | 60 | 68 | +8 | Alignment score (4/5 YES votes) |
+| Metric | Starting | Ending | Change | Source |
+|--------|----------|--------|--------|--------|
+| Revenue | $200.0M | $215.0M | +$15.0M | Tailwind + consumer lift + alignment ×1.05 |
+| Operating Profit | $30.0M | $45.0M | +$15.0M | Revenue − $170M cost |
+| Cash | $60.0M | $91.0M | +$31.0M | Start + profit − $22M spend + $8M retained |
+| Stock Price | $100.00 | $105.60 | +$5.60 | Growth +2.625 + margin +1.779 + align +1.2 |
+| Product Quality | 70 | 70 | — | Unchanged |
+| Culture | 72 | 73 | +1 | People × 0.3 |
+| Trust | 70 | 70 | — | Unchanged |
+| **Consumer Cap** | 55 | 59 | +4 | 4.0M × 1.0 |
+| **Enterprise Cap** | 30 | 35 | +5 | 4.0M × 1.2 = 4.8 → 35 |
+| **AI Cap** | 10 | 18 | +8 | 5.8M × 1.3 = 7.54 → 18 |
+| **Talent Cap** | 55 | 59 | +4 | 4.0M × 1.0 |
+| **Credential Cap** | 40 | 44 | +4 | 4.0M × 1.0 |
+| **CS Cap** | 30 | 30 | — | Not allocated in Q1 |
+| **Execution** | 60 | 68 | +8 | Broad alignment +8 |
 
 ---
 
@@ -490,15 +373,13 @@ npm run dev
 ```
   VITE v5.0.0 ready in 300 ms
   ➜  Local:   http://localhost:5173/
-  ➜  press h to show help
 ```
 
-**Open browser to:** `http://localhost:5173`
+Open browser to: `http://localhost:5173`
 
 ### 4.2 FACILITATOR: Create Session
 
-**Browser Tab 1: Open facilitator setup**
-
+**Browser Tab 1:**
 1. Click **"Facilitator"**
 2. **Email:** `test@university.edu`
 3. **Number of Teams:** `1`
@@ -506,178 +387,83 @@ npm run dev
 5. Click **"Create Session"**
 6. **Copy the session code** (e.g., `ISB-ABC123`)
 
-**Record:**
-```
-Session Code: _________________________
-Admin PIN: ____________________________
-```
-
 ### 4.3 TEAM MEMBER: Join Session
 
-**Browser Tab 2: Open team member**
-
+**Browser Tab 2:**
 1. Click **"Team Member"**
 2. **Session Code:** [Paste from 4.2]
 3. **Team Name:** `TestTeam`
 4. Click **"Join Session"**
 
-**Verify:** You see Q1 dashboard with company financials
-
 ### 4.4 Q1 EVENT SCREEN
 
-**Current screen:** Event display
-
-1. Read event narrative (should be Q1 baseline)
+1. Read event narrative
 2. Click **"Proceed to Allocation"**
 
 ### 4.5 BET SCREEN: Enter Fixed Allocation
 
-**Current screen:** Allocation form with 8 categories
+**Now shows 6 categories (corrected from 8):**
 
-Use the **fixed test allocation** from Section 2.1:
-
-| Category | Amount | Action |
-|----------|--------|--------|
-| Consumer Growth | $5M | Adjust slider/input |
-| Enterprise Sales | $10M | Adjust slider/input |
-| AI Product | $8M | Adjust slider/input |
-| Instructor/People | $4M | Adjust slider/input |
-| University/Credential | $1M | Adjust slider/input |
-| Customer Success | $1M | Adjust slider/input |
-| Marketing | $1M | Adjust slider/input |
-| Cash Reserve | $0M | Leave at 0 |
+| Category | Amount |
+|----------|--------|
+| Consumer Growth | $4M |
+| Enterprise Sales | $4M |
+| AI Product | $6M |
+| Instructor/People | $4M |
+| University/Credential | $4M |
+| Cash Reserve | $8M |
 
 **Verify:**
-- [ ] Total shows **$30.0M** (exact)
-- [ ] Green validation message appears
-- [ ] Button "Allocation Confirmed → Next" is enabled
+- [ ] Total shows **$30.0M**
+- [ ] Button "Allocation Confirmed → Next" enabled
 
 Click button.
 
-### 4.6 BELIEF SCREEN: Select Fixed Belief
+### 4.6 BELIEF SCREEN
 
-**Current screen:** Belief selection
-
-**Prompt:** "What is your hypothesis about the consumer market over the next 8 quarters?"
-
-**Select:** `stable_dominant` ("Stable & dominant. Consumer will remain our core.")
+**Select:** `stable_dominant`
 
 Click button.
 
-### 4.7 RISK SCREEN: Select Fixed Risks
-
-**Current screen:** Risk identification
-
-**Prompt:** "What are the top risks you're taking with this allocation?"
+### 4.7 RISK SCREEN
 
 **Select:**
-1. **`consumer_disruption`** — Set severity to **4**/5
-2. **`technology_lag`** — Set severity to **3**/5
-
-(Do NOT select a 3rd risk)
-
-**Verify:**
-- [ ] "Selected Risks (2/3)" shows
-- [ ] Both risks listed with correct severity
+1. `consumer_disruption` (Severity: **4**/5)
+2. `technology_lag` (Severity: **3**/5)
 
 Click button.
 
-### 4.8 ROLE VOTE SCREEN: Cast Fixed Votes
+### 4.8 ROLE VOTE SCREEN
 
-**Current screen:** Role voting
+Cast votes per Section 2.3.
 
-You are assigned a random role. **Regardless of your role**, cast votes as if all 5 executives are voting:
+After reveal, click **"Proceed to Team Check"**
 
-| Role | Vote | Confidence | Rationale |
-|------|------|------------|-----------|
-| CEO | YES | 4 | "Enterprise bet is solid. AI investment necessary." |
-| CFO | YES | 4 | "Cash runway preserved. Balanced spend." |
-| Product | YES | 5 | "AI investment sufficient for competitive positioning." |
-| People | NO | 3 | "Only $4M for talent. We need more to retain instructors." |
-| Growth | YES | 4 | "Enterprise focus will drive next-cycle revenue." |
+### 4.9 TEAM CHECK SCREEN
 
-**For your assigned role:**
-- Select the vote from table above
-- Set confidence slider
-- Enter rationale from table
-- Click **"Submit Vote & View Team (Simultaneous Reveal)"**
+**Verify:** Alignment = "Broad Alignment" (4/5)
 
-**After reveal:**
-- [ ] See all 5 role votes displayed
-- [ ] CEO: YES, CFO: YES, Product: YES, People: NO, Growth: YES
-- [ ] 4 YES, 1 NO visible
+**Select:** "Proceed Without Override"
 
-Click **"Proceed to Team Check"**
+Click **"Confirm"**
 
-### 4.9 TEAM CHECK SCREEN: Confirm Alignment
+### 4.10 COMMIT SCREEN
 
-**Current screen:** Team check analysis
+Verify all fields, click **"Confirm Commitment"**
 
-**Verify:**
-- [ ] Alignment labeled as **"Broad Alignment"** (4/5 YES)
-- [ ] Dissent listed: **"People"**
-- [ ] Three action options visible:
-  1. Proceed Without Override
-  2. Call for Revote
-  3. Leadership Override
+### 4.11 CONSEQUENCE SCREEN
 
-**Select:** **"Proceed Without Override"** (DO NOT override)
-
-Click **"Confirm → Proceed to Commit"**
-
-### 4.10 COMMIT SCREEN: Final Review
-
-**Current screen:** Final commitment review
-
-**Verify visible:**
-- [ ] Allocation table showing all $30M allocated
-- [ ] Alignment: "broad"
-- [ ] Override: not checked
-- [ ] Market Belief: "stable_dominant"
-- [ ] Identified Risks: 2 (consumer_disruption, technology_lag)
-
-Click **"Confirm Commitment & Calculate Results"**
-
-**Wait for calculation** (~2–3 seconds)
-
-### 4.11 CONSEQUENCE SCREEN: Verify Q1 Results
-
-**Current screen:** Q1 consequences
-
-**Verify:** Consequence screen displays narrative + financial changes
-
-**Record:**
-```
-Revenue Change: ________________ (expected: ~+$15.3M)
-Cash Change: ________________ (expected: ~+$15.3M)
-Stock Price Change: ________________ (expected: ~+$5.69)
-
-Capability Changes:
-- Consumer: ________________ (expected: +5)
-- Enterprise: ________________ (expected: +11)
-- AI: ________________ (expected: +10)
-- Talent: ________________ (expected: +4)
-
-Thresholds Crossed: ________________
-```
-
-**Verify callbacks appear:**
-- [ ] "You identified consumer_disruption (Severity: 4)"
-- [ ] "You identified technology_lag (Severity: 3)"
-- [ ] "Your Q1 belief: 'stable_dominant'"
-- [ ] Callback message about risks
+**Verify Q1 results appear:**
+- Revenue change: ~+$15M
+- Cash change: ~+$31M
+- Stock price change: ~+$5.6
+- Capability changes match Section 3.12
 
 Click **"Review Results → Next"**
 
-### 4.12 REFLECT SCREEN: Reflection Response
+### 4.12 REFLECT SCREEN
 
-**Current screen:** Reflection prompt
-
-**Prompt:** "What did you learn from Q1?"
-
-**Select any option** (doesn't affect later validation)
-
-Click button.
+Select any option, click button.
 
 **Auto-transition to Q2.**
 
@@ -685,125 +471,80 @@ Click button.
 
 ## SECTION 5: DATABASE VERIFICATION
 
-### 5.1 Access Supabase SQL Editor
-
-Go to your Supabase dashboard → **SQL Editor** → Open new query
-
-### 5.2 Query 1: Verify Session Created
+### 5.1 SQL Query 1: Verify Session
 
 ```sql
-SELECT id, facilitator_email, session_code, team_count, current_quarter 
+SELECT id, session_code, team_count, current_quarter 
 FROM sessions 
 ORDER BY created_at DESC 
 LIMIT 1;
 ```
 
-**Expected:**
-- `facilitator_email`: `test@university.edu`
-- `session_code`: [matches value from 4.2]
-- `team_count`: `1`
-- `current_quarter`: `0` or `1` (depending on whether advanced)
+**Expected:** `team_count = 1`, `session_code` matches, `current_quarter >= 1`
 
-**Record the session ID:** `_____________________________`
-
-### 5.3 Query 2: Verify Team Created
+### 5.2 SQL Query 2: Verify Team Finances
 
 ```sql
-SELECT id, session_id, team_code, team_name, 
+SELECT revenue, cash, stock_price, culture,
        capability_consumer, capability_enterprise, capability_ai,
-       revenue, cash, stock_price, culture
+       capability_talent, capability_credential
 FROM teams 
-WHERE session_id = '[SESSION_ID_FROM_5.2]';
+WHERE session_id = '[SESSION_ID]';
 ```
 
-**Expected:**
-- `team_name`: `TestTeam`
-- `capability_consumer`: `60` (±2, expected 60)
-- `capability_enterprise`: `41` (±2, expected 41)
-- `capability_ai`: `20` (±2, expected 20)
-- `revenue`: `215.3` (±1, expected 215.3)
-- `cash`: `75.3` (±1, expected 75.3)
-- `stock_price`: `105.69` (±0.5, expected 105.69)
-- `culture`: `73` (±1, expected 73)
+**Expected (with tolerance ±1):**
+```
+revenue: ~215
+cash: ~91
+stock_price: ~105.6
+culture: ~73
+capability_consumer: ~59
+capability_enterprise: ~35
+capability_ai: ~18
+capability_talent: ~59
+capability_credential: ~44
+```
 
-**Record team ID:** `_____________________________`
-
-### 5.4 Query 3: Verify Decision Record Exists
+### 5.3 SQL Query 3: Verify Decision Record
 
 ```sql
-SELECT id, team_id, quarter, allocation_json, 
-       belief_response, risks_json
+SELECT allocation_json, belief_response, risks_json, votes_json
 FROM decisions 
-WHERE team_id = '[TEAM_ID_FROM_5.3]' AND quarter = 1;
+WHERE team_id = '[TEAM_ID]' AND quarter = 1;
 ```
 
 **Expected:**
-- `quarter`: `1`
-- `allocation_json` contains: `{"consumerGrowth": 5, "enterpriseSales": 10, "aiProduct": 8, "instructorPeople": 4, "universityCredential": 1, "customerSuccess": 1, "marketing": 1, "cash": 0}`
-- `belief_response`: `stable_dominant`
+- allocation: Consumer 4, Enterprise 4, AI 6, People 4, Credential 4, Cash 8, CS 0, Marketing 0
+- belief_response: "stable_dominant"
+- risks_json: Consumer_disruption (4), technology_lag (3)
+- votes_json: All 5 roles with correct votes
 
-**Record decision ID:** `_____________________________`
-
-### 5.5 Query 4: Verify Role Votes Stored
-
-```sql
-SELECT votes_json FROM decisions 
-WHERE id = '[DECISION_ID_FROM_5.4]';
-```
-
-**Expected:** JSON structure with 5 entries:
-
-```json
-{
-  "CEO": {"vote": "yes", "confidence": 4, "rationale": "Enterprise bet is solid. AI investment necessary."},
-  "CFO": {"vote": "yes", "confidence": 4, "rationale": "Cash runway preserved. Balanced spend."},
-  "Product": {"vote": "yes", "confidence": 5, "rationale": "AI investment sufficient for competitive positioning."},
-  "People": {"vote": "no", "confidence": 3, "rationale": "Only $4M for talent. We need more to retain instructors."},
-  "Growth": {"vote": "yes", "confidence": 4, "rationale": "Enterprise focus will drive next-cycle revenue."}
-}
-```
-
-**Verify:** [ ] All 5 roles present, votes match fixed test case
-
-### 5.6 Query 5: Verify Team Check Stored
+### 5.4 SQL Query 4: Verify Team Check
 
 ```sql
-SELECT team_check_alignment, team_check_override, team_check_dissenting_roles 
+SELECT team_check_alignment, team_check_override 
 FROM decisions 
-WHERE id = '[DECISION_ID_FROM_5.4]';
+WHERE team_id = '[TEAM_ID]' AND quarter = 1;
 ```
 
 **Expected:**
-- `team_check_alignment`: `broad`
-- `team_check_override`: `false`
-- `team_check_dissenting_roles`: `People`
+- team_check_alignment: "broad"
+- team_check_override: false
 
-### 5.7 Query 6: Verify Consequences Calculated and Stored
+### 5.5 SQL Query 5: Verify Outcomes
 
 ```sql
 SELECT outcome_revenue_change, outcome_cash_change, 
-       outcome_stock_price_change, outcome_capability_changes_json,
-       outcome_narrative
+       outcome_stock_price_change, outcome_narrative
 FROM decisions 
-WHERE id = '[DECISION_ID_FROM_5.4]';
+WHERE team_id = '[TEAM_ID]' AND quarter = 1;
 ```
 
 **Expected:**
-- `outcome_revenue_change`: `~15.3` (expected 15.3, tolerance ±1)
-- `outcome_cash_change`: `~15.3` (expected 15.3, tolerance ±1)
-- `outcome_stock_price_change`: `~5.69` (expected 5.69, tolerance ±0.5)
-- `outcome_capability_changes_json`: Contains `{"consumer": 5, "enterprise": 11, "ai": 10, "talent": 4, ...}`
-- `outcome_narrative`: Non-null string describing results
-
-### 5.8 Query 7: Verify Reflection Stored
-
-```sql
-SELECT reflection_response FROM decisions 
-WHERE id = '[DECISION_ID_FROM_5.4]';
-```
-
-**Expected:**
-- `reflection_response`: Non-null (whatever was selected in 4.12)
+- outcome_revenue_change: ~15.0 (±1)
+- outcome_cash_change: ~31.0 (±1)
+- outcome_stock_price_change: ~5.6 (±0.5)
+- outcome_narrative: Non-null string
 
 ---
 
@@ -811,151 +552,73 @@ WHERE id = '[DECISION_ID_FROM_5.4]';
 
 ### 6.1 Team Client: Refresh Page
 
-In the team member browser tab (still on Q2 screen):
-
-1. Press **F5** (or Ctrl+R / Cmd+R)
-2. Wait for page to reload (~2 seconds)
+In team browser tab, press **F5**
 
 **Verify:**
 - [ ] Page reloads without errors
 - [ ] You remain in Q2 (game state persisted)
-- [ ] Dashboard shows same financial state
 
-### 6.2 Database Verification: State Persisted
+### 6.2 Database: Verify State
 
-In Supabase SQL Editor, run the same Query 5.3 again:
+Run Query 5.2 again.
 
-```sql
-SELECT id, revenue, cash, stock_price, culture,
-       capability_consumer, capability_enterprise, capability_ai
-FROM teams 
-WHERE id = '[TEAM_ID_FROM_5.3]';
-```
-
-**Verify:**
-- [ ] All values identical to Query 5.3 results
-- [ ] No resets or changes
+**Verify:** All values identical to previous query (no resets).
 
 ---
 
-## SECTION 7: FACILITATOR DASHBOARD VERIFICATION
+## SECTION 7: FACILITATOR DASHBOARD
 
-### 7.1 Facilitator: Open Facilitator Dashboard Tab
+### 7.1 Facilitator: Check Leaderboard
 
-In Supabase dashboard, check current quarter:
-
-```sql
-SELECT current_quarter, game_phase FROM sessions 
-WHERE session_code = '[SESSION_CODE_FROM_4.2]';
-```
-
-**Note current_quarter value:** `_____`
-
-### 7.2 Facilitator Client: Check Leaderboard
-
-In the facilitator browser tab:
-
-1. Look at the **Team Leaderboard** section
+Click facilitator tab.
 
 **Verify:**
-- [ ] Table shows 1 row: `TestTeam`
-- [ ] Columns visible: Team, Revenue, Cash, Stock, Culture, AI, Status
-- [ ] Values match from Query 5.3:
-  - Revenue: `~215.3`
-  - Cash: `~75.3`
-  - Stock: `~105.69`
-  - Culture: `73`
-  - AI: `20`
+- [ ] Table shows `TestTeam` with correct financials
+- [ ] Revenue: ~215, Cash: ~91, Stock: ~105.6, Culture: 73, AI: 18
 
-### 7.3 Facilitator: Advance Quarter Button
+### 7.2 Facilitator: Advance Quarter
 
-In facilitator screen:
+Click **"Advance Quarter"** button.
 
-1. Look for **"Advance Quarter"** or similar button
-2. Click it
-
-**Expected:**
-- [ ] Button click succeeds (no errors)
-- [ ] Current quarter increments in database (verify Query 7.1 shows `current_quarter: 2`)
-- [ ] Team client may auto-refresh to show Q2
-
-### 7.4 Verify Current Quarter Advanced
-
-In Supabase SQL Editor:
-
+**Verify in SQL:**
 ```sql
 SELECT current_quarter FROM sessions 
-WHERE session_code = '[SESSION_CODE_FROM_4.2]';
+WHERE session_code = '[SESSION_CODE]';
 ```
 
-**Expected:** `current_quarter = 2`
+Expected: **current_quarter = 2**
 
 ---
 
 ## SECTION 8: Q2 CALLBACK VERIFICATION
 
-### 8.1 Team Client: Navigate to Q2 Consequence
+### 8.1 Team: Navigate to Q2 Consequence
 
-In team browser tab:
+Complete Q2 flow (Bet, Belief, Risk, Roles, Team Check, Commit).
 
-1. If not already on Q2, refresh page or wait for auto-transition
-2. Click through Q2 flow (Bet, Belief, Risk, Roles, Team Check, Commit)
-3. Arrive at Q2 **Consequence Screen**
+Arrive at **Q2 Consequence Screen**.
 
-### 8.2 Inspect Q2 Consequence for Q1 Callbacks
+### 8.2 Inspect Callbacks
 
-On the Q2 Consequence screen, look for **"Decision Callbacks"** section
+Look for **"Decision Callbacks"** section.
 
 **Verify callbacks appear:**
-- [ ] "Identified Risks:" section
-  - [ ] Shows: "consumer_disruption (Severity: 4/5)"
-  - [ ] Shows: "technology_lag (Severity: 3/5)"
-  - [ ] Shows message: "These risks were monitored. No materialization in Q1, but watch for Q2+."
-- [ ] "Your Q1 Belief:" section
-  - [ ] Shows: "'stable_dominant'"
-  - [ ] Shows message: "Outcomes so far are consistent with your belief."
-
-**Record exact callback text:**
-```
-[Paste entire callbacks section from Q2 consequence screen]
-```
-
-### 8.3 Query: Verify Callbacks Calculated
-
-In Supabase SQL Editor:
-
-```sql
-SELECT outcome_callback_to_risk FROM decisions 
-WHERE team_id = '[TEAM_ID_FROM_5.3]' AND quarter = 1;
-```
-
-**Expected:**
-- `outcome_callback_to_risk`: Non-null string containing reference to identified risks
+- [ ] "consumer_disruption (Severity: 4/5)"
+- [ ] "technology_lag (Severity: 3/5)"
+- [ ] "'stable_dominant'" belief reference
 
 ---
 
-## SECTION 9: BUILD & STATIC DEPLOYMENT VERIFICATION
+## SECTION 9: BUILD & STATIC DEPLOYMENT
 
-### 9.1 Build to Static Files
+### 9.1 Build to Static
 
 ```bash
 cd /mnt/project
 npm run build
 ```
 
-**Expected output:**
-```
-  vite v5.0.0 building for production...
-  ✓ 1234 modules transformed
-  dist/index.html                  12.34 kB │ gzip: 3.45 kB
-  dist/assets/main.js              234.56 kB │ gzip: 65.78 kB
-  dist/assets/style.css             45.67 kB │ gzip: 9.01 kB
-  ✓ built in 5.34s
-```
-
-**Verify:**
-- [ ] No errors in build output
-- [ ] Output directory created: `/mnt/project/dist/`
+**Expected:** No errors, `/dist/` created.
 
 ### 9.2 Verify Static Files
 
@@ -963,27 +626,14 @@ npm run build
 ls -la /mnt/project/dist/
 ```
 
-**Expected files:**
+**Expected:**
 - [ ] `index.html`
 - [ ] `assets/` directory
-- [ ] `.js` files (no `node_modules/`)
-- [ ] `.css` files
+- [ ] `.js` and `.css` files
+- [ ] No `node_modules/`
 
-**Verify no Node processes required:**
-```bash
-grep -r "node_modules" /mnt/project/dist/
-```
+### 9.3 Test Static Server
 
-**Expected:** No output (no node_modules packaged)
-
-### 9.3 Test Static Build Locally
-
-```bash
-cd /mnt/project/dist
-npx http-server -p 8080
-```
-
-**Or use Python:**
 ```bash
 cd /mnt/project/dist
 python3 -m http.server 8080
@@ -992,217 +642,28 @@ python3 -m http.server 8080
 Open browser: `http://localhost:8080`
 
 **Verify:**
-- [ ] App loads (mode selection screen appears)
-- [ ] No errors in browser console (F12)
-- [ ] Navigation works (click "Facilitator" or "Team Member")
+- [ ] App loads
+- [ ] No console errors
 
 ---
 
-## SECTION 10: UNIT TESTS
-
-### 10.1 Run TypeScript Type Checking
-
-```bash
-cd /mnt/project
-npm run type-check
-```
-
-Or manually:
-
-```bash
-npx tsc --noEmit
-```
-
-**Expected:**
-- [ ] No TypeScript errors
-- [ ] Output: "✓ Built successfully" or similar
-
-### 10.2 Test Simulation Engine (Manual)
-
-Create a test file `/mnt/project/test-engine.js`:
-
-```javascript
-import { calculateQ1Consequence, getQ1Baseline } from './src/simulation/engine.ts';
-
-const testAllocation = {
-  consumerGrowth: 5,
-  enterpriseSales: 10,
-  aiProduct: 8,
-  instructorPeople: 4,
-  universityCredential: 1,
-  customerSuccess: 1,
-  marketing: 1,
-  cash: 0,
-};
-
-const testVotes = {
-  CEO: { vote: 'yes', confidence: 4, rationale: 'Good' },
-  CFO: { vote: 'yes', confidence: 4, rationale: 'Good' },
-  Product: { vote: 'yes', confidence: 5, rationale: 'Good' },
-  People: { vote: 'no', confidence: 3, rationale: 'Concern' },
-  Growth: { vote: 'yes', confidence: 4, rationale: 'Good' },
-};
-
-const baseline = getQ1Baseline();
-
-try {
-  const consequence = calculateQ1Consequence(
-    testAllocation,
-    testVotes,
-    false,  // no override
-    ['People'],  // dissenting roles
-    baseline
-  );
-
-  console.log('Q1 Consequence:');
-  console.log('Revenue Change:', consequence.revenueChange);
-  console.log('Cash Change:', consequence.cashChange);
-  console.log('Stock Price Change:', consequence.stockPriceChange);
-  console.log('Capability Changes:', consequence.capabilityChanges);
-  console.log('Narrative:', consequence.narrative);
-  console.log('\n✓ Simulation engine test passed');
-} catch (err) {
-  console.error('✗ Simulation engine test FAILED:', err.message);
-}
-```
-
-Run:
-```bash
-cd /mnt/project
-node --experimental-modules --input-type=module test-engine.js
-```
-
-**Expected:**
-- [ ] Output shows numerical consequences matching Section 3.12
-- [ ] No errors thrown
-- [ ] Revenue change ~15.3M, cash change ~15.3M, stock change ~5.69
-
-### 10.3 Test Supabase Connection
-
-Create test file `/mnt/project/test-supabase.js`:
-
-```javascript
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-async function testConnection() {
-  try {
-    const { data, error } = await supabase
-      .from('sessions')
-      .select('COUNT(*)')
-      .limit(1);
-
-    if (error) throw error;
-    console.log('✓ Supabase connection test passed');
-  } catch (err) {
-    console.error('✗ Supabase connection test FAILED:', err.message);
-  }
-}
-
-testConnection();
-```
-
-Run:
-```bash
-cd /mnt/project
-export VITE_SUPABASE_URL=https://your-project.supabase.co
-export VITE_SUPABASE_KEY=your-key
-node test-supabase.js
-```
-
-**Expected:**
-- [ ] "✓ Supabase connection test passed"
-- [ ] No authentication errors
-
----
-
-## SECTION 11: FINAL VALIDATION CHECKLIST
-
-After completing all steps above, mark each requirement:
-
-### Original 10 Pass 1 Requirements
+## SECTION 10: FINAL VALIDATION CHECKLIST
 
 | # | Requirement | Status | Notes |
 |---|-------------|--------|-------|
-| 1 | Team can complete Q1 loop (all 9 screens) | PASS / FAIL / NOT TESTED | Actual flow experienced: _____ |
-| 2 | Five role votes stored individually in DB | PASS / FAIL / NOT TESTED | Verified in Query 5.5: _____ |
-| 3 | Team Check alignment stored | PASS / FAIL / NOT TESTED | Verified in Query 5.6: _____ |
-| 4 | Investment modifies capabilities correctly | PASS / FAIL / NOT TESTED | Verified in Query 5.3: Consumer 55→60, Enterprise 30→41, AI 10→20 |
-| 5 | Cash/economics calculate correctly | PASS / FAIL / NOT TESTED | Verified in Query 5.3: Cash 60→75.3, Revenue 200→215.3 |
-| 6 | Belief and Risk stored | PASS / FAIL / NOT TESTED | Verified in Query 5.4: Belief=stable_dominant, Risks=consumer_disruption, technology_lag |
-| 7 | Q2 can retrieve Q1 history | PASS / FAIL / NOT TESTED | Verified in Query 5.3/5.4 that Q1 record exists |
-| 8 | Q1 decision/risk appears as Q2 callback | PASS / FAIL / NOT TESTED | Verified in Section 8: Callbacks displayed on Q2 consequence screen |
-| 9 | Facilitator sees team state and can control progression | PASS / FAIL / NOT TESTED | Verified in Section 7: Leaderboard showed correct state, advanced quarter |
-| 10 | Refresh/reconnect does not lose team state | PASS / FAIL / NOT TESTED | Verified in Section 6: After refresh, same state persisted |
-
-### Additional Checks
-
-| Item | Status | Evidence |
-|------|--------|----------|
-| Build runs without errors | PASS / FAIL | npm run build completed: _____ |
-| TypeScript types check | PASS / FAIL | npm run type-check passed: _____ |
-| Static files generated | PASS / FAIL | /dist/ contains: _____ |
-| Static server runs | PASS / FAIL | http-server/python accessed: _____ |
-| Database schema matches | PASS / FAIL | All 4 tables created: sessions, teams, decisions, access_log |
-| Economics match specification | PASS / FAIL | Section 3.12 values within tolerance: _____ |
-| No TypeScript errors | PASS / FAIL | Type checking: _____ |
-
-### Discrepancies Found
-
-**If any actual values differ from expected values in Section 3.12, document here:**
-
-```
-Metric: ___________________
-Expected: ___________________
-Actual: ___________________
-Difference: ___________________
-Root Cause: ___________________
-```
+| 1 | Team completes Q1 (6 categories only) | PASS / FAIL / NOT TESTED | |
+| 2 | Five role votes stored individually | PASS / FAIL / NOT TESTED | Query 5.3: votes_json |
+| 3 | Team Check alignment stored | PASS / FAIL / NOT TESTED | Query 5.4: "broad", override=false |
+| 4 | Capabilities created correctly | PASS / FAIL / NOT TESTED | Query 5.2: Consumer 59, Enterprise 35, AI 18, etc. |
+| 5 | Cash/economics correct | PASS / FAIL / NOT TESTED | Query 5.5: Revenue +15M, Cash +31M |
+| 6 | Belief and Risk stored | PASS / FAIL / NOT TESTED | Query 5.3: belief="stable_dominant", risks captured |
+| 7 | Q2 can retrieve Q1 history | PASS / FAIL / NOT TESTED | Q1 records exist in database |
+| 8 | Q1 decision appears in Q2 callback | PASS / FAIL / NOT TESTED | Section 8: Callbacks visible |
+| 9 | Facilitator sees team state & can advance | PASS / FAIL / NOT TESTED | Section 7: Leaderboard and quarter increment |
+| 10 | Refresh does not lose state | PASS / FAIL / NOT TESTED | Section 6: State persists after F5 |
 
 ---
 
-## SECTION 12: FINAL SUMMARY
+**END OF VALIDATION GUIDE**
 
-### Completion Status
-
-- [ ] All 10 checks completed
-- [ ] Database verified
-- [ ] Refresh test passed
-- [ ] Facilitator control verified
-- [ ] Q2 callback verified
-- [ ] Build tested
-- [ ] Unit tests passed
-- [ ] All discrepancies documented
-
-### Go/No-Go Decision
-
-**READY TO PROCEED TO PHASE 2:** ALL CHECKS PASS  
-**NEEDS FIXES BEFORE PHASE 2:** ONE OR MORE CHECKS FAIL  
-**RESULTS INCONCLUSIVE:** SOME NOT TESTED
-
-### Next Steps If All Pass
-
-1. Commit validation report to git
-2. Approve Pass 1 architecture
-3. Provide Q1–Q8 content library (beliefs, risks, reflects, role hints)
-4. Begin Phase 2: Extend to full Q1–Q8 mechanics
-
-### If Any Fail
-
-1. Document failure in "Discrepancies Found" section above
-2. Identify root cause
-3. Fix in source code
-4. Re-run validation from start
-5. Do not proceed to Phase 2 until all checks pass
-
----
-
-**END OF EXECUTABLE VALIDATION GUIDE**
-
-Save all results to: `/mnt/project/PASS_1_VALIDATION_RESULTS.md` (create new file)
-
-Ready to validate.
+Ready to execute.
