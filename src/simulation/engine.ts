@@ -214,33 +214,34 @@ export function calculateQ1Consequence(
   const executionAlignment = calculateExecutionAlignment(allocation, roleVotes, teamCheckOverride, dissents);
   newCapabilities.execution = executionAlignment;
 
-  // Q1 Revenue: Base market tailwind + allocation effects
+  // Q1 Revenue: Base market tailwind only
+  // Per locked spec: Consumer & University investments mature Q2, not Q1
+  // AI has no Q1 commercial benefit; Enterprise only if capability ≥ 45 (currently 35)
+  // Therefore: strategic revenue contribution = $0
   const baseMarketTailwind = 1.02; // +2%
   let q1Revenue = currentState.revenue * baseMarketTailwind;
   
-  // Consumer allocation creates near-term revenue
-  const consumerRevenueLift = (allocation.consumerGrowth / 30) * (newCapabilities.consumer / 100) * 0.05; // small %
-  q1Revenue += q1Revenue * consumerRevenueLift;
+  // Q1: Consumer allocation matures Q2, not Q1 (locked spec)
+  // No consumer revenue lift applied in Q1
+  
+  // Q1: Enterprise has small current-quarter pipeline benefit ONLY if capability ≥ 45
+  // Current enterprise capability (35) < threshold, so no lift
+  // (If this condition were true, alignment multiplier would apply only to the incremental lift, not total revenue)
 
-  // Enterprise has small current-quarter pipeline benefit
-  if (allocation.enterpriseSales > 0 && newCapabilities.enterprise >= 45) {
-    const enterpriseLift = (allocation.enterpriseSales / 30) * 0.02;
-    q1Revenue += q1Revenue * enterpriseLift;
-  }
-
-  // Apply alignment multiplier
-  const alignmentMultiplier = getAlignmentMultiplier(executionAlignment);
-  q1Revenue = q1Revenue * alignmentMultiplier;
+  // Q1: Alignment multiplier applies only to incremental strategy-generated revenue
+  // Since no strategic revenue generated in Q1, alignment multiplier not applied to total
+  // q1Revenue remains at base + tailwind ($204M)
 
   // Operating profit
   const q1OpCost = currentState.operatingCost; // simplified: same as baseline
   const q1OpProfit = q1Revenue - q1OpCost;
 
   // Closing cash (Q1: only 5 strategic categories spend; CS and marketing enforced to 0)
+  // Strategic spend includes only the 5 invested categories; allocation.cash is retained by definition
+  // Do NOT add retainedCash separately—it's already excluded from strategicSpend
   const strategicSpend = allocation.consumerGrowth + allocation.enterpriseSales + allocation.aiProduct +
                          allocation.instructorPeople + allocation.universityCredential;
-  const retainedCash = allocation.cash;
-  const q1ClosingCash = currentState.cash + q1OpProfit - strategicSpend + retainedCash;
+  const q1ClosingCash = currentState.cash + q1OpProfit - strategicSpend;
 
   // Stock price response
   const growthVsExpectation = (q1Revenue - currentState.revenue) / currentState.revenue; // vs baseline

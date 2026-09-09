@@ -339,24 +339,36 @@ Product Quality: 70 (unchanged)
 Trust: 70 (unchanged)
 ```
 
-### 3.12 SUMMARY: Expected Q1 Outputs (Corrected)
+### 3.12 SUMMARY: Expected Q1 Outputs (Corrected Per Locked Specification)
 
-| Metric | Starting | Ending | Change | Source |
-|--------|----------|--------|--------|--------|
-| Revenue | $200.0M | $215.0M | +$15.0M | Tailwind + consumer lift + alignment ×1.05 |
-| Operating Profit | $30.0M | $45.0M | +$15.0M | Revenue − $170M cost |
-| Cash | $60.0M | $91.0M | +$31.0M | Start + profit − $22M spend + $8M retained |
-| Stock Price | $100.00 | $105.60 | +$5.60 | Growth +2.625 + margin +1.779 + align +1.2 |
-| Product Quality | 70 | 70 | — | Unchanged |
-| Culture | 72 | 73 | +1 | People × 0.3 |
-| Trust | 70 | 70 | — | Unchanged |
-| **Consumer Cap** | 55 | 59 | +4 | 4.0M × 1.0 |
-| **Enterprise Cap** | 30 | 35 | +5 | 4.0M × 1.2 = 4.8 → 35 |
-| **AI Cap** | 10 | 18 | +8 | 5.8M × 1.3 = 7.54 → 18 |
-| **Talent Cap** | 55 | 59 | +4 | 4.0M × 1.0 |
-| **Credential Cap** | 40 | 44 | +4 | 4.0M × 1.0 |
+**Key corrections:** 
+- Consumer revenue matures Q2, not Q1 (locked spec: "Q1 Consumer matures Q2")
+- Alignment multiplier applies only to strategic revenue, which is $0 in Q1
+- Cash reserve not double-counted
+
+**Q1 Revenue: $200M × 1.02 = $204M** (base + tailwind only; no strategic benefits)  
+**Q1 Operating Profit: $204M − $170M = $34M**  
+**Q1 Closing Cash: $60M + $34M − $22M = $72M** (no double-count of retained cash)  
+**Q1 Stock Price: $100 + $2.40 = $102.40**
+
+| Metric | Starting | Ending | Change | Formula |
+|--------|----------|--------|--------|---------|
+| **Revenue** | $200.0M | $204.0M | +$4.0M | Base + 2% tailwind only; consumer matures Q2 |
+| **Operating Profit** | $30.0M | $34.0M | +$4.0M | $204M − $170M operating cost |
+| **Cash** | $60.0M | $72.0M | +$12.0M | Start + profit − $22M spend (cash reserve not re-added) |
+| **Stock Price** | $100.00 | $102.40 | +$2.40 | Growth +0.70 + margin +0.50 + alignment +1.20 |
+| **Product Quality** | 70 | 70 | — | Not modified in Q1 |
+| **Culture** | 72 | 73 | +1 | People spend $4M × 0.3 |
+| **Trust** | 70 | 70 | — | Not modified in Q1 |
+| | | | | |
+| **Consumer Cap** | 55 | 59 | +4 | 4.0M effective × 1.0 |
+| **Enterprise Cap** | 30 | 35 | +5 | 4.0M effective × 1.2 |
+| **AI Cap** | 10 | 18 | +8 | 5.8M effective × 1.3 |
+| **Talent Cap** | 55 | 59 | +4 | 4.0M effective × 1.0 |
+| **Credential Cap** | 40 | 44 | +4 | 4.0M effective × 1.0 |
 | **CS Cap** | 30 | 30 | — | Not allocated in Q1 |
-| **Execution** | 60 | 68 | +8 | Broad alignment +8 |
+| **Growth Cap** | 55 | 55 | — | Not modified in Q1 |
+| **Execution Score** | 60 | 68 | +8 | Broad alignment (4/5 YES) |
 
 ---
 
@@ -453,11 +465,12 @@ Verify all fields, click **"Confirm Commitment"**
 
 ### 4.11 CONSEQUENCE SCREEN
 
-**Verify Q1 results appear:**
-- Revenue change: ~+$15M
-- Cash change: ~+$31M
-- Stock price change: ~+$5.6
-- Capability changes match Section 3.12
+**Verify Q1 results appear (corrected values):**
+- Revenue change: ~+$4M (base + 2% tailwind only; no allocation benefits in Q1)
+- Cash change: ~+$12M (profit $34M − spend $22M; cash reserve not double-counted)
+- Stock price change: ~+$2.4 (growth +0.70 + margin +0.50 + alignment +1.20)
+- Capability changes: Consumer +4, Enterprise +5, AI +8, Talent +4, Credential +4 (match Section 3.12)
+- Culture: 72 → 73 (+1 from people spend)
 
 Click **"Review Results → Next"**
 
@@ -494,10 +507,10 @@ WHERE session_id = '[SESSION_ID]';
 
 **Expected (with tolerance ±1):**
 ```
-revenue: ~215
-cash: ~91
-stock_price: ~105.6
-culture: ~73
+revenue: ~204 (base + 2% tailwind; no Q1 allocation benefits)
+cash: ~72 (opening 60 + profit 34 − spend 22)
+stock_price: ~102.4 (growth +0.70 + margin +0.50 + alignment +1.20)
+culture: ~73 (72 + people boost 1.2)
 capability_consumer: ~59
 capability_enterprise: ~35
 capability_ai: ~18
@@ -541,10 +554,10 @@ WHERE team_id = '[TEAM_ID]' AND quarter = 1;
 ```
 
 **Expected:**
-- outcome_revenue_change: ~15.0 (±1)
-- outcome_cash_change: ~31.0 (±1)
-- outcome_stock_price_change: ~5.6 (±0.5)
-- outcome_narrative: Non-null string
+- outcome_revenue_change: ~4.0 (±0.5) [base only: $204M − $200M]
+- outcome_cash_change: ~12.0 (±0.5) [profit 34 − spend 22]
+- outcome_stock_price_change: ~2.4 (±0.3) [growth +0.70 + margin +0.50 + alignment +1.20]
+- outcome_narrative: Non-null string with corrected values
 
 ---
 
@@ -574,7 +587,11 @@ Click facilitator tab.
 
 **Verify:**
 - [ ] Table shows `TestTeam` with correct financials
-- [ ] Revenue: ~215, Cash: ~91, Stock: ~105.6, Culture: 73, AI: 18
+- [ ] Revenue: ~204 (base + 2% tailwind)
+- [ ] Cash: ~72 (opening 60 + profit 34 − spend 22)
+- [ ] Stock: ~102.4 (growth +0.70 + margin +0.50 + alignment +1.20)
+- [ ] Culture: 73
+- [ ] AI Capability: 18
 
 ### 7.2 Facilitator: Advance Quarter
 
