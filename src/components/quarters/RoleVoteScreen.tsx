@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import gameplayContent from '../../content/gameplay.json';
 
@@ -59,7 +59,6 @@ export default function RoleVoteScreen({ assignedRole }: RoleVoteScreenProps) {
     game.setQuarterPhase('team-check');
   };
 
-  const isMyRole = (role: keyof RoleVotes) => role === assignedRole;
   const myVote = votes[assignedRole as keyof RoleVotes];
 
   return (

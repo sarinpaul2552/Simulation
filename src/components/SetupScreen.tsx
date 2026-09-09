@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { createSession, createTeam, getSession, supabase } from '../services/supabase';
+import { getSession, createTeam } from '../services/supabase';
 
 interface SetupScreenProps {
   isStudent?: boolean;
@@ -12,30 +12,12 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
   const game = useGame();
   const [step, setStep] = useState<'input' | 'teams' | 'joining'>('input');
   const [email, setEmail] = useState('');
-  const [sessionCode, setSessionCode] = useState('');
   const [teamCount, setTeamCount] = useState(2);
   const [teamNames, setTeamNames] = useState<string[]>(['Team A', 'Team B']);
   const [joinSessionCode, setJoinSessionCode] = useState('');
   const [teamName, setTeamName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const handleFacilitatorStart = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const session = await createSession(email, teamCount);
-      game.setFacilitatorEmail(email);
-      game.setSessionCode(session.session_code);
-      game.setSessionId(session.id);
-      game.setTeamCount(teamCount);
-      onSessionCreated(session.session_code);
-    } catch (err: any) {
-      setError(err.message || 'Failed to create session');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleStudentJoin = async () => {
     setLoading(true);

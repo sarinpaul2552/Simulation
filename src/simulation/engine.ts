@@ -315,7 +315,7 @@ export function calculateQ1Consequence(
 // ============ HELPER FUNCTIONS ============
 
 function calculateExecutionAlignment(
-  allocation: Allocation,
+  _allocation: Allocation,
   roleVotes: Record<string, 'yes' | 'no' | 'abstain'>,
   override: boolean,
   dissents: string[]

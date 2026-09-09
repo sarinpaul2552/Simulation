@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import gameplayContent from '../../content/gameplay.json';
 
@@ -6,7 +6,7 @@ interface ReflectScreenProps {
   assignedRole: string;
 }
 
-export default function ReflectScreen({ assignedRole }: ReflectScreenProps) {
+export default function ReflectScreen({ assignedRole: _assignedRole }: ReflectScreenProps) {
   const game = useGame();
   const eventContent = gameplayContent.q1; // Q1 is showing, so reflect on Q1
   const [selected, setSelected] = useState<string | null>(null);

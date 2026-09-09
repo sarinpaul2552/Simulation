@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
 import { updateTeamState } from '../../services/supabase';
-import { getQ2EventContext } from '../../simulation/engine';
 
 export default function ConsequenceScreen() {
   const game = useGame();
   const [shown, setShown] = useState(false);
-  const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
     // Apply consequences to team state

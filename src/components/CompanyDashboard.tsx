@@ -1,4 +1,3 @@
-import React from 'react';
 import { TeamData } from '../services/supabase';
 
 interface CompanyDashboardProps {

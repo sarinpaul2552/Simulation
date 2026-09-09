@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useGame } from '../../context/GameContext';
 
 export default function TeamCheckScreen() {
@@ -13,8 +13,6 @@ export default function TeamCheckScreen() {
     
     const votes = Object.values(game.currentRoleVotes).map(v => v.vote);
     const yesCount = votes.filter(v => v === 'yes').length;
-    const noCount = votes.filter(v => v === 'no').length;
-    const abstainCount = votes.filter(v => v === 'abstain').length;
     
     if (yesCount === 5) return 'unanimous';
     if (yesCount >= 4) return 'broad';

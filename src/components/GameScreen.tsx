@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { getSession, getTeam, updateDecision, createDecision } from '../services/supabase';
+import { getTeam } from '../services/supabase';
 import BetScreen from './quarters/BetScreen';
 import BeliefScreen from './quarters/BeliefScreen';
 import RiskScreen from './quarters/RiskScreen';

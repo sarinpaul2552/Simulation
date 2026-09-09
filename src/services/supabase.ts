@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 /**
  * Supabase Integration
  * Persistence layer: separate from simulation engine
@@ -252,15 +254,24 @@ export async function getTeamDecisions(teamId: string): Promise<DecisionData[]> 
 // ============ SUBSCRIBE TO TEAM CHANGES (Real-time Leaderboard) ============
 
 export function subscribeToTeamUpdates(sessionId: string, callback: (teams: TeamData[]) => void): () => void {
-  const subscription = supabase
-    .from(`teams:session_id=eq.${sessionId}`)
-    .on('*', async () => {
-      const teams = await getTeamsBySession(sessionId);
-      callback(teams);
-    })
+  const channel = supabase
+    .channel(`teams:session_id=eq.${sessionId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'teams',
+        filter: `session_id=eq.${sessionId}`,
+      },
+      async () => {
+        const teams = await getTeamsBySession(sessionId);
+        callback(teams);
+      }
+    )
     .subscribe();
 
   return () => {
-    subscription.unsubscribe();
+    supabase.removeChannel(channel);
   };
 }

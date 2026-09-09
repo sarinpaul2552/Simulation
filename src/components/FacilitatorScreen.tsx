@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { getSession, getTeamsBySession, advanceQuarter, subscribeToTeamUpdates } from '../services/supabase';
 import { TeamData } from '../services/supabase';
-import { getQ2EventContext } from '../simulation/engine';
 import gameplayContent from '../content/gameplay.json';
 
 interface FacilitatorScreenProps {

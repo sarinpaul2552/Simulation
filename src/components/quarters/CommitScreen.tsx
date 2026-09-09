@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { createDecision } from '../../services/supabase';
 import { calculateQ1Consequence } from '../../simulation/engine';
@@ -13,19 +13,28 @@ export default function CommitScreen() {
     setLoading(true);
     try {
       // Create decision record in Supabase
-      const decision = await createDecision(
+      await createDecision(
         game.currentTeamId,
         game.currentQuarter,
-        game.currentAllocation
+        game.currentAllocation as unknown as Record<string, number>
       );
 
       game.setCurrentAllocation(game.currentAllocation); // Store in context
 
       // Calculate Q1 consequences using the simulation engine
       if (game.currentQuarter === 1 && game.currentTeam && game.currentRoleVotes) {
+        // Extract just the vote values from the role votes object
+        const roleVotes = Object.entries(game.currentRoleVotes).reduce(
+          (acc, [role, vote]) => ({
+            ...acc,
+            [role]: vote.vote,
+          }),
+          {} as Record<string, 'yes' | 'no' | 'abstain'>
+        );
+        
         const consequence = calculateQ1Consequence(
           game.currentAllocation,
-          game.currentRoleVotes,
+          roleVotes,
           game.currentTeamCheckOverride,
           game.currentTeamCheckDissentingRoles,
           {

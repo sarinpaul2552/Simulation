@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { Allocation } from '../../simulation/engine';
 import gameplayContent from '../../content/gameplay.json';

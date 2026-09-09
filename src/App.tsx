@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { GameProvider } from './context/GameContext';
 import SetupScreen from './components/SetupScreen';
 import GameScreen from './components/GameScreen';
@@ -10,7 +10,6 @@ type Mode = 'mode-select' | 'facilitator-setup' | 'team-join' | 'team-game' | 'f
 export default function App() {
   const [mode, setMode] = useState<Mode>('mode-select');
   const [sessionCode, setSessionCode] = useState<string | null>(null);
-  const [isStudent, setIsStudent] = useState(false);
 
   return (
     <GameProvider>

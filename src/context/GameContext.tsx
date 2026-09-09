@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback } from 'react';
 import { TeamData, DecisionData } from '../services/supabase';
-import { Allocation, Consequence, TeamState } from '../simulation/engine';
+import { Allocation, Consequence } from '../simulation/engine';
 
 export type GamePhase = 'setup' | 'q1-q8' | 'final-debrief';
 export type QuarterPhase = 'event' | 'bet' | 'belief' | 'risk' | 'role-vote' | 'team-check' | 'commit' | 'consequence' | 'reflect';
@@ -44,6 +44,7 @@ export interface GameContextType {
   updateTeam: (teamId: string, updates: Partial<TeamData>) => void;
   
   setGamePhase: (phase: GamePhase) => void;
+  setCurrentQuarter: (quarter: number) => void;
   setQuarterPhase: (phase: QuarterPhase) => void;
   advanceQuarterPhase: () => void;
   
@@ -162,6 +163,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTeams,
     updateTeam,
     setGamePhase,
+    setCurrentQuarter,
     setQuarterPhase,
     advanceQuarterPhase,
     setCurrentAllocation,
