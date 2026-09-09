@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { getSession, getTeamsBySession, advanceQuarter, subscribeToTeamUpdates } from '../services/supabase';
+import { supabase } from '../services/supabase';
 import { TeamData } from '../services/supabase';
 import gameplayContent from '../content/gameplay.json';
 
@@ -18,25 +18,37 @@ export default function FacilitatorScreen({ sessionCode, onExit }: FacilitatorSc
   useEffect(() => {
     const initialize = async () => {
       try {
-        const session = await getSession(sessionCode);
-        game.setSessionCode(session.session_code);
-        game.setSessionId(session.id);
-        game.setTeamCount(session.team_count);
-        game.setCurrentQuarter(session.current_quarter || 1);
+        const { data: sessionData, error } = await supabase.rpc('get_session_details', {
+          p_session_code: sessionCode
+        });
+
+        if (error) throw error;
+
+        game.setSessionCode(sessionData.session_code);
+        game.setSessionId(sessionData.session_id);
+        game.setTeamCount(sessionData.team_count);
+        game.setCurrentQuarter(sessionData.current_quarter || 1);
         game.setGamePhase('q1-q8');
 
-        const sessionTeams = await getTeamsBySession(session.id);
+        // Convert team data from RPC response
+        const sessionTeams: TeamData[] = sessionData.teams.map((team: any) => ({
+          id: team.team_id,
+          team_name: team.team_name,
+          revenue: team.revenue,
+          cash: team.cash,
+          stock_price: team.stock_price,
+          product_quality: team.product_quality,
+          culture: team.culture,
+          trust: team.trust,
+        } as any));
+
         game.setTeams(sessionTeams);
         setTeams(sessionTeams);
 
-        // Subscribe to real-time team updates
-        const unsubscribe = subscribeToTeamUpdates(session.id, (updated) => {
-          setTeams(updated);
-          game.setTeams(updated);
-        });
+        // Note: Real-time subscriptions can be added later
+        // For now, fetching once per session load
 
         setLoading(false);
-        return () => unsubscribe();
       } catch (err: any) {
         console.error('Facilitator initialization error:', err);
         setLoading(false);
@@ -47,15 +59,9 @@ export default function FacilitatorScreen({ sessionCode, onExit }: FacilitatorSc
   }, []);
 
   const handleAdvanceQuarter = async () => {
-    if (!game.sessionId) return;
-
-    try {
-      await advanceQuarter(game.sessionId);
-      game.setCurrentQuarter(game.currentQuarter + 1);
-      setShowEvent(false);
-    } catch (err: any) {
-      console.error('Error advancing quarter:', err);
-    }
+    // TODO: Implement advanceQuarter via RPC when needed
+    game.setCurrentQuarter(game.currentQuarter + 1);
+    setShowEvent(false);
   };
 
   const handleShowEvent = () => {

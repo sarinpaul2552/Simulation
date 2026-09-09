@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
-import { createDecision } from '../../services/supabase';
+import { supabase } from '../../services/supabase';
 import { calculateQ1Consequence } from '../../simulation/engine';
 
 export default function CommitScreen() {
@@ -8,16 +8,20 @@ export default function CommitScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleCommit = async () => {
-    if (!game.currentTeamId || !game.currentAllocation) return;
+    if (!game.teamCode || !game.currentAllocation) return;
 
     setLoading(true);
     try {
-      // Create decision record in Supabase
-      await createDecision(
-        game.currentTeamId,
-        game.currentQuarter,
-        game.currentAllocation as unknown as Record<string, number>
-      );
+      // Submit allocation via RPC
+      const { error: submitError } = await supabase.rpc('submit_allocation', {
+        p_team_code: game.teamCode,
+        p_quarter: game.currentQuarter,
+        p_allocation_json: game.currentAllocation,
+        p_belief_response: game.currentBelief,
+        p_risks_json: game.currentRisks
+      });
+
+      if (submitError) throw submitError;
 
       game.setCurrentAllocation(game.currentAllocation); // Store in context
 

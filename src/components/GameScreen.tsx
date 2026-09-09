@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { getTeam } from '../services/supabase';
+import { supabase } from '../services/supabase';
 import BetScreen from './quarters/BetScreen';
 import BeliefScreen from './quarters/BeliefScreen';
 import RiskScreen from './quarters/RiskScreen';
@@ -28,11 +28,38 @@ export default function GameScreen({ sessionCode, onExit }: GameScreenProps) {
         if (!game.sessionCode) {
           game.setSessionCode(sessionCode);
         }
-        if (!game.currentTeamId) {
-          throw new Error('No team selected. Please join from setup screen.');
+        if (!game.teamCode) {
+          throw new Error('No team code. Please join from setup screen.');
         }
 
-        const team = await getTeam(game.currentTeamId);
+        const { data: teamData, error } = await supabase.rpc('get_team_state', {
+          p_team_code: game.teamCode
+        });
+
+        if (error) throw error;
+
+        const team = {
+          id: teamData.team_id,
+          team_name: teamData.team_name,
+          revenue: teamData.revenue,
+          operating_cost: teamData.operating_cost,
+          operating_profit: teamData.operating_profit,
+          cash: teamData.cash,
+          stock_price: teamData.stock_price,
+          product_quality: teamData.product_quality,
+          culture: teamData.culture,
+          trust: teamData.trust,
+          capability_consumer: teamData.capabilities.consumer,
+          capability_enterprise: teamData.capabilities.enterprise,
+          capability_ai: teamData.capabilities.ai,
+          capability_talent: teamData.capabilities.talent,
+          capability_credential: teamData.capabilities.credential,
+          capability_customer_success: teamData.capabilities.customerSuccess,
+          capability_growth: teamData.capabilities.growth,
+          capability_execution: teamData.capabilities.execution,
+          session_id: game.sessionId,
+        } as any;
+
         game.setTeams([team]);
         game.setCurrentTeamId(team.id);
 

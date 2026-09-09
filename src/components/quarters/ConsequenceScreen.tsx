@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
-import { updateTeamState } from '../../services/supabase';
+import { supabase } from '../../services/supabase';
 
 export default function ConsequenceScreen() {
   const game = useGame();
@@ -8,7 +8,7 @@ export default function ConsequenceScreen() {
 
   useEffect(() => {
     // Apply consequences to team state
-    if (game.lastConsequence && game.currentTeam) {
+    if (game.lastConsequence && game.currentTeam && game.teamCode) {
       const updates = {
         revenue: game.currentTeam.revenue + game.lastConsequence.revenueChange,
         cash: game.currentTeam.cash + game.lastConsequence.cashChange,
@@ -23,7 +23,14 @@ export default function ConsequenceScreen() {
         capability_execution: Math.max(0, Math.min(100, game.currentTeam.capability_execution + (game.lastConsequence.capabilityChanges.execution || 0))),
       };
 
-      updateTeamState(game.currentTeam.id, updates).catch(err => console.error('Error updating team state:', err));
+      // Update team state via RPC
+      supabase.rpc('update_team_state', {
+        p_team_code: game.teamCode,
+        p_updates: updates
+      }).then(({ error }) => {
+        if (error) console.error('Error updating team state:', error);
+      });
+      
       game.updateTeam(game.currentTeam.id, updates);
     }
 

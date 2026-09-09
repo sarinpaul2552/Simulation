@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useGame } from '../context/GameContext';
-import { createSession, getSession, createTeam } from '../services/supabase';
+import { supabase } from '../services/supabase';
 
 interface SetupScreenProps {
   isStudent?: boolean;
@@ -15,45 +15,27 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
   const [teamCount, setTeamCount] = useState(2);
   const [teamNames, setTeamNames] = useState<string[]>(['Team A', 'Team B']);
   const [joinSessionCode, setJoinSessionCode] = useState('');
-  const [teamName, setTeamName] = useState('');
+  const [teamCode, setTeamCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleStudentJoin = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const session = await getSession(joinSessionCode);
-      game.setSessionCode(session.session_code);
-      game.setSessionId(session.id);
-      game.setTeamCount(session.team_count);
-      
-      // Create team for this session
-      const team = await createTeam(session.id, teamName);
-      game.setCurrentTeamId(team.id);
-      
-      onSessionCreated(session.session_code);
-    } catch (err: any) {
-      setError(err.message || 'Failed to join session');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ============ FACILITATOR: Proceed to Team Naming (Create Session) ============
   const handleProceedToTeamNaming = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Create the session in Supabase
-      const session = await createSession(email, teamCount);
-      
-      // Store session in game context
+      const { data, error: rpcError } = await supabase.rpc('create_session', {
+        p_facilitator_email: email,
+        p_team_count: teamCount
+      });
+
+      if (rpcError) throw rpcError;
+
       game.setFacilitatorEmail(email);
-      game.setSessionCode(session.session_code);
-      game.setSessionId(session.id);
+      game.setSessionCode(data.session_code);
+      game.setSessionId(data.session_id);
       game.setTeamCount(teamCount);
-      
-      // Move to team naming step
+
       setStep('teams');
     } catch (err: any) {
       setError(err.message || 'Failed to create session');
@@ -62,25 +44,72 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
     }
   };
 
+  // ============ FACILITATOR: Create Teams (with auto-generated codes) ============
   const handleCreateTeams = async () => {
     setLoading(true);
     setError(null);
     try {
-      if (!game.sessionId) throw new Error('No session ID');
+      const sessionCode = game.sessionCode;
+      if (!sessionCode) throw new Error('No session code');
 
-      for (const name of teamNames) {
-        const team = await createTeam(game.sessionId, name);
-        game.updateTeam(team.id, team);
-      }
+      const teamPromises = teamNames.map(name =>
+        supabase.rpc('create_team_with_code', {
+          p_session_code: sessionCode,
+          p_team_name: name
+        })
+      );
+
+      const results = await Promise.all(teamPromises);
+
+      results.forEach(result => {
+        if (result.error) throw result.error;
+      });
+
+      const teamCodes = results.map((result, _index) => ({
+        team_id: result.data.team_id,
+        team_name: result.data.team_name,
+        team_code: result.data.team_code
+      }));
+
+      teamCodes.forEach(team => {
+        game.updateTeam(team.team_id, {
+          id: team.team_id,
+          team_name: team.team_name
+        } as any);
+      });
 
       game.setGamePhase('q1-q8');
       game.setCurrentQuarter(1);
       game.setQuarterPhase('event');
-      
-      setStep('input');
-      onSessionCreated(game.sessionCode!);
+
+      onSessionCreated(sessionCode);
     } catch (err: any) {
       setError(err.message || 'Failed to create teams');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============ STUDENT: Join Session (via RPC) ============
+  const handleStudentJoin = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('join_session', {
+        p_session_code: joinSessionCode,
+        p_team_code: teamCode
+      });
+
+      if (rpcError) throw rpcError;
+
+      game.setSessionCode(data.session_code);
+      game.setSessionId(data.session_id);
+      game.setCurrentTeamId(data.team_id);
+      game.setTeamCode(data.team_code);
+
+      onSessionCreated(data.session_code);
+    } catch (err: any) {
+      setError(err.message || 'Failed to join session');
     } finally {
       setLoading(false);
     }
@@ -104,12 +133,12 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
             </div>
 
             <div className="form-group">
-              <label>Your Team Name:</label>
+              <label>Your Team Code:</label>
               <input
                 type="text"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                placeholder="e.g., Team A"
+                value={teamCode}
+                onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+                placeholder="e.g., TEAM-XYZ789"
                 required
               />
             </div>
@@ -202,7 +231,7 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
 
               <div className="button-group">
                 <button type="submit" disabled={loading} className="btn-primary">
-                  {loading ? 'Creating...' : 'Create Session'}
+                  {loading ? 'Creating Teams...' : 'Create Session & Teams'}
                 </button>
                 <button type="button" onClick={() => setStep('input')} className="btn-secondary">
                   Back

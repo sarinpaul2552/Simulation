@@ -10,6 +10,7 @@ export interface GameContextType {
   sessionCode: string | null;
   sessionId: string | null;
   facilitatorEmail: string | null;
+  teamCode: string | null;
   teamCount: number;
   currentQuarter: number;
   gamePhase: GamePhase;
@@ -38,6 +39,7 @@ export interface GameContextType {
   setSessionCode: (code: string) => void;
   setSessionId: (id: string) => void;
   setFacilitatorEmail: (email: string) => void;
+  setTeamCode: (code: string) => void;
   setTeamCount: (count: number) => void;
   setCurrentTeamId: (id: string) => void;
   setTeams: (teams: TeamData[]) => void;
@@ -69,6 +71,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [sessionCode, setSessionCode] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [facilitatorEmail, setFacilitatorEmail] = useState<string | null>(null);
+  const [teamCode, setTeamCode] = useState<string | null>(null);
   const [teamCount, setTeamCount] = useState(0);
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
   const [teams, setTeams] = useState<TeamData[]>([]);
@@ -137,6 +140,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionCode,
     sessionId,
     facilitatorEmail,
+    teamCode,
     teamCount,
     currentQuarter,
     gamePhase,
@@ -158,6 +162,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSessionCode,
     setSessionId,
     setFacilitatorEmail,
+    setTeamCode,
     setTeamCount,
     setCurrentTeamId,
     setTeams,
