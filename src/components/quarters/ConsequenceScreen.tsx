@@ -15,6 +15,9 @@ export default function ConsequenceScreen() {
         revenue: game.currentTeam.revenue + game.lastConsequence.revenueChange,
         cash: game.currentTeam.cash + game.lastConsequence.cashChange,
         stock_price: game.currentTeam.stock_price + game.lastConsequence.stockPriceChange,
+        product_quality: Math.max(0, Math.min(100, game.currentTeam.product_quality + (game.lastConsequence.productQualityChange || 0))),
+        culture: Math.max(0, Math.min(100, game.currentTeam.culture + (game.lastConsequence.cultureChange || 0))),
+        trust: Math.max(0, Math.min(100, game.currentTeam.trust + (game.lastConsequence.trustChange || 0))),
         capability_consumer: Math.max(0, Math.min(100, game.currentTeam.capability_consumer + (game.lastConsequence.capabilityChanges.consumer || 0))),
         capability_enterprise: Math.max(0, Math.min(100, game.currentTeam.capability_enterprise + (game.lastConsequence.capabilityChanges.enterprise || 0))),
         capability_ai: Math.max(0, Math.min(100, game.currentTeam.capability_ai + (game.lastConsequence.capabilityChanges.ai || 0))),
@@ -67,6 +70,33 @@ export default function ConsequenceScreen() {
                   </span>
                 </div>
               </div>
+
+              <div className="quality-changes">
+                <h3>Quality & Culture Metrics</h3>
+                {game.lastConsequence.productQualityChange ? (
+                  <div className="change-item">
+                    <span>Product Quality</span>
+                    <span className={game.lastConsequence.productQualityChange > 0 ? 'positive' : 'negative'}>
+                      {game.lastConsequence.productQualityChange > 0 ? '+' : ''}{game.lastConsequence.productQualityChange.toFixed(1)}
+                    </span>
+                  </div>
+                ) : null}
+                {game.lastConsequence.cultureChange ? (
+                  <div className="change-item">
+                    <span>Culture</span>
+                    <span className={game.lastConsequence.cultureChange > 0 ? 'positive' : 'negative'}>
+                      {game.lastConsequence.cultureChange > 0 ? '+' : ''}{game.lastConsequence.cultureChange.toFixed(1)}
+                    </span>
+                  </div>
+                ) : null}
+                {game.lastConsequence.trustChange ? (
+                  <div className="change-item">
+                    <span>Trust</span>
+                    <span className={game.lastConsequence.trustChange > 0 ? 'positive' : 'negative'}>
+                      {game.lastConsequence.trustChange > 0 ? '+' : ''}{game.lastConsequence.trustChange.toFixed(1)}
+                    </span>
+                  </div>
+                ) : null}
 
               <div className="capability-changes">
                 <h3>Capability Development</h3>

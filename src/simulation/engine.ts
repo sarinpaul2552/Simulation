@@ -55,6 +55,7 @@ export interface Consequence {
   stockPriceChange: number;
   narrative: string;
   productQualityChange?: number;  // Added: Product quality change from people investment
+  cultureChange?: number;          // Added: Culture change from people investment
   trustChange?: number;            // Added: Trust change from university investment
 }
 
@@ -189,6 +190,7 @@ export function calculateQ1Consequence(
 
   // Instructor/People investment -> Talent capability, Culture, & Product Quality
   let productQualityGain = 0;
+  let cultureGain = 0;
   if (allocation.instructorPeople > 0) {
     const effectiveInstructor = effectiveAllocations.instructorPeople;
     newCapabilities.talent = createCapabilityFromInvestment(
@@ -197,8 +199,7 @@ export function calculateQ1Consequence(
       currentState.capabilities.talent
     );
     // People investment boosts culture (+0.30 per effective $1M)
-    const cultureGain = effectiveInstructor * 0.3;
-    newCapabilities.culture = Math.min(100, currentState.culture + cultureGain);
+    cultureGain = effectiveInstructor * 0.3;
     
     // People investment boosts product quality (+0.30 per effective $1M per locked spec)
     productQualityGain = effectiveInstructor * 0.30;
@@ -306,6 +307,7 @@ export function calculateQ1Consequence(
     stockPriceChange,
     narrative,
     productQualityChange: productQualityGain,
+    cultureChange: cultureGain,
     trustChange: trustGain,
   };
 }
