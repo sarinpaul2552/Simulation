@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { TeamData, DecisionData } from '../services/supabase';
 import { Allocation, Consequence } from '../simulation/engine';
 
@@ -136,7 +136,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setQuarterPhase('event');
   }, []);
   
-  const value: GameContextType = {
+  const value = useMemo<GameContextType>(() => ({
     sessionCode,
     sessionId,
     facilitatorEmail,
@@ -181,7 +181,51 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDecisionHistory,
     addToDecisionHistory,
     resetQuarter,
-  };
+  }), [
+    sessionCode,
+    sessionId,
+    facilitatorEmail,
+    teamCode,
+    teamCount,
+    currentQuarter,
+    gamePhase,
+    quarterPhase,
+    teams,
+    currentTeamId,
+    currentTeam,
+    currentDecision,
+    currentAllocation,
+    currentBelief,
+    currentRisks,
+    currentRoleVotes,
+    currentTeamCheckAlignment,
+    currentTeamCheckOverride,
+    currentTeamCheckDissentingRoles,
+    lastConsequence,
+    decisionHistory,
+    setSessionCode,
+    setSessionId,
+    setFacilitatorEmail,
+    setTeamCode,
+    setTeamCount,
+    setCurrentTeamId,
+    setTeams,
+    updateTeam,
+    setGamePhase,
+    setCurrentQuarter,
+    setQuarterPhase,
+    advanceQuarterPhase,
+    setCurrentAllocation,
+    setCurrentBelief,
+    setCurrentRisks,
+    setCurrentRoleVote,
+    setCurrentTeamCheckAlignment,
+    setCurrentTeamCheckOverride_impl,
+    setLastConsequence,
+    setDecisionHistory,
+    addToDecisionHistory,
+    resetQuarter,
+  ]);
   
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 };
