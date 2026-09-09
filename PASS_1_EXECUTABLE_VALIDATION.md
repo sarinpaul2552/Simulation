@@ -339,27 +339,50 @@ Product Quality: 70 (unchanged)
 Trust: 70 (unchanged)
 ```
 
-### 3.12 SUMMARY: Expected Q1 Outputs (Corrected Per Locked Specification)
+### 3.12 SUMMARY: Expected Q1 Outputs (FINAL CORRECTED)
 
-**Key corrections:** 
-- Consumer revenue matures Q2, not Q1 (locked spec: "Q1 Consumer matures Q2")
-- Alignment multiplier applies only to strategic revenue, which is $0 in Q1
-- Cash reserve not double-counted
+**Final reconciliation includes all three missing effects:**
+1. Enterprise Q1 revenue: +$0.24M pipeline effect
+2. Product Quality: +1.2 points from people investment
+3. Trust: +1.0 point from university investment
+4. Alignment multiplier applied only to incremental strategic revenue ($0.24M)
 
-**Q1 Revenue: $200M × 1.02 = $204M** (base + tailwind only; no strategic benefits)  
-**Q1 Operating Profit: $204M − $170M = $34M**  
-**Q1 Closing Cash: $60M + $34M − $22M = $72M** (no double-count of retained cash)  
-**Q1 Stock Price: $100 + $2.40 = $102.40**
+**Q1 Revenue Calculation (Final):**
+```
+Base revenue: $200M
+Market tailwind: ×1.02 = $204.00M
+Enterprise pipeline effect: $40M × 0.15% × 4.0M effective = +$0.24M
+Subtotal before alignment: $204.24M
+Alignment multiplier (1.05×) on $0.24M strategic: +$0.012M
+Final Q1 Revenue: $204.252M ≈ $204.25M
+```
+
+**Q1 Cash Calculation (Final):**
+```
+Opening cash: $60M
+Operating profit: $34.25M ($204.25M − $170M)
+Strategic spend: $22M (5 categories)
+Closing cash: $60M + $34.25M − $22M = $72.25M
+```
+
+**Q1 Stock Price Calculation (Final):**
+```
+Factor 1 (Growth, 35%): ($204.25M − $200M) / $200M = 2.125% → impact +0.74 points
+Factor 2 (Margin, 30%): ($34.25M/$204.25M − $30M/$200M) = 1.775% → impact +0.53 points
+Factor 3 (Alignment, 15%): (68 − 60) × 0.15 = +1.2 points
+Total: 0.74 + 0.53 + 1.2 = 2.47 points
+Stock price: $100.00 + $2.47 = $102.47
+```
 
 | Metric | Starting | Ending | Change | Formula |
 |--------|----------|--------|--------|---------|
-| **Revenue** | $200.0M | $204.0M | +$4.0M | Base + 2% tailwind only; consumer matures Q2 |
-| **Operating Profit** | $30.0M | $34.0M | +$4.0M | $204M − $170M operating cost |
-| **Cash** | $60.0M | $72.0M | +$12.0M | Start + profit − $22M spend (cash reserve not re-added) |
-| **Stock Price** | $100.00 | $102.40 | +$2.40 | Growth +0.70 + margin +0.50 + alignment +1.20 |
-| **Product Quality** | 70 | 70 | — | Not modified in Q1 |
-| **Culture** | 72 | 73 | +1 | People spend $4M × 0.3 |
-| **Trust** | 70 | 70 | — | Not modified in Q1 |
+| **Revenue** | $200.0M | $204.25M | +$4.25M | Base $200M + 2% tailwind + $0.24M enterprise effect + $0.012M alignment boost |
+| **Operating Profit** | $30.0M | $34.25M | +$4.25M | $204.25M − $170M operating cost |
+| **Cash** | $60.0M | $72.25M | +$12.25M | Start + profit − spend (no double-count) |
+| **Stock Price** | $100.00 | $102.47 | +$2.47 | Growth +0.74 + margin +0.53 + alignment +1.20 |
+| **Product Quality** | 70 | 71 | +1.2 | 70 + (4.0M people × 0.30) |
+| **Culture** | 72 | 73 | +1.2 | 72 + (4.0M people × 0.30)* |
+| **Trust** | 70 | 71 | +1.0 | 70 + (4.0M university × 0.25) |
 | | | | | |
 | **Consumer Cap** | 55 | 59 | +4 | 4.0M effective × 1.0 |
 | **Enterprise Cap** | 30 | 35 | +5 | 4.0M effective × 1.2 |
@@ -369,6 +392,8 @@ Trust: 70 (unchanged)
 | **CS Cap** | 30 | 30 | — | Not allocated in Q1 |
 | **Growth Cap** | 55 | 55 | — | Not modified in Q1 |
 | **Execution Score** | 60 | 68 | +8 | Broad alignment (4/5 YES) |
+
+*Note: Culture effect (+0.30 per effective $1M) is implemented but not explicitly defined in locked spec; flagged as undocumented extension.
 
 ---
 
@@ -465,12 +490,15 @@ Verify all fields, click **"Confirm Commitment"**
 
 ### 4.11 CONSEQUENCE SCREEN
 
-**Verify Q1 results appear (corrected values):**
-- Revenue change: ~+$4M (base + 2% tailwind only; no allocation benefits in Q1)
-- Cash change: ~+$12M (profit $34M − spend $22M; cash reserve not double-counted)
-- Stock price change: ~+$2.4 (growth +0.70 + margin +0.50 + alignment +1.20)
+**Verify Q1 results appear (FINAL corrected values):**
+- Revenue change: ~+$4.25M (base $4M + enterprise pipeline $0.24M + alignment $0.012M)
+- Cash change: ~+$12.25M (profit $34.25M − spend $22M)
+- Stock price change: ~+$2.47 (growth +0.74 + margin +0.53 + alignment +1.20)
+- Product Quality: 70 → 71 (+1.2 from people spend)
+- Culture: 72 → 73 (+1.2 from people spend; undocumented in spec)
+- Trust: 70 → 71 (+1.0 from university spend)
 - Capability changes: Consumer +4, Enterprise +5, AI +8, Talent +4, Credential +4 (match Section 3.12)
-- Culture: 72 → 73 (+1 from people spend)
+- Execution: 60 → 68 (broad alignment +8)
 
 Click **"Review Results → Next"**
 
@@ -505,12 +533,14 @@ FROM teams
 WHERE session_id = '[SESSION_ID]';
 ```
 
-**Expected (with tolerance ±1):**
+**Expected (with tolerance ±0.5 for floating-point calculations):**
 ```
-revenue: ~204 (base + 2% tailwind; no Q1 allocation benefits)
-cash: ~72 (opening 60 + profit 34 − spend 22)
-stock_price: ~102.4 (growth +0.70 + margin +0.50 + alignment +1.20)
+revenue: ~204.25 (base + 2% tailwind + enterprise pipeline effect)
+cash: ~72.25 (opening 60 + profit 34.25 − spend 22)
+stock_price: ~102.47 (growth +0.74 + margin +0.53 + alignment +1.20)
 culture: ~73 (72 + people boost 1.2)
+product_quality: ~71 (70 + people boost 1.2)
+trust: ~71 (70 + university boost 1.0)
 capability_consumer: ~59
 capability_enterprise: ~35
 capability_ai: ~18
@@ -554,10 +584,12 @@ WHERE team_id = '[TEAM_ID]' AND quarter = 1;
 ```
 
 **Expected:**
-- outcome_revenue_change: ~4.0 (±0.5) [base only: $204M − $200M]
-- outcome_cash_change: ~12.0 (±0.5) [profit 34 − spend 22]
-- outcome_stock_price_change: ~2.4 (±0.3) [growth +0.70 + margin +0.50 + alignment +1.20]
-- outcome_narrative: Non-null string with corrected values
+- outcome_revenue_change: ~4.25 (±0.5) [base tailwind $4M + enterprise pipeline $0.24M + alignment boost $0.012M]
+- outcome_cash_change: ~12.25 (±0.5) [profit $34.25M − spend $22M]
+- outcome_stock_price_change: ~2.47 (±0.1) [growth +0.74 + margin +0.53 + alignment +1.20]
+- outcome_narrative: Non-null string with corrected enterprise revenue effect
+- outcome_product_quality_change: ~1.2 (people investment × 0.30)
+- outcome_trust_change: ~1.0 (university investment × 0.25)
 
 ---
 
@@ -585,12 +617,14 @@ Run Query 5.2 again.
 
 Click facilitator tab.
 
-**Verify:**
+**Verify (FINAL corrected values):**
 - [ ] Table shows `TestTeam` with correct financials
-- [ ] Revenue: ~204 (base + 2% tailwind)
-- [ ] Cash: ~72 (opening 60 + profit 34 − spend 22)
-- [ ] Stock: ~102.4 (growth +0.70 + margin +0.50 + alignment +1.20)
-- [ ] Culture: 73
+- [ ] Revenue: ~204.25 (base + 2% tailwind + enterprise pipeline $0.24M)
+- [ ] Cash: ~72.25 (opening 60 + profit 34.25 − spend 22)
+- [ ] Stock: ~102.47 (growth +0.74 + margin +0.53 + alignment +1.20)
+- [ ] Culture: 73 (72 + people investment boost)
+- [ ] Product Quality: 71 (70 + people investment boost)
+- [ ] Trust: 71 (70 + university investment boost)
 - [ ] AI Capability: 18
 
 ### 7.2 Facilitator: Advance Quarter

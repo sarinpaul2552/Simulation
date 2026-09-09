@@ -54,6 +54,8 @@ export interface Consequence {
   thresholdsCrossed: string[];
   stockPriceChange: number;
   narrative: string;
+  productQualityChange?: number;  // Added: Product quality change from people investment
+  trustChange?: number;            // Added: Trust change from university investment
 }
 
 // ============ DIMINISHING RETURNS ============
@@ -185,7 +187,8 @@ export function calculateQ1Consequence(
     );
   }
 
-  // Instructor/People investment -> Talent capability & Culture
+  // Instructor/People investment -> Talent capability, Culture, & Product Quality
+  let productQualityGain = 0;
   if (allocation.instructorPeople > 0) {
     const effectiveInstructor = effectiveAllocations.instructorPeople;
     newCapabilities.talent = createCapabilityFromInvestment(
@@ -193,18 +196,25 @@ export function calculateQ1Consequence(
       effectiveInstructor,
       currentState.capabilities.talent
     );
-    // People investment also boosts culture
+    // People investment boosts culture (+0.30 per effective $1M)
     const cultureGain = effectiveInstructor * 0.3;
     newCapabilities.culture = Math.min(100, currentState.culture + cultureGain);
+    
+    // People investment boosts product quality (+0.30 per effective $1M per locked spec)
+    productQualityGain = effectiveInstructor * 0.30;
   }
 
-  // University/Credential investment -> Credential capability
+  // University/Credential investment -> Credential capability & Trust
+  let trustGain = 0;
   if (allocation.universityCredential > 0) {
     newCapabilities.credential = createCapabilityFromInvestment(
       'universityCredential',
       effectiveAllocations.universityCredential,
       currentState.capabilities.credential
     );
+    
+    // University/Credential investment boosts trust (+0.25 per effective $1M per locked spec)
+    trustGain = effectiveAllocations.universityCredential * 0.25;
   }
 
   // Q1: Customer Success capability not available (becomes available Q5+)
@@ -214,23 +224,31 @@ export function calculateQ1Consequence(
   const executionAlignment = calculateExecutionAlignment(allocation, roleVotes, teamCheckOverride, dissents);
   newCapabilities.execution = executionAlignment;
 
-  // Q1 Revenue: Base market tailwind only
+  // Q1 Revenue: Base market tailwind + Enterprise incremental Q1 revenue
   // Per locked spec: Consumer & University investments mature Q2, not Q1
-  // AI has no Q1 commercial benefit; Enterprise only if capability ≥ 45 (currently 35)
-  // Therefore: strategic revenue contribution = $0
+  // Enterprise: "+0.15% current Enterprise revenue per effective $1M" (small pipeline benefit)
+  // AI has no Q1 commercial benefit
   const baseMarketTailwind = 1.02; // +2%
   let q1Revenue = currentState.revenue * baseMarketTailwind;
+  
+  // Q1: Enterprise has small current-quarter pipeline benefit
+  // Per locked spec: +0.15% current Enterprise revenue per effective $1M
+  let strategicRevenueInQ1 = 0;
+  if (allocation.enterpriseSales > 0) {
+    const currentEnterpriseRevenue = currentState.revenue * 0.20; // Enterprise is 20% of baseline $200M
+    strategicRevenueInQ1 = currentEnterpriseRevenue * (0.0015 * effectiveAllocations.enterpriseSales);
+  }
   
   // Q1: Consumer allocation matures Q2, not Q1 (locked spec)
   // No consumer revenue lift applied in Q1
   
-  // Q1: Enterprise has small current-quarter pipeline benefit ONLY if capability ≥ 45
-  // Current enterprise capability (35) < threshold, so no lift
-  // (If this condition were true, alignment multiplier would apply only to the incremental lift, not total revenue)
-
   // Q1: Alignment multiplier applies only to incremental strategy-generated revenue
-  // Since no strategic revenue generated in Q1, alignment multiplier not applied to total
-  // q1Revenue remains at base + tailwind ($204M)
+  // Apply multiplier only to strategic revenue, not to base
+  const alignmentMultiplier = getAlignmentMultiplier(executionAlignment);
+  const alignedStrategicRevenue = strategicRevenueInQ1 * alignmentMultiplier;
+  const alignmentBoostOnStrategic = alignedStrategicRevenue - strategicRevenueInQ1;
+  
+  q1Revenue = q1Revenue + strategicRevenueInQ1 + alignmentBoostOnStrategic;
 
   // Operating profit
   const q1OpCost = currentState.operatingCost; // simplified: same as baseline
@@ -278,7 +296,7 @@ export function calculateQ1Consequence(
   };
 
   // Narrative
-  const narrative = `Q1 revenue: $${q1Revenue.toFixed(1)}M (market tailwind +2%, allocation effects). Operating profit: $${q1OpProfit.toFixed(1)}M. Closing cash: $${q1ClosingCash.toFixed(1)}M. Stock: ${newStockPrice.toFixed(2)} (${stockPriceChange > 0 ? '+' : ''}${stockPriceChange.toFixed(1)}%).`;
+  const narrative = `Q1 revenue: $${q1Revenue.toFixed(1)}M (market tailwind +2%, enterprise +${strategicRevenueInQ1.toFixed(2)}M allocation effects). Operating profit: $${q1OpProfit.toFixed(1)}M. Closing cash: $${q1ClosingCash.toFixed(1)}M. Stock: ${newStockPrice.toFixed(2)} (${stockPriceChange > 0 ? '+' : ''}${stockPriceChange.toFixed(1)}%).`;
 
   return {
     revenueChange: q1Revenue - currentState.revenue,
@@ -287,6 +305,8 @@ export function calculateQ1Consequence(
     thresholdsCrossed,
     stockPriceChange,
     narrative,
+    productQualityChange: productQualityGain,
+    trustChange: trustGain,
   };
 }
 
