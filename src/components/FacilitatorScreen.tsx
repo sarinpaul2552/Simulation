@@ -37,13 +37,25 @@ export default function FacilitatorScreen({ sessionCode, adminPin, onExit }: Fac
         // Convert team data from RPC response
         const sessionTeams: TeamData[] = sessionData.teams.map((team: any) => ({
           id: team.team_id,
+          session_id: sessionData.session_id,
+          team_code: team.team_code,
           team_name: team.team_name,
           revenue: team.revenue,
+          operating_cost: 0,
+          operating_profit: 0,
           cash: team.cash,
           stock_price: team.stock_price,
           product_quality: team.product_quality,
           culture: team.culture,
           trust: team.trust,
+          capability_consumer: 0,
+          capability_enterprise: 0,
+          capability_ai: 0,
+          capability_talent: 0,
+          capability_credential: 0,
+          capability_customer_success: 0,
+          capability_growth: 0,
+          capability_execution: 0,
         } as any));
 
         game.setTeams(sessionTeams);
@@ -111,10 +123,14 @@ export default function FacilitatorScreen({ sessionCode, adminPin, onExit }: Fac
 
       <section className="leaderboard">
         <h2>Team Leaderboard</h2>
+        <div className="team-codes-instruction">
+          <p><strong>Share these codes with your teams:</strong></p>
+        </div>
         <table className="leaderboard-table">
           <thead>
             <tr>
               <th>Team</th>
+              <th>Team Code</th>
               <th>Revenue</th>
               <th>Cash</th>
               <th>Stock Price</th>
@@ -127,6 +143,7 @@ export default function FacilitatorScreen({ sessionCode, adminPin, onExit }: Fac
             {teams.map(team => (
               <tr key={team.id}>
                 <td>{team.team_name}</td>
+                <td><code>{team.team_code}</code></td>
                 <td>${team.revenue.toFixed(1)}M</td>
                 <td>${team.cash.toFixed(1)}M</td>
                 <td>${team.stock_price.toFixed(2)}</td>

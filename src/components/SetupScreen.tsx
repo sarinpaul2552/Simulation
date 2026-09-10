@@ -79,7 +79,8 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
       teamCodes.forEach(team => {
         game.updateTeam(team.team_id, {
           id: team.team_id,
-          team_name: team.team_name
+          team_name: team.team_name,
+          team_code: team.team_code
         } as any);
       });
 
