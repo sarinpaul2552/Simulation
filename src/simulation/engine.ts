@@ -495,6 +495,19 @@ export function getQ2EventContext(): { title: string; description: string } {
 
 // ============ GENERIC QUARTER CONSEQUENCE CALCULATOR ============
 
+/**
+ * Quarter consequence engines registry.
+ * Map quarters to their corresponding consequence calculation functions.
+ * To add a new quarter: add a new case below, implement calculateQxConsequence, and update gameplay.json quarterMetadata.
+ * 
+ * @param quarter - Quarter number (1-8)
+ * @param allocation - Capital allocation decisions
+ * @param roleVotes - Votes from team members (null if voting_disabled mode)
+ * @param ceoOverride - Whether CEO exercised override power
+ * @param dissentingRoles - Roles that dissented if CEO overrode
+ * @param startingState - Team state at start of quarter
+ * @returns Consequence object or null if quarter not yet available
+ */
 export function calculateQuarterConsequence(
   quarter: number,
   allocation: Allocation,
@@ -508,8 +521,16 @@ export function calculateQuarterConsequence(
       return calculateQ1Consequence(allocation, roleVotes || {}, ceoOverride, dissentingRoles, startingState);
     case 2:
       return calculateQ2Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+    case 8:
+      // Quarters 3-8: Not yet implemented. Add calculateQxConsequence function and case here.
+      return null;
     default:
-      return null; // Q3+ not yet implemented
+      return null;
   }
 }
 

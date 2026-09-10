@@ -11,6 +11,7 @@ import ConsequenceScreen from './quarters/ConsequenceScreen';
 import ReflectScreen from './quarters/ReflectScreen';
 import EventScreen from './quarters/EventScreen';
 import CompanyDashboard from './CompanyDashboard';
+import gameplayContent from '../content/gameplay.json';
 
 interface GameScreenProps {
   sessionCode: string;
@@ -25,6 +26,11 @@ export default function GameScreen({ sessionCode, onExit }: GameScreenProps) {
   useEffect(() => {
     const initialize = async () => {
       try {
+        // Load quarter configuration from gameplay.json
+        if (gameplayContent.quarterMetadata) {
+          game.setQuarterMetadata(gameplayContent.quarterMetadata);
+        }
+
         if (!game.sessionCode) {
           game.setSessionCode(sessionCode);
         }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import gameplayContent from '../../content/gameplay.json';
 import { getQuarterContent } from '../../simulation/engine';
+import { QuarterUnavailableScreen } from './QuarterUnavailableScreen';
 
 interface ReflectScreenProps {
   assignedRole: string;
@@ -15,13 +16,22 @@ export default function ReflectScreen({ assignedRole: _assignedRole }: ReflectSc
   const quarterContent = getQuarterContent(game.currentQuarter, gameplayContent);
   const eventContent = quarterContent || { reflect: { prompt: '', options: [] } };
 
+  // Get next available quarter
+  const nextAvailableQuarter = game.getNextAvailableQuarter(game.currentQuarter);
+  const showUnavailableScreen = nextAvailableQuarter === null;
+
   const handleProceed = () => {
-    if (selected) {
+    if (selected && nextAvailableQuarter !== null) {
       game.setQuarterPhase('event');
-      game.setCurrentQuarter(game.currentQuarter + 1); // Advance to next quarter
+      game.setCurrentQuarter(nextAvailableQuarter); // Advance to next available quarter
       game.resetQuarter();
     }
   };
+
+  // If next quarter is unavailable, show the unavailable screen
+  if (showUnavailableScreen) {
+    return <QuarterUnavailableScreen />;
+  }
 
   return (
     <div className="quarter-screen reflect-screen">
@@ -50,11 +60,11 @@ export default function ReflectScreen({ assignedRole: _assignedRole }: ReflectSc
 
         <div className="learning-summary">
           <h3>Q{game.currentQuarter} Summary</h3>
-          <p>Your allocation has been locked. Capabilities have developed. You're now ready for Q{game.currentQuarter + 1}.</p>
+          <p>Your allocation has been locked. Capabilities have developed. You're now ready for Q{nextAvailableQuarter}.</p>
         </div>
 
         <button onClick={handleProceed} disabled={!selected} className="btn-primary">
-          Reflection Complete → Q{game.currentQuarter + 1}
+          Reflection Complete → Q{nextAvailableQuarter}
         </button>
       </div>
     </div>

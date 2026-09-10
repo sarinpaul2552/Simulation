@@ -6,6 +6,23 @@ export type GamePhase = 'setup' | 'q1-q8' | 'final-debrief';
 export type QuarterPhase = 'event' | 'bet' | 'belief' | 'risk' | 'role-vote' | 'team-check' | 'commit' | 'consequence' | 'reflect';
 export type ParticipationMode = 'team_device' | 'individual_device' | 'voting_disabled';
 
+export interface QuarterConfig {
+  available: boolean;
+  consequenceEngine: string | null;
+  description: string;
+}
+
+export interface QuarterMetadata {
+  q1: QuarterConfig;
+  q2: QuarterConfig;
+  q3: QuarterConfig;
+  q4: QuarterConfig;
+  q5: QuarterConfig;
+  q6: QuarterConfig;
+  q7: QuarterConfig;
+  q8: QuarterConfig;
+}
+
 export interface GameContextType {
   // Session
   sessionCode: string | null;
@@ -17,6 +34,7 @@ export interface GameContextType {
   gamePhase: GamePhase;
   quarterPhase: QuarterPhase;
   participationMode: ParticipationMode;
+  quarterMetadata: QuarterMetadata | null;
   
   // Team Data
   teams: TeamData[];
@@ -67,6 +85,12 @@ export interface GameContextType {
   
   // Reset
   resetQuarter: () => void;
+  
+  // Quarter Configuration Helpers
+  setQuarterMetadata: (metadata: QuarterMetadata) => void;
+  getAvailableQuarters: () => number[];
+  getNextAvailableQuarter: (currentQuarter: number) => number | null;
+  isQuarterAvailable: (quarter: number) => boolean;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -96,6 +120,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentDecision, setCurrentDecision] = useState<DecisionData | null>(null);
   const [lastConsequence, setLastConsequence] = useState<Consequence | null>(null);
   const [decisionHistory, setDecisionHistory] = useState<DecisionData[]>([]);
+  
+  const [quarterMetadata, setQuarterMetadata] = useState<QuarterMetadata | null>(null);
   
   const currentTeam = currentTeamId ? teams.find(t => t.id === currentTeamId) || null : null;
   
@@ -145,6 +171,35 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setQuarterPhase('event');
   }, []);
   
+  const getAvailableQuarters = useCallback((): number[] => {
+    if (!quarterMetadata) return [];
+    const available: number[] = [];
+    for (let q = 1; q <= 8; q++) {
+      const key = `q${q}` as keyof QuarterMetadata;
+      if (quarterMetadata[key]?.available) {
+        available.push(q);
+      }
+    }
+    return available;
+  }, [quarterMetadata]);
+  
+  const getNextAvailableQuarter = useCallback((currentQuarter: number): number | null => {
+    if (!quarterMetadata) return null;
+    for (let q = currentQuarter + 1; q <= 8; q++) {
+      const key = `q${q}` as keyof QuarterMetadata;
+      if (quarterMetadata[key]?.available) {
+        return q;
+      }
+    }
+    return null;
+  }, [quarterMetadata]);
+  
+  const isQuarterAvailable = useCallback((quarter: number): boolean => {
+    if (!quarterMetadata || quarter < 1 || quarter > 8) return false;
+    const key = `q${quarter}` as keyof QuarterMetadata;
+    return quarterMetadata[key]?.available || false;
+  }, [quarterMetadata]);
+  
   const value = useMemo<GameContextType>(() => ({
     sessionCode,
     sessionId,
@@ -155,6 +210,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     gamePhase,
     quarterPhase,
     participationMode,
+    quarterMetadata,
     teams,
     currentTeamId,
     currentTeam,
@@ -193,6 +249,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDecisionHistory,
     addToDecisionHistory,
     resetQuarter,
+    setQuarterMetadata,
+    getAvailableQuarters,
+    getNextAvailableQuarter,
+    isQuarterAvailable,
   }), [
     sessionCode,
     sessionId,
@@ -203,6 +263,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     gamePhase,
     quarterPhase,
     participationMode,
+    quarterMetadata,
     teams,
     currentTeamId,
     currentTeam,
@@ -240,6 +301,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDecisionHistory,
     addToDecisionHistory,
     resetQuarter,
+    getAvailableQuarters,
+    getNextAvailableQuarter,
+    isQuarterAvailable,
   ]);
   
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

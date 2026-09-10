@@ -1,4 +1,46 @@
 {
+  "quarterMetadata": {
+    "q1": {
+      "available": true,
+      "consequenceEngine": "calculateQ1Consequence",
+      "description": "Q1: Growth Looks Easy"
+    },
+    "q2": {
+      "available": true,
+      "consequenceEngine": "calculateQ2Consequence",
+      "description": "Q2: ChatGPT Arrives"
+    },
+    "q3": {
+      "available": false,
+      "consequenceEngine": null,
+      "description": "Q3: Not yet available"
+    },
+    "q4": {
+      "available": false,
+      "consequenceEngine": null,
+      "description": "Q4: Not yet available"
+    },
+    "q5": {
+      "available": false,
+      "consequenceEngine": null,
+      "description": "Q5: Not yet available"
+    },
+    "q6": {
+      "available": false,
+      "consequenceEngine": null,
+      "description": "Q6: Not yet available"
+    },
+    "q7": {
+      "available": false,
+      "consequenceEngine": null,
+      "description": "Q7: Not yet available"
+    },
+    "q8": {
+      "available": false,
+      "consequenceEngine": null,
+      "description": "Q8: Not yet available"
+    }
+  },
   "q1": {
     "event_title": "Growth Looks Easy",
     "event_description": "Coursera sits at the peak of online learning. ChatGPT doesn't exist yet. Enterprise is emerging as an opportunity. No major threats visible.",
