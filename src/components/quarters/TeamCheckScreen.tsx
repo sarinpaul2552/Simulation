@@ -9,7 +9,10 @@ export default function TeamCheckScreen() {
   const rolesList = ['CEO', 'CFO', 'Product', 'People', 'Growth'];
 
   const alignment = useMemo(() => {
-    if (!game.currentRoleVotes) return 'unknown';
+    if (!game.currentRoleVotes || Object.keys(game.currentRoleVotes).length === 0) {
+      // No votes (voting_disabled mode)
+      return 'no-vote';
+    }
     
     const votes = Object.values(game.currentRoleVotes).map(v => v.vote);
     const yesCount = votes.filter(v => v === 'yes').length;
@@ -35,6 +38,8 @@ export default function TeamCheckScreen() {
         return 'Debate - Mixed opinions. Team discussion recommended.';
       case 'split':
         return 'Split - Significant disagreement.';
+      case 'no-vote':
+        return 'No Executive Votes - Role voting is disabled. Proceed as team.';
       default:
         return 'Unknown';
     }
@@ -61,80 +66,100 @@ export default function TeamCheckScreen() {
 
         <div className={`alignment-result ${alignment}`}>
           <h3>{getAlignmentMessage()}</h3>
-          <div className="votes-summary">
-            {game.currentRoleVotes && rolesList.map(role => (
-              <div key={role} className={`vote-summary ${game.currentRoleVotes?.[role]?.vote}`}>
-                <span className="role">{role}</span>
-                <span className="vote">{game.currentRoleVotes?.[role]?.vote?.toUpperCase()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {dissents.length > 0 && (
-          <div className="dissent-section">
-            <h4>Dissenting Voices</h4>
-            <p>{dissents.join(', ')} expressed concerns about this allocation.</p>
-          </div>
-        )}
-
-        <div className="action-options">
-          <div className={`action-card ${action === 'review' ? 'selected' : ''}`}>
-            <input
-              type="radio"
-              name="action"
-              value="review"
-              checked={action === 'review'}
-              onChange={() => setAction('review')}
-            />
-            <label>
-              <h4>Proceed Without Override</h4>
-              <p>Accept the team's alignment as-is and move forward.</p>
-            </label>
-          </div>
-
-          <div className={`action-card ${action === 'revote' ? 'selected' : ''}`}>
-            <input
-              type="radio"
-              name="action"
-              value="revote"
-              checked={action === 'revote'}
-              onChange={() => setAction('revote')}
-            />
-            <label>
-              <h4>Call for Revote</h4>
-              <p>Go back to role voting and discuss further.</p>
-            </label>
-          </div>
-
-          {dissents.length > 0 && (
-            <div className={`action-card ${action === 'override' ? 'selected' : ''}`}>
-              <input
-                type="radio"
-                name="action"
-                value="override"
-                checked={action === 'override'}
-                onChange={() => setAction('override')}
-              />
-              <label>
-                <h4>Leadership Override</h4>
-                <p>CEO overrides dissent. Document the reason.</p>
-                {action === 'override' && (
-                  <textarea
-                    value={overrideReason}
-                    onChange={(e) => setOverrideReason(e.target.value)}
-                    placeholder="CEO explains the override decision..."
-                    rows={3}
-                  />
-                )}
-              </label>
+          {game.currentRoleVotes && Object.keys(game.currentRoleVotes).length > 0 && (
+            <div className="votes-summary">
+              {rolesList.map(role => (
+                <div key={role} className={`vote-summary ${game.currentRoleVotes?.[role]?.vote}`}>
+                  <span className="role">{role}</span>
+                  <span className="vote">{game.currentRoleVotes?.[role]?.vote?.toUpperCase()}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        <button onClick={handleProceed} disabled={!action} className="btn-primary">
-          Confirm → Proceed to Commit
-        </button>
+        {alignment !== 'no-vote' ? (
+          <>
+            {dissents.length > 0 && (
+              <div className="dissent-section">
+                <h4>Dissenting Voices</h4>
+                <p>{dissents.join(', ')} expressed concerns about this allocation.</p>
+              </div>
+            )}
+
+            <div className="action-options">
+              <div className={`action-card ${action === 'review' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="action"
+                  value="review"
+                  checked={action === 'review'}
+                  onChange={() => setAction('review')}
+                />
+                <label>
+                  <h4>Proceed Without Override</h4>
+                  <p>Accept the team's alignment as-is and move forward.</p>
+                </label>
+              </div>
+
+              <div className={`action-card ${action === 'revote' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="action"
+                  value="revote"
+                  checked={action === 'revote'}
+                  onChange={() => setAction('revote')}
+                />
+                <label>
+                  <h4>Call for Revote</h4>
+                  <p>Go back to role voting and discuss further.</p>
+                </label>
+              </div>
+
+              {dissents.length > 0 && (
+                <div className={`action-card ${action === 'override' ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="action"
+                    value="override"
+                    checked={action === 'override'}
+                    onChange={() => setAction('override')}
+                  />
+                  <label>
+                    <h4>Leadership Override</h4>
+                    <p>CEO overrides dissent. Document the reason.</p>
+                    {action === 'override' && (
+                      <textarea
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                        placeholder="CEO explains the override decision..."
+                        rows={3}
+                      />
+                    )}
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <button onClick={handleProceed} disabled={!action} className="btn-primary">
+              Confirm → Proceed to Commit
+            </button>
+          </>
+        ) : (
+          <div className="no-vote-mode">
+            <p>With role voting disabled, the team proceeds directly to commit.</p>
+            <button
+              onClick={() => {
+                game.setCurrentTeamCheckAlignment(alignment);
+                game.setCurrentTeamCheckOverride(false, []);
+                game.setQuarterPhase('commit');
+              }}
+              className="btn-primary"
+            >
+              Proceed to Commit
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

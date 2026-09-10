@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import gameplayContent from '../../content/gameplay.json';
+import { getQuarterContent } from '../../simulation/engine';
 
 interface ReflectScreenProps {
   assignedRole: string;
@@ -8,13 +9,16 @@ interface ReflectScreenProps {
 
 export default function ReflectScreen({ assignedRole: _assignedRole }: ReflectScreenProps) {
   const game = useGame();
-  const eventContent = gameplayContent.q1; // Q1 is showing, so reflect on Q1
   const [selected, setSelected] = useState<string | null>(null);
+
+  // Load content for current quarter dynamically
+  const quarterContent = getQuarterContent(game.currentQuarter, gameplayContent);
+  const eventContent = quarterContent || { reflect: { prompt: '', options: [] } };
 
   const handleProceed = () => {
     if (selected) {
       game.setQuarterPhase('event');
-      game.setCurrentQuarter(2);
+      game.setCurrentQuarter(game.currentQuarter + 1); // Advance to next quarter
       game.resetQuarter();
     }
   };
@@ -23,10 +27,10 @@ export default function ReflectScreen({ assignedRole: _assignedRole }: ReflectSc
     <div className="quarter-screen reflect-screen">
       <div className="card">
         <h2>Q{game.currentQuarter} Reflection</h2>
-        <p>{eventContent.reflect.prompt}</p>
+        <p>{eventContent?.reflect?.prompt || 'What did you learn from this quarter?'}</p>
 
         <div className="reflect-options">
-          {eventContent.reflect.options.map(option => (
+          {(eventContent?.reflect?.options || []).map((option: any) => (
             <div
               key={option.value}
               className={`reflect-option ${selected === option.value ? 'selected' : ''}`}
@@ -45,12 +49,12 @@ export default function ReflectScreen({ assignedRole: _assignedRole }: ReflectSc
         </div>
 
         <div className="learning-summary">
-          <h3>Q1 Summary</h3>
-          <p>Your allocation has been locked. Capabilities have developed. You're now ready for Q2 and the market disruption ahead.</p>
+          <h3>Q{game.currentQuarter} Summary</h3>
+          <p>Your allocation has been locked. Capabilities have developed. You're now ready for Q{game.currentQuarter + 1}.</p>
         </div>
 
         <button onClick={handleProceed} disabled={!selected} className="btn-primary">
-          Reflection Complete → Q2
+          Reflection Complete → Q{game.currentQuarter + 1}
         </button>
       </div>
     </div>

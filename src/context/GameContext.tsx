@@ -4,6 +4,7 @@ import { Allocation, Consequence } from '../simulation/engine';
 
 export type GamePhase = 'setup' | 'q1-q8' | 'final-debrief';
 export type QuarterPhase = 'event' | 'bet' | 'belief' | 'risk' | 'role-vote' | 'team-check' | 'commit' | 'consequence' | 'reflect';
+export type ParticipationMode = 'team_device' | 'individual_device' | 'voting_disabled';
 
 export interface GameContextType {
   // Session
@@ -15,6 +16,7 @@ export interface GameContextType {
   currentQuarter: number;
   gamePhase: GamePhase;
   quarterPhase: QuarterPhase;
+  participationMode: ParticipationMode;
   
   // Team Data
   teams: TeamData[];
@@ -48,12 +50,14 @@ export interface GameContextType {
   setGamePhase: (phase: GamePhase) => void;
   setCurrentQuarter: (quarter: number) => void;
   setQuarterPhase: (phase: QuarterPhase) => void;
+  setParticipationMode: (mode: ParticipationMode) => void;
   advanceQuarterPhase: () => void;
   
   setCurrentAllocation: (allocation: Allocation) => void;
   setCurrentBelief: (belief: string) => void;
   setCurrentRisks: (risks: Array<{ identified: string; severity: number }>) => void;
   setCurrentRoleVote: (role: string, vote: 'yes' | 'no' | 'abstain', confidence: number, rationale: string) => void;
+  setBulkRoleVotes: (votes: Record<string, { vote: 'yes' | 'no' | 'abstain'; confidence: number; rationale: string }>) => void;
   setCurrentTeamCheckAlignment: (alignment: string) => void;
   setCurrentTeamCheckOverride: (override: boolean, dissentingRoles: string[]) => void;
   
@@ -78,6 +82,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const [gamePhase, setGamePhase] = useState<GamePhase>('setup');
   const [quarterPhase, setQuarterPhase] = useState<QuarterPhase>('event');
+  const [participationMode, setParticipationMode] = useState<ParticipationMode>('team_device');
   const [currentQuarter, setCurrentQuarter] = useState(0);
   
   const [currentAllocation, setCurrentAllocation] = useState<Allocation | null>(null);
@@ -105,6 +110,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...prev || {},
       [role]: { vote, confidence, rationale },
     }));
+  }, []);
+  
+  const setBulkRoleVotes = useCallback((votes: Record<string, { vote: 'yes' | 'no' | 'abstain'; confidence: number; rationale: string }>) => {
+    setCurrentRoleVotes(votes);
   }, []);
   
   const setCurrentTeamCheckOverride_impl = useCallback((override: boolean, dissentingRoles: string[]) => {
@@ -145,6 +154,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentQuarter,
     gamePhase,
     quarterPhase,
+    participationMode,
     teams,
     currentTeamId,
     currentTeam,
@@ -170,11 +180,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setGamePhase,
     setCurrentQuarter,
     setQuarterPhase,
+    setParticipationMode,
     advanceQuarterPhase,
     setCurrentAllocation,
     setCurrentBelief,
     setCurrentRisks,
     setCurrentRoleVote,
+    setBulkRoleVotes,
     setCurrentTeamCheckAlignment,
     setCurrentTeamCheckOverride: setCurrentTeamCheckOverride_impl,
     setLastConsequence,
@@ -190,6 +202,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentQuarter,
     gamePhase,
     quarterPhase,
+    participationMode,
     teams,
     currentTeamId,
     currentTeam,
@@ -213,11 +226,13 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateTeam,
     setGamePhase,
     setCurrentQuarter,
+    setParticipationMode,
     setQuarterPhase,
     advanceQuarterPhase,
     setCurrentAllocation,
     setCurrentBelief,
     setCurrentRisks,
+    setBulkRoleVotes,
     setCurrentRoleVote,
     setCurrentTeamCheckAlignment,
     setCurrentTeamCheckOverride_impl,

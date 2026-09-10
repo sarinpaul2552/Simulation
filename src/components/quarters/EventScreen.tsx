@@ -1,12 +1,14 @@
 import { useGame } from '../../context/GameContext';
 import gameplayContent from '../../content/gameplay.json';
+import { getQuarterContent } from '../../simulation/engine';
 
 export default function EventScreen() {
   const game = useGame();
-
-  const eventContent = game.currentQuarter === 1 
-    ? gameplayContent.q1 
-    : gameplayContent.q2;
+  
+  const quarterContent = getQuarterContent(game.currentQuarter, gameplayContent);
+  if (!quarterContent) {
+    return <div className="error">Quarter {game.currentQuarter} not yet implemented</div>;
+  }
 
   const handleProceed = () => {
     game.setQuarterPhase('bet');
@@ -15,12 +17,12 @@ export default function EventScreen() {
   return (
     <div className="quarter-screen event-screen">
       <div className="card">
-        <h2>{eventContent.event_title}</h2>
+        <h2>{quarterContent.event_title}</h2>
         <div className="event-narrative">
-          <p>{eventContent.event_description}</p>
+          <p>{quarterContent.event_description}</p>
         </div>
         <div className="capital-available">
-          <p><strong>Capital Available: ${eventContent.available_capital}M</strong></p>
+          <p><strong>Capital Available: ${quarterContent.available_capital}M</strong></p>
         </div>
         <button onClick={handleProceed} className="btn-primary">
           Proceed to Allocation

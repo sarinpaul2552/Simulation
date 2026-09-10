@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import gameplayContent from '../../content/gameplay.json';
+import { getQuarterContent } from '../../simulation/engine';
 
 export default function BeliefScreen() {
   const game = useGame();
-  const eventContent = game.currentQuarter === 1 ? gameplayContent.q1 : gameplayContent.q2;
+  const quarterContent = getQuarterContent(game.currentQuarter, gameplayContent);
+  
+  if (!quarterContent) {
+    return <div className="error">Quarter {game.currentQuarter} not yet implemented</div>;
+  }
+  
   const [selected, setSelected] = useState<string | null>(null);
 
   const handleProceed = () => {
@@ -18,10 +24,10 @@ export default function BeliefScreen() {
     <div className="quarter-screen belief-screen">
       <div className="card">
         <h2>Q{game.currentQuarter} Strategy Belief</h2>
-        <p>{eventContent.belief.prompt}</p>
+        <p>{quarterContent.belief.prompt}</p>
 
         <div className="belief-options">
-          {eventContent.belief.options.map(option => (
+          {quarterContent.belief.options.map((option: any) => (
             <div
               key={option.value}
               className={`belief-option ${selected === option.value ? 'selected' : ''}`}

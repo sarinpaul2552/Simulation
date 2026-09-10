@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { supabase } from '../../services/supabase';
-import { calculateQ1Consequence } from '../../simulation/engine';
+import { calculateQuarterConsequence } from '../../simulation/engine';
 
 export default function CommitScreen() {
   const game = useGame();
@@ -25,20 +25,23 @@ export default function CommitScreen() {
 
       game.setCurrentAllocation(game.currentAllocation); // Store in context
 
-      // Calculate Q1 consequences using the simulation engine
-      if (game.currentQuarter === 1 && game.currentTeam && game.currentRoleVotes) {
-        // Extract just the vote values from the role votes object
-        const roleVotes = Object.entries(game.currentRoleVotes).reduce(
-          (acc, [role, vote]) => ({
-            ...acc,
-            [role]: vote.vote,
-          }),
-          {} as Record<string, 'yes' | 'no' | 'abstain'>
-        );
-        
-        const consequence = calculateQ1Consequence(
-          game.currentAllocation,
-          roleVotes,
+      // Calculate consequences using the simulation engine (by quarter)
+      if (game.currentTeam) {
+        // Extract just vote values for the dispatcher (Q1 expects simple yes/no/abstain)
+        const roleVotesForEngine = game.currentRoleVotes
+          ? Object.entries(game.currentRoleVotes).reduce(
+              (acc, [role, voteData]) => ({
+                ...acc,
+                [role]: voteData.vote,
+              }),
+              {} as Record<string, 'yes' | 'no' | 'abstain'>
+            )
+          : null;
+
+        const consequence = calculateQuarterConsequence(
+          game.currentQuarter,
+          game.currentAllocation!,
+          roleVotesForEngine,
           game.currentTeamCheckOverride,
           game.currentTeamCheckDissentingRoles,
           {
@@ -63,7 +66,9 @@ export default function CommitScreen() {
           }
         );
 
-        game.setLastConsequence(consequence);
+        if (consequence) {
+          game.setLastConsequence(consequence);
+        }
       }
 
       game.setQuarterPhase('consequence');

@@ -2,11 +2,17 @@ import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { Allocation } from '../../simulation/engine';
 import gameplayContent from '../../content/gameplay.json';
+import { getQuarterContent } from '../../simulation/engine';
 
 export default function BetScreen() {
   const game = useGame();
-  const eventContent = game.currentQuarter === 1 ? gameplayContent.q1 : gameplayContent.q2;
-  const capitalAvailable = eventContent.available_capital;
+  const quarterContent = getQuarterContent(game.currentQuarter, gameplayContent);
+  
+  if (!quarterContent) {
+    return <div className="error">Quarter {game.currentQuarter} not yet implemented</div>;
+  }
+  
+  const capitalAvailable = quarterContent.available_capital;
 
   const [allocation, setAllocation] = useState<Allocation>({
     consumerGrowth: 4,

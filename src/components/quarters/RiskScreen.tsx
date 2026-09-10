@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import gameplayContent from '../../content/gameplay.json';
+import { getQuarterContent } from '../../simulation/engine';
 
 interface SelectedRisk {
   identified: string;
@@ -9,7 +10,12 @@ interface SelectedRisk {
 
 export default function RiskScreen() {
   const game = useGame();
-  const eventContent = game.currentQuarter === 1 ? gameplayContent.q1 : gameplayContent.q2;
+  const quarterContent = getQuarterContent(game.currentQuarter, gameplayContent);
+  
+  if (!quarterContent) {
+    return <div className="error">Quarter {game.currentQuarter} not yet implemented</div>;
+  }
+  
   const [selectedRisks, setSelectedRisks] = useState<SelectedRisk[]>([]);
 
   const toggleRisk = (riskId: string) => {
@@ -32,7 +38,9 @@ export default function RiskScreen() {
   const handleProceed = () => {
     if (selectedRisks.length > 0) {
       game.setCurrentRisks(selectedRisks);
-      game.setQuarterPhase('role-vote');
+      // Skip role-vote if voting is disabled
+      const nextPhase = game.participationMode === 'voting_disabled' ? 'team-check' : 'role-vote';
+      game.setQuarterPhase(nextPhase);
     }
   };
 
@@ -40,11 +48,11 @@ export default function RiskScreen() {
     <div className="quarter-screen risk-screen">
       <div className="card">
         <h2>Q{game.currentQuarter} Risk Identification</h2>
-        <p>{eventContent.risks.prompt}</p>
+        <p>{quarterContent.risks.prompt}</p>
         <p className="hint">(Select up to 3 risks)</p>
 
         <div className="risk-options">
-          {eventContent.risks.options.map(option => {
+          {quarterContent.risks.options.map((option: any) => {
             const isSelected = selectedRisks.some(r => r.identified === option.value);
             const risk = selectedRisks.find(r => r.identified === option.value);
             return (
@@ -80,7 +88,7 @@ export default function RiskScreen() {
         <div className="selected-risks">
           <p><strong>Selected Risks ({selectedRisks.length}/3):</strong></p>
           {selectedRisks.map(r => {
-            const label = eventContent.risks.options.find(o => o.value === r.identified)?.label;
+            const label = quarterContent.risks.options.find((o: any) => o.value === r.identified)?.label;
             return <p key={r.identified}>{label} (Severity: {r.severity}/5)</p>;
           })}
         </div>

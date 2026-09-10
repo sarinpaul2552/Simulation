@@ -353,9 +353,172 @@ function getAlignmentMultiplier(executionAlignment: number): number {
 
 // ============ Q2 OPENING STATE (for callback demo) ============
 
+export function calculateQ2Consequence(
+  allocation: Allocation,
+  _roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  ceoOverride: boolean,
+  _dissentingRoles: string[],
+  startingState: TeamState
+): Consequence {
+  // Q2 Disruption Economics: ChatGPT Arrives
+  // Locked baseline market segment effects:
+  // - Consumer: -6% (market shift uncertainty)
+  // - Enterprise: +2% (new AI opportunity)
+  // - University: 0% (neutral)
+  // - AI-native: +20% (from very small base)
+
+  const consumerSegmentShare = 0.40; // Coursera's consumer revenue ~40%
+  const enterpriseSegmentShare = 0.50; // Enterprise portion ~50%
+  const aiNativeSegmentShare = 0.10; // AI-native portion ~10% (small base)
+
+  // Baseline market effects
+  const consumerBaseline = -0.06; // -6%
+  const enterpriseBaseline = 0.02; // +2%
+  const aiNativeBaseline = 0.20; // +20%
+
+  // Apply AI protection threshold: if AI capability >= 30, reduce consumer downside by 40%
+  const aiCapability = startingState.capabilities.ai;
+  const aiProtection = aiCapability >= 30 ? 0.4 : 0; // Reduces downside by 40% if threshold met
+
+  // Adjusted consumer effect with AI protection
+  const consumerEffect = consumerBaseline * (1 - aiProtection * 0.5); // 50% of protection benefit
+  const enterpriseEffect = enterpriseBaseline;
+  const aiNativeEffect = aiNativeBaseline;
+
+  // Revenue by segment (starting from Q1 baseline of $200M)
+  const consumerRevenue = startingState.revenue * consumerSegmentShare;
+  const enterpriseRevenue = startingState.revenue * enterpriseSegmentShare;
+  const aiNativeRevenue = startingState.revenue * aiNativeSegmentShare;
+
+  // Apply allocation effects on top of baseline segment effects
+  const consumerAllocation = allocation.consumerGrowth || 0;
+  const enterpriseAllocation = allocation.enterpriseSales || 0;
+  const aiAllocation = allocation.aiProduct || 0;
+
+  // Allocation multiplier: $1M allocation = 0.1% revenue improvement (diminishing returns applied)
+  const consumerAllocBoost = Math.min(0.04, consumerAllocation * 0.004); // Caps at 4%
+  const enterpriseAllocBoost = Math.min(0.05, enterpriseAllocation * 0.005); // Caps at 5%
+  const aiAllocBoost = Math.min(0.08, aiAllocation * 0.012); // Caps at 8%
+
+  // Calculate new revenues
+  const newConsumerRevenue = consumerRevenue * (1 + consumerEffect + consumerAllocBoost);
+  const newEnterpriseRevenue = enterpriseRevenue * (1 + enterpriseEffect + enterpriseAllocBoost);
+  const newAiNativeRevenue = aiNativeRevenue * (1 + aiNativeEffect + aiAllocBoost);
+
+  const newRevenue = newConsumerRevenue + newEnterpriseRevenue + newAiNativeRevenue;
+  const revenueChange = newRevenue - startingState.revenue;
+
+  // Operating costs: fixed + variable on revenue
+  // AI investments increase opex ($0.3M per $1M invested)
+  const additionalAIOpex = aiAllocation * 0.3;
+  const revenueVariableOpex = newRevenue * 0.02; // 2% of revenue as variable opex
+  const newOpex = startingState.operatingCost + additionalAIOpex + revenueVariableOpex;
+  const newOperatingProfit = newRevenue - newOpex;
+
+  // Cash impact
+  const cashChange = newOperatingProfit - startingState.operatingProfit;
+  const newCash = Math.max(5, startingState.cash + cashChange); // Floor at $5M
+
+  // Stock price: market rewards enterprise focus and AI, penalizes consumer-only
+  const enterpriseFocusBoost = enterpriseAllocation > 8 ? 1.08 : 1.0;
+  const aiInvestmentBoost = aiAllocation > 5 ? 1.12 : 1.0;
+  const consumerOverhang = consumerAllocation > 18 ? 0.92 : 1.0;
+  const stockMultiplier = enterpriseFocusBoost * aiInvestmentBoost * consumerOverhang;
+  const stockPriceChange = startingState.stockPrice * (stockMultiplier - 1);
+
+  // Capability changes
+  // AI capability gains from investment, capped at +15 per quarter
+  const aiCapabilityGain = Math.min(15, aiAllocation * 1.2);
+  // Consumer capability loss from disruption, mitigated by allocation
+  const consumerCapabilityChange = -8 + (consumerAllocation * 0.3);
+  // Enterprise capability gains from market opportunity and allocation
+  const enterpriseCapabilityGain = 4 + (enterpriseAllocation * 0.5);
+  // Execution alignment effect
+  const executionChange = ceoOverride ? -3 : 2;
+
+  // Thresholds crossed
+  const thresholdsCrossed: string[] = [];
+  if (aiCapabilityGain >= 10) {
+    thresholdsCrossed.push('🤖 AI capability advanced (+' + aiCapabilityGain.toFixed(0) + ')');
+  }
+  if (aiCapability >= 30 && consumerAllocation > 0) {
+    thresholdsCrossed.push('🛡️ AI protection engaged: consumer downside reduced');
+  }
+  if (newCash < startingState.cash * 0.6) {
+    thresholdsCrossed.push('⚠️ Cash runway tightening—6 month window');
+  }
+  if (enterpriseRevenue * (1 + enterpriseEffect + enterpriseAllocBoost) > enterpriseRevenue * 1.05) {
+    thresholdsCrossed.push('📈 Enterprise segment capturing disruption opportunity (+' + ((enterpriseEffect + enterpriseAllocBoost) * 100).toFixed(1) + '%)');
+  }
+
+  const narrative = `Q2: ChatGPT disrupts the market.
+Consumer willingness to pay weakens (-6% baseline), but enterprise sees AI-augmented workforce learning as strategic.
+
+Your allocation strategy reveals your conviction:
+${consumerAllocation > 18 ? '• Heavy consumer spend ($' + consumerAllocation.toFixed(1) + 'M): Betting disruption is temporary' : consumerAllocation > 8 ? '• Moderate consumer ($' + consumerAllocation.toFixed(1) + 'M): Balanced exposure' : '• Light consumer ($' + consumerAllocation.toFixed(1) + 'M): Conceding market shift'}
+${enterpriseAllocation > 8 ? '• Strong enterprise focus ($' + enterpriseAllocation.toFixed(1) + 'M): Pursuing new market' : '• Modest enterprise ($' + enterpriseAllocation.toFixed(1) + 'M): Cautious on new market'}
+${aiAllocation > 5 ? '• AI investment ($' + aiAllocation.toFixed(1) + 'M): Building competitive moat' : '• Limited AI spend ($' + aiAllocation.toFixed(1) + 'M): Managed risk'}
+
+Revenue result: ${revenueChange > 0 ? '+$' + revenueChange.toFixed(1) + 'M despite market disruption' : '−$' + Math.abs(revenueChange).toFixed(1) + 'M—market uncertainty took hold'}
+${aiCapability >= 30 && consumerAllocation > 0 ? 'Your AI capability shielded consumer revenue from the worst of the downturn.' : 'No AI shield available—consumer segment fully exposed.'}`;
+
+  return {
+    narrative,
+    revenueChange,
+    cashChange,
+    stockPriceChange,
+    productQualityChange: aiCapabilityGain - 2,
+    cultureChange: ceoOverride ? -5 : 1,
+    trustChange: (enterpriseAllocation > 8 ? 3 : -2),
+    capabilityChanges: {
+      consumer: Math.max(-20, consumerCapabilityChange),
+      enterprise: Math.min(20, enterpriseCapabilityGain),
+      ai: aiCapabilityGain,
+      talent: ceoOverride ? -1 : 1,
+      credential: -1,
+      customerSuccess: Math.max(0, enterpriseAllocation * 0.2),
+      growth: Math.min(15, (enterpriseAllocation + aiAllocation) * 0.4),
+      execution: executionChange,
+    },
+    thresholdsCrossed,
+  };
+}
+
+// ============ Q2 OPENING STATE ============
+
 export function getQ2EventContext(): { title: string; description: string } {
   return {
     title: 'ChatGPT Arrives',
     description: 'OpenAI releases ChatGPT. Within weeks, it reaches 100M users. The market wakes up to generative AI as a real force. Consumer willingness to pay begins weakening. Enterprise suddenly sees opportunity in AI-enabled workforce learning.',
   };
+}
+
+// ============ GENERIC QUARTER CONSEQUENCE CALCULATOR ============
+
+export function calculateQuarterConsequence(
+  quarter: number,
+  allocation: Allocation,
+  roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  ceoOverride: boolean,
+  dissentingRoles: string[],
+  startingState: TeamState
+): Consequence | null {
+  switch (quarter) {
+    case 1:
+      return calculateQ1Consequence(allocation, roleVotes || {}, ceoOverride, dissentingRoles, startingState);
+    case 2:
+      return calculateQ2Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
+    default:
+      return null; // Q3+ not yet implemented
+  }
+}
+
+// ============ GENERIC QUARTER CONTENT LOOKUP ============
+
+export function getQuarterContent(
+  quarter: number,
+  gameplayContent: Record<string, any>
+): Record<string, any> | null {
+  const key = 'q' + quarter;
+  return gameplayContent[key] || null;
 }

@@ -13,6 +13,7 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
   const [step, setStep] = useState<'input' | 'teams' | 'joining'>('input');
   const [email, setEmail] = useState('');
   const [teamCount, setTeamCount] = useState(2);
+  const [participationMode, setParticipationModeLocal] = useState<'team_device' | 'individual_device' | 'voting_disabled'>('team_device');
   const [teamNames, setTeamNames] = useState<string[]>(['Team A', 'Team B']);
   const [adminPin, setAdminPin] = useState('');
   const [joinSessionCode, setJoinSessionCode] = useState('');
@@ -36,6 +37,7 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
       game.setSessionCode(data.session_code);
       game.setSessionId(data.session_id);
       game.setTeamCount(teamCount);
+      game.setParticipationMode(participationMode);
       
       // Store admin_pin locally for subsequent facilitator RPCs
       setAdminPin(data.admin_pin);
@@ -197,6 +199,56 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
                   }}
                   required
                 />
+              </div>
+
+              <div className="form-group">
+                <label>Participation Mode:</label>
+                <div className="radio-group">
+                  <div className="radio-option">
+                    <input
+                      type="radio"
+                      name="participation"
+                      value="team_device"
+                      checked={participationMode === 'team_device'}
+                      onChange={(e) => setParticipationModeLocal(e.target.value as any)}
+                      id="team_device"
+                    />
+                    <label htmlFor="team_device">
+                      <strong>One Device Per Team</strong> (Recommended)
+                      <br />
+                      <small>Sequential voting, all votes revealed together</small>
+                    </label>
+                  </div>
+                  <div className="radio-option">
+                    <input
+                      type="radio"
+                      name="participation"
+                      value="voting_disabled"
+                      checked={participationMode === 'voting_disabled'}
+                      onChange={(e) => setParticipationModeLocal(e.target.value as any)}
+                      id="voting_disabled"
+                    />
+                    <label htmlFor="voting_disabled">
+                      <strong>No Role Voting</strong>
+                      <br />
+                      <small>Team proceeds directly to commit without voting</small>
+                    </label>
+                  </div>
+                  <div className="radio-option disabled">
+                    <input
+                      type="radio"
+                      name="participation"
+                      value="individual_device"
+                      disabled
+                      id="individual_device"
+                    />
+                    <label htmlFor="individual_device">
+                      <strong>Individual Devices</strong> (Coming Later)
+                      <br />
+                      <small>One phone per role, concurrent voting</small>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               {error && <div className="error">{error}</div>}
