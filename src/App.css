@@ -1145,3 +1145,28 @@ body {
 .radio-option input[type="radio"]:checked ~ label {
   font-weight: 500;
 }
+
+/* Error message styling */
+.error-message {
+  color: #dc2626;
+  background-color: #fee2e2;
+  border-left: 4px solid #dc2626;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+}
+
+/* Restore checking loading state */
+.mode-select-screen .card h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 0.5rem;
+}
+
+.mode-select-screen .card p {
+  color: #6b7280;
+  margin-bottom: 2rem;
+  font-size: 1.125rem;
+}
