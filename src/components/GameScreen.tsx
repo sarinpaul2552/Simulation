@@ -117,7 +117,16 @@ export default function GameScreen({ sessionCode, onExit }: GameScreenProps) {
         storedAt: Date.now(),
       });
     }
-  }, [game.currentQuarter, game.quarterPhase, game.participationMode]);
+  }, [
+    game.currentTeam,
+    game.sessionCode,
+    game.teamCode,
+    game.sessionId,
+    game.facilitatorEmail,
+    game.currentQuarter,
+    game.quarterPhase,
+    game.participationMode,
+  ]);
 
   if (loading) {
     return <div className="loading">Loading game...</div>;
