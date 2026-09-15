@@ -33,9 +33,11 @@ const STORAGE_KEY = 'coursera_sim_session';
  */
 export function saveSessionState(state: StoredSessionState): void {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const stateStr = JSON.stringify(state);
+    console.log(`[SessionPersistence] SAVE: Q${state.currentQuarter} phase=${state.quarterPhase}`, state);
+    sessionStorage.setItem(STORAGE_KEY, stateStr);
   } catch (err) {
-    console.error('Failed to save session state:', err);
+    console.error('[SessionPersistence] Failed to save session state:', err);
     // Don't throw - graceful degradation if storage fails
   }
 }
@@ -47,18 +49,23 @@ export function saveSessionState(state: StoredSessionState): void {
 export function loadSessionState(): StoredSessionState | null {
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (!stored) return null;
+    if (!stored) {
+      console.log('[SessionPersistence] LOAD: No stored state found');
+      return null;
+    }
     
     const state = JSON.parse(stored) as StoredSessionState;
+    console.log(`[SessionPersistence] LOAD: Q${state.currentQuarter} phase=${state.quarterPhase}`, state);
     
     // Validate required fields exist
     if (!state.sessionCode || !state.teamCode || !state.teamId) {
+      console.warn('[SessionPersistence] LOAD: Missing required fields', state);
       return null;
     }
     
     return state;
   } catch (err) {
-    console.error('Failed to load session state:', err);
+    console.error('[SessionPersistence] Failed to load session state:', err);
     return null;
   }
 }
@@ -69,9 +76,10 @@ export function loadSessionState(): StoredSessionState | null {
  */
 export function clearSessionState(): void {
   try {
+    console.log('[SessionPersistence] CLEAR: Removing stored session');
     sessionStorage.removeItem(STORAGE_KEY);
   } catch (err) {
-    console.error('Failed to clear session state:', err);
+    console.error('[SessionPersistence] Failed to clear session state:', err);
   }
 }
 

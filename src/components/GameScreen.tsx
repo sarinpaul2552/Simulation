@@ -27,6 +27,8 @@ export default function GameScreen({ sessionCode, onExit }: GameScreenProps) {
   useEffect(() => {
     const initialize = async () => {
       try {
+        console.log('[GameScreen] initialize() starting, currentQuarter=', game.currentQuarter, ', quarterPhase=', game.quarterPhase);
+        
         // Load quarter configuration from gameplay.json
         if (gameplayContent.quarterMetadata) {
           game.setQuarterMetadata(gameplayContent.quarterMetadata);
@@ -80,13 +82,18 @@ export default function GameScreen({ sessionCode, onExit }: GameScreenProps) {
         // Only initialize quarter state if not already set by restore
         // On fresh join: currentQuarter is 0 (default), so initialize to 1 + 'event'
         // On restore: currentQuarter is already set, so don't overwrite
+        console.log('[GameScreen] Checking initialization: currentQuarter=' + game.currentQuarter + ', === 0?', game.currentQuarter === 0);
         if (game.currentQuarter === 0) {
+          console.log('[GameScreen] Fresh start detected, initializing to Q1 event');
           game.setCurrentQuarter(1);
           game.setQuarterPhase('event');
+        } else {
+          console.log('[GameScreen] Restore detected, preserving Q' + game.currentQuarter + ' ' + game.quarterPhase);
         }
         
         // Save current session state for refresh recovery
         // (on fresh start: saves quarter 1 + event; on restore: saves restored state)
+        console.log('[GameScreen] Saving state: Q' + game.currentQuarter + ' phase=' + game.quarterPhase);
         saveSessionState({
           sessionCode: game.sessionCode || sessionCode,
           sessionId: game.sessionId || '',
@@ -112,6 +119,7 @@ export default function GameScreen({ sessionCode, onExit }: GameScreenProps) {
   // Save session state whenever key game state changes (for refresh recovery)
   useEffect(() => {
     if (game.currentTeam && game.sessionCode && game.teamCode) {
+      console.log('[GameScreen] Save effect: Q' + game.currentQuarter + ' phase=' + game.quarterPhase);
       saveSessionState({
         sessionCode: game.sessionCode,
         sessionId: game.sessionId || '',

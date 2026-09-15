@@ -36,11 +36,13 @@ export function useSessionRestore(): SessionRestoreResult {
       const storedState = loadSessionState();
       if (!storedState) {
         // No stored session - this is normal on first visit
+        console.log('[SessionRestore] No stored session found, starting fresh');
         setResult({ status: 'idle' });
         return;
       }
 
       // Stored session exists - validate it through Supabase
+      console.log('[SessionRestore] Found stored session, validating...', storedState);
       setResult({ status: 'checking' });
 
       try {
@@ -51,6 +53,7 @@ export function useSessionRestore(): SessionRestoreResult {
 
         if (error || !teamData) {
           // Validation failed - team code is invalid or session expired
+          console.warn('[SessionRestore] Validation failed, session expired or invalid', error);
           clearSessionState();
           setResult({
             status: 'invalid',
@@ -60,6 +63,9 @@ export function useSessionRestore(): SessionRestoreResult {
         }
 
         // Validation succeeded - restore GameContext state
+        console.log('[SessionRestore] Validation succeeded, restoring state...');
+        console.log(`[SessionRestore] Setting currentQuarter=${storedState.currentQuarter}`);
+        console.log(`[SessionRestore] Setting quarterPhase=${storedState.quarterPhase}`);
         game.setSessionCode(storedState.sessionCode);
         game.setSessionId(storedState.sessionId);
         game.setTeamCode(storedState.teamCode);
@@ -100,6 +106,7 @@ export function useSessionRestore(): SessionRestoreResult {
         game.setTeams([team]);
         game.setCurrentTeamId(team.id);
 
+        console.log('[SessionRestore] State restored successfully');
         setResult({ status: 'restored', restoredState: storedState });
       } catch (err: any) {
         console.error('Session restoration error:', err);
