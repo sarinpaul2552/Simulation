@@ -76,18 +76,25 @@ export default function GameScreen({ sessionCode, onExit }: GameScreenProps) {
         setAssignedRole(role);
 
         game.setGamePhase('q1-q8');
-        game.setCurrentQuarter(1);
-        game.setQuarterPhase('event');
         
-        // Save initial session state for refresh recovery
+        // Only initialize quarter state if not already set by restore
+        // On fresh join: currentQuarter is 0 (default), so initialize to 1 + 'event'
+        // On restore: currentQuarter is already set, so don't overwrite
+        if (game.currentQuarter === 0) {
+          game.setCurrentQuarter(1);
+          game.setQuarterPhase('event');
+        }
+        
+        // Save current session state for refresh recovery
+        // (on fresh start: saves quarter 1 + event; on restore: saves restored state)
         saveSessionState({
           sessionCode: game.sessionCode || sessionCode,
           sessionId: game.sessionId || '',
           teamCode: game.teamCode,
           teamId: team.id,
           facilitatorEmail: game.facilitatorEmail,
-          currentQuarter: 1,
-          quarterPhase: 'event',
+          currentQuarter: game.currentQuarter,
+          quarterPhase: game.quarterPhase,
           participationMode: game.participationMode,
           storedAt: Date.now(),
         });
