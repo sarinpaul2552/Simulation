@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
+import { supabase } from '../../services/supabase';
 import gameplayContent from '../../content/gameplay.json';
-import { getQuarterContent } from '../../simulation/engine';
+import { getQuarterContent, calculateQuarterConsequence } from '../../simulation/engine';
 
 interface RoleVote {
   vote: 'yes' | 'no' | 'abstain';
@@ -24,6 +25,7 @@ interface RoleVoteScreenProps {
 export default function RoleVoteScreen({}: RoleVoteScreenProps) {
   const game = useGame();
   const quarterContent = getQuarterContent(game.currentQuarter, gameplayContent);
+  const [loading, setLoading] = useState(false);
 
   if (!quarterContent) {
     return <div className="error">Quarter {game.currentQuarter} not yet implemented</div>;
@@ -41,7 +43,6 @@ export default function RoleVoteScreen({}: RoleVoteScreenProps) {
     Growth: { vote: 'abstain', confidence: 3, rationale: '' },
   });
   const [allVoted, setAllVoted] = useState(false);
-  const [revealed, setRevealed] = useState(false);
 
   const currentRole = roles[currentRoleIndex];
   const isTeamDevice = game.participationMode === 'team_device';
@@ -64,18 +65,79 @@ export default function RoleVoteScreen({}: RoleVoteScreenProps) {
     }
   };
 
-  const handleRevealVotes = () => {
-    setRevealed(true);
-  };
+  const handleProceed = async () => {
+    if (loading) return;
+    setLoading(true);
 
-  const handleProceed = () => {
-    const roleVotesMap: Record<string, RoleVote> = {};
-    roles.forEach((role) => {
-      roleVotesMap[role] = votes[role];
-    });
-    game.setBulkRoleVotes(roleVotesMap);
-    // After role votes submitted, go directly to consequence (skip team-check and commit)
-    game.setQuarterPhase('consequence');
+    try {
+      const roleVotesMap: Record<string, RoleVote> = {};
+      roles.forEach((role) => {
+        roleVotesMap[role] = votes[role];
+      });
+      game.setBulkRoleVotes(roleVotesMap);
+
+      // Submit allocation via RPC
+      if (game.teamCode && game.currentAllocation) {
+        const { error: submitError } = await supabase.rpc('submit_allocation', {
+          p_team_code: game.teamCode,
+          p_quarter: game.currentQuarter,
+          p_allocation_json: game.currentAllocation,
+          p_belief_response: game.currentBelief,
+          p_risks_json: game.currentRisks
+        });
+
+        if (submitError) throw submitError;
+      }
+
+      // Calculate consequences
+      if (game.currentTeam && game.currentAllocation) {
+        const roleVotesForEngine = Object.entries(roleVotesMap).reduce(
+          (acc, [role, voteData]) => ({
+            ...acc,
+            [role]: voteData.vote,
+          }),
+          {} as Record<string, 'yes' | 'no' | 'abstain'>
+        );
+
+        const consequence = calculateQuarterConsequence(
+          game.currentQuarter,
+          game.currentAllocation,
+          roleVotesForEngine,
+          false, // ceoOverride (not used in new flow)
+          [],    // dissentingRoles (not used in new flow)
+          {
+            revenue: game.currentTeam.revenue,
+            operatingCost: game.currentTeam.operating_cost,
+            operatingProfit: game.currentTeam.operating_profit,
+            cash: game.currentTeam.cash,
+            stockPrice: game.currentTeam.stock_price,
+            productQuality: game.currentTeam.product_quality,
+            culture: game.currentTeam.culture,
+            trust: game.currentTeam.trust,
+            capabilities: {
+              consumer: game.currentTeam.capability_consumer,
+              enterprise: game.currentTeam.capability_enterprise,
+              ai: game.currentTeam.capability_ai,
+              talent: game.currentTeam.capability_talent,
+              credential: game.currentTeam.capability_credential,
+              customerSuccess: game.currentTeam.capability_customer_success,
+              growth: game.currentTeam.capability_growth,
+              execution: game.currentTeam.capability_execution,
+            },
+          }
+        );
+
+        if (consequence) {
+          game.setLastConsequence(consequence);
+        }
+      }
+
+      // Transition to consequence phase
+      game.setQuarterPhase('consequence');
+    } catch (err: any) {
+      console.error('Error proceeding:', err);
+      setLoading(false);
+    }
   };
 
   // Team-device sequential voting UI
@@ -135,19 +197,10 @@ export default function RoleVoteScreen({}: RoleVoteScreenProps) {
                 </div>
               </div>
             </div>
-          ) : !revealed ? (
-            <div className="votes-ready">
-              <div className="ready-message">
-                <p>✓ All roles have voted</p>
-                <p>Ready to reveal leadership vote</p>
-              </div>
-              <button onClick={handleRevealVotes} className="btn-primary btn-large">
-                Reveal Leadership Vote
-              </button>
-            </div>
           ) : (
+            // Automatically show results after all votes are in (merged reveal)
             <div className="votes-revealed">
-              <h3>Leadership Positions</h3>
+              <h3>Leadership Positions Revealed</h3>
               <div className="vote-summary">
                 {roles.map((role) => (
                   <div key={role} className={`vote-item vote-${votes[role].vote}`}>
@@ -167,8 +220,13 @@ export default function RoleVoteScreen({}: RoleVoteScreenProps) {
                 </p>
               </div>
 
-              <button onClick={handleProceed} className="btn-primary">
-                Proceed to Team Alignment Check
+              <div className="discussion-prompt">
+                <h3>Team Discussion Summary</h3>
+                <p>All leadership positions are now visible. Your allocation reflects the team's consensus and concerns.</p>
+              </div>
+
+              <button onClick={handleProceed} disabled={loading} className="btn-primary">
+                {loading ? 'Calculating Results...' : 'Continue to Results'}
               </button>
             </div>
           )}
@@ -182,8 +240,8 @@ export default function RoleVoteScreen({}: RoleVoteScreenProps) {
     <div className="quarter-screen role-vote-screen">
       <div className="card">
         <div className="error">Role voting not available in this mode</div>
-        <button onClick={() => game.setQuarterPhase('consequence')} className="btn-primary">
-          Proceed to Consequence
+        <button onClick={handleProceed} disabled={loading} className="btn-primary">
+          {loading ? 'Calculating Results...' : 'Continue to Results'}
         </button>
       </div>
     </div>
