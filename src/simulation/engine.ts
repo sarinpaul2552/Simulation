@@ -522,15 +522,507 @@ export function calculateQuarterConsequence(
     case 2:
       return calculateQ2Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
     case 3:
+      return calculateQ3Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
     case 4:
+      // Q4 requires destination choice from GameContext; handled separately in GameScreen
+      return calculateQ4Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
     case 5:
+      return calculateQ5Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
     case 6:
+      return calculateQ6Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
     case 7:
+      return calculateQ7Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
     case 8:
-      // Quarters 3-8: Not yet implemented. Add calculateQxConsequence function and case here.
-      return null;
+      return calculateQ8Consequence(allocation, roleVotes, ceoOverride, dissentingRoles, startingState);
     default:
       return null;
+  }
+}
+
+// ============ Q3-Q8 CONSEQUENCE ENGINES ============
+
+export function calculateQ3Consequence(
+  allocation: Allocation,
+  _roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  _ceoOverride: boolean,
+  _dissentingRoles: string[],
+  startingState: TeamState
+): Consequence {
+  /**
+   * Q3: Market Consolidation
+   * Market is consolidating. Weak competitors fade.
+   * Q1-Q2 allocation determines capability access and market response.
+   */
+
+  const consumerSegmentShare = 0.40;
+  const enterpriseSegmentShare = 0.50;
+  const aiNativeSegmentShare = 0.10;
+
+  const consumerBaseline = -0.08;
+  const enterpriseBaseline = 0.06;
+  const aiNativeBaseline = 0.25;
+
+  const consumerCapabilityBonus = Math.max(0, (startingState.capabilities.consumer - 30) * 0.003);
+  const enterpriseCapabilityBonus = Math.max(0, (startingState.capabilities.enterprise - 25) * 0.004);
+  const aiCapabilityBonus = startingState.capabilities.ai >= 30 ? 0.15 : -0.15;
+
+  const allocationVariance = Math.abs(allocation.consumerGrowth - 5) + Math.abs(allocation.enterpriseSales - 5) + Math.abs(allocation.aiProduct - 5);
+  const focusBonus = allocationVariance < 15 ? 0.02 : -0.02;
+
+  const consumerRevenue = startingState.revenue * consumerSegmentShare;
+  const enterpriseRevenue = startingState.revenue * enterpriseSegmentShare;
+  const aiNativeRevenue = startingState.revenue * aiNativeSegmentShare;
+
+  const newConsumerRevenue = consumerRevenue * (1 + consumerBaseline + consumerCapabilityBonus + focusBonus);
+  const newEnterpriseRevenue = enterpriseRevenue * (1 + enterpriseBaseline + enterpriseCapabilityBonus + focusBonus);
+  const newAiNativeRevenue = aiNativeRevenue * (1 + aiNativeBaseline + aiCapabilityBonus + focusBonus);
+
+  const newRevenue = newConsumerRevenue + newEnterpriseRevenue + newAiNativeRevenue;
+  const revenueChange = newRevenue - startingState.revenue;
+
+  const aiSpecificOpex = allocation.aiProduct > 0 ? allocation.aiProduct * 0.4 : 0;
+  const revenueVariableOpex = newRevenue * 0.02;
+  const newOpex = startingState.operatingCost + aiSpecificOpex + revenueVariableOpex;
+  const newOperatingProfit = newRevenue - newOpex;
+  const cashChange = newOperatingProfit - startingState.operatingProfit;
+
+  const newCapabilities: Capabilities = { ...startingState.capabilities };
+  newCapabilities.consumer = Math.max(25, startingState.capabilities.consumer - 3 + (allocation.consumerGrowth > 0 ? allocation.consumerGrowth * 0.3 : -5));
+  newCapabilities.enterprise = startingState.capabilities.enterprise + 4 + (allocation.enterpriseSales * 0.4);
+  if (startingState.capabilities.ai >= 20) {
+    newCapabilities.ai = startingState.capabilities.ai + 6 + (allocation.aiProduct * 0.5);
+  } else {
+    newCapabilities.ai = startingState.capabilities.ai + 2;
+  }
+  newCapabilities.ai = Math.min(100, newCapabilities.ai);
+  newCapabilities.consumer = Math.min(100, newCapabilities.consumer);
+  newCapabilities.enterprise = Math.min(100, newCapabilities.enterprise);
+
+  const stockMultiplier = allocationVariance < 15 ? 1.08 : 0.97;
+  const cashMultiplier = newRevenue + cashChange < 15 ? 0.95 : 1.0;
+  const cultureMultiplier = startingState.culture < 60 ? 0.95 : 1.0;
+  const stockPriceChange = startingState.stockPrice * (stockMultiplier * cashMultiplier * cultureMultiplier - 1);
+
+  const thresholdsCrossed: string[] = [];
+  if (startingState.capabilities.consumer < 30) {
+    thresholdsCrossed.push('⚠️ Consumer capability slipping. Market shift accelerating.');
+  }
+  if (startingState.capabilities.enterprise >= 50) {
+    thresholdsCrossed.push('✓ Enterprise capability solid. Q4 option viable.');
+  }
+  if (startingState.capabilities.ai >= 35) {
+    thresholdsCrossed.push('✓ AI leadership emerging. Q4 pure-play AI is option.');
+  }
+  if (newRevenue + cashChange < 15) {
+    thresholdsCrossed.push('🚨 Cash runway critical. Q4 destination must be profitable-path.');
+  }
+  if (startingState.culture < 60) {
+    thresholdsCrossed.push('⚠️ Team stress from uncertainty. Q4 clarity needed.');
+  }
+
+  const narrative = `Q3: Market Consolidation
+
+Your Q1-Q2 choices determine capability access and market response.
+
+${newConsumerRevenue > consumerRevenue * 0.95 ? '• Consumer: Holding share (quality moat working)' : '• Consumer: Pressure mounting (no moat)'}
+${newEnterpriseRevenue > enterpriseRevenue * 1.06 ? '• Enterprise: Strong tailwind (opportunity captured)' : '• Enterprise: Under-exploited'}
+${startingState.capabilities.ai >= 30 ? '• AI-native: Market access granted' : '• AI-native: Market locked out (need >= 30 capability)'}
+
+${allocationVariance < 15 ? '✓ Allocation focused.' : '⚠️ Allocation scattered.'}
+${newRevenue + cashChange >= 15 ? '✓ Cash runway comfortable.' : '🚨 Cash runway tight.'}
+
+Cash impact: ${cashChange > 0 ? '+$' + cashChange.toFixed(1) + 'M' : '−$' + Math.abs(cashChange).toFixed(1) + 'M'}`;
+
+  return {
+    narrative,
+    revenueChange,
+    cashChange,
+    stockPriceChange,
+    capabilityChanges: {
+      consumer: newCapabilities.consumer - startingState.capabilities.consumer,
+      enterprise: newCapabilities.enterprise - startingState.capabilities.enterprise,
+      ai: newCapabilities.ai - startingState.capabilities.ai,
+    },
+    thresholdsCrossed,
+  };
+}
+
+export function calculateQ4Consequence(
+  _allocation: Allocation,
+  roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  ceoOverride: boolean,
+  _dissentingRoles: string[],
+  startingState: TeamState
+): Consequence {
+  /**
+   * Q4: Destination Locked
+   * Teams explicitly choose destination (consumer/enterprise/ai_native/balanced).
+   * Q1-Q3 capabilities determine readiness to execute.
+   * Path dependency: Readiness penalty if unprepared.
+   */
+
+  // For now, calculate generic Q4 consequence without destination (will be enhanced with destination context in GameScreen)
+  const unifiedVotes = roleVotes && Object.values(roleVotes).filter(v => v === 'yes').length >= 4;
+  const baseStock = 1.0;
+  const clarityBonus = 0.08;
+  const alignmentBonus = unifiedVotes ? 0.04 : (ceoOverride ? -0.05 : -0.02);
+  
+  const stockMultiplier = baseStock + clarityBonus + alignmentBonus;
+  const stockPriceChange = startingState.stockPrice * (stockMultiplier - 1);
+
+  let cultureChange = 0;
+  if (unifiedVotes) {
+    cultureChange = 3;
+  } else if (ceoOverride) {
+    cultureChange = -6;
+  } else {
+    cultureChange = -2;
+  }
+
+  const narrative = `Q4: Strategic Destination Locked
+
+Your Q1-Q3 choices have set the table. Q4 is your destination choice point.
+
+${unifiedVotes ? '✓ Team unified on direction.' : ceoOverride ? '⚠️ CEO overrode dissent.' : '⚠️ Team divided.'}
+
+This choice is irreversible. Q5-Q8 will test your execution.`;
+
+  return {
+    narrative,
+    revenueChange: 0,
+    cashChange: 0,
+    stockPriceChange,
+    capabilityChanges: {},
+    thresholdsCrossed: [],
+    cultureChange,
+  };
+}
+
+export function calculateQ5Consequence(
+  allocation: Allocation,
+  _roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  _ceoOverride: boolean,
+  _dissentingRoles: string[],
+  startingState: TeamState
+): Consequence {
+  /**
+   * Q5: Market Validation
+   * Q4 destination choice is tested in market.
+   */
+
+  let baselineGrowth = 0.02;
+  let thresholdsCrossed: string[] = [];
+
+  if (startingState.capabilities.enterprise >= 50) {
+    baselineGrowth = 0.08;
+    thresholdsCrossed.push('✓ Enterprise foundation enabling growth.');
+  } else if (startingState.capabilities.ai >= 45) {
+    baselineGrowth = 0.12;
+    thresholdsCrossed.push('✓ AI differentiation visible. Strong traction.');
+  } else if (startingState.capabilities.consumer >= 60) {
+    baselineGrowth = 0.02;
+    thresholdsCrossed.push('✓ Consumer quality moat holding.');
+  } else {
+    baselineGrowth = -0.02;
+    thresholdsCrossed.push('⚠️ Market validation weak. Strategy questioned.');
+  }
+
+  const revenueChange = startingState.revenue * baselineGrowth;
+  const newRevenue = startingState.revenue + revenueChange;
+
+  const aiSpecificOpex = allocation.aiProduct * 0.4;
+  const revenueVariableOpex = newRevenue * 0.02;
+  const newOpex = startingState.operatingCost + aiSpecificOpex + revenueVariableOpex;
+  const newOperatingProfit = newRevenue - newOpex;
+  const cashChange = newOperatingProfit - startingState.operatingProfit;
+
+  const validationBonus = baselineGrowth > 0 ? 1.06 : 0.95;
+  const stockPriceChange = startingState.stockPrice * (validationBonus - 1);
+
+  const narrative = `Q5: Market Validation
+
+Your Q4 destination choice meets market test.
+
+Revenue impact: ${revenueChange > 0 ? '+$' + revenueChange.toFixed(1) + 'M' : '−$' + Math.abs(revenueChange).toFixed(1) + 'M'}
+
+${thresholdsCrossed.join('\n')}`;
+
+  return {
+    narrative,
+    revenueChange,
+    cashChange,
+    stockPriceChange,
+    capabilityChanges: {},
+    thresholdsCrossed,
+  };
+}
+
+export function calculateQ6Consequence(
+  allocation: Allocation,
+  _roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  _ceoOverride: boolean,
+  _dissentingRoles: string[],
+  startingState: TeamState
+): Consequence {
+  /**
+   * Q6: Competitive Attack
+   * Market competitors respond. Moats matter.
+   */
+
+  let competitiveAttack = -0.06;
+  let moatDefense = 0;
+  let thresholdsCrossed: string[] = [];
+
+  if (startingState.capabilities.enterprise >= 65) {
+    moatDefense = 0.04;
+    thresholdsCrossed.push('✓ Enterprise integration deep. Defending position.');
+  } else if (startingState.capabilities.ai >= 65) {
+    moatDefense = 0.05;
+    thresholdsCrossed.push('✓ AI leadership clear. Innovating faster than competitors.');
+  } else if (startingState.capabilities.consumer >= 75) {
+    moatDefense = 0.04;
+    thresholdsCrossed.push('✓ Consumer quality moat strong.');
+  } else {
+    moatDefense = -0.04;
+    thresholdsCrossed.push('🚨 No defensible moat. Losing share to competitors.');
+  }
+
+  const netEffect = competitiveAttack + moatDefense;
+  const revenueChange = startingState.revenue * netEffect;
+  const newRevenue = startingState.revenue + revenueChange;
+
+  const newOpex = startingState.operatingCost + (allocation.aiProduct * 0.4) + (newRevenue * 0.02);
+  const newOperatingProfit = newRevenue - newOpex;
+  const cashChange = newOperatingProfit - startingState.operatingProfit;
+
+  const moatBonus = moatDefense > 0 ? 1.05 : 0.90;
+  const stockPriceChange = startingState.stockPrice * (moatBonus - 1);
+
+  const narrative = `Q6: Competitive Attack
+
+Competitors respond to your Q4 destination choice.
+
+${moatDefense > 0 ? 'Strong moat. Competitors cannot replicate your position.' : 'Vulnerable to competitive attack.'}
+
+Revenue impact: ${revenueChange < 0 ? '−$' + Math.abs(revenueChange).toFixed(1) + 'M' : '+$' + revenueChange.toFixed(1) + 'M'}
+
+${thresholdsCrossed.join('\n')}`;
+
+  return {
+    narrative,
+    revenueChange,
+    cashChange,
+    stockPriceChange,
+    capabilityChanges: {},
+    thresholdsCrossed,
+  };
+}
+
+export function calculateQ7Consequence(
+  allocation: Allocation,
+  _roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  _ceoOverride: boolean,
+  _dissentingRoles: string[],
+  startingState: TeamState
+): Consequence {
+  /**
+   * Q7: Organizational Execution Stress
+   * Scaling tests organization. Talent and culture matter.
+   */
+
+  let scalingTarget = 0.05;
+
+  if (startingState.capabilities.enterprise >= 50) {
+    scalingTarget = 0.08;
+  } else if (startingState.capabilities.ai >= 50) {
+    scalingTarget = 0.10;
+  }
+
+  let talentConstraint = 1.0;
+  if (startingState.capabilities.talent < 50) {
+    talentConstraint = 0.5;
+  }
+
+  let cultureStress = 0;
+  if (startingState.culture >= 70) {
+    cultureStress = 0;
+  } else if (startingState.culture < 55) {
+    cultureStress = -4;
+  } else {
+    cultureStress = -2;
+  }
+
+  const actualScaling = scalingTarget * talentConstraint;
+  const revenueChange = startingState.revenue * actualScaling;
+  const newRevenue = startingState.revenue + revenueChange;
+
+  const newOpex = startingState.operatingCost + (allocation.aiProduct * 0.4) + (newRevenue * 0.02);
+  const newOperatingProfit = newRevenue - newOpex;
+  const cashChange = newOperatingProfit - startingState.operatingCost;
+
+  const talentBonus = startingState.capabilities.talent >= 65 ? 1.0 : 0.95;
+  const cultureBonus = startingState.culture >= 70 ? 1.0 : 0.92;
+  const stockMultiplier = talentBonus * cultureBonus;
+  const stockPriceChange = startingState.stockPrice * (stockMultiplier - 1);
+
+  const thresholdsCrossed: string[] = [];
+  if (startingState.capabilities.talent < 50) {
+    thresholdsCrossed.push('🚨 Talent shortage. Scaling bottleneck.');
+  }
+  if (cultureStress < 0) {
+    thresholdsCrossed.push('⚠️ Team stress during scaling.');
+  }
+  if (newRevenue + cashChange < 10) {
+    thresholdsCrossed.push('🚨 Cash runway critical. Q8 must be profitable.');
+  }
+
+  const narrative = `Q7: Organizational Execution Stress
+
+Scaling the strategy reveals organizational capacity limits.
+
+Your team's capacity: ${startingState.capabilities.talent >= 65 ? 'Strong' : 'Constrained'}
+Your culture resilience: ${startingState.culture >= 70 ? 'High' : 'Weak'}
+
+Revenue scaling: ${actualScaling > 0 ? '+' + (actualScaling * 100).toFixed(1) + '%' : '0%'}
+
+${thresholdsCrossed.join('\n')}`;
+
+  return {
+    narrative,
+    revenueChange,
+    cashChange,
+    stockPriceChange,
+    capabilityChanges: {},
+    thresholdsCrossed,
+    cultureChange: cultureStress,
+  };
+}
+
+export function calculateQ8Consequence(
+  _allocation: Allocation,
+  _roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  _ceoOverride: boolean,
+  _dissentingRoles: string[],
+  startingState: TeamState
+): Consequence {
+  /**
+   * Q8: Final Quarter & Terminal Score
+   * Multidimensional: Financial + Strategic + Organizational
+   */
+
+  let q8RevenueMultiplier = 1.35;
+
+  if (startingState.capabilities.enterprise >= 60) {
+    q8RevenueMultiplier = 1.50;
+  } else if (startingState.capabilities.ai >= 60) {
+    q8RevenueMultiplier = 1.65;
+  } else if (startingState.capabilities.consumer >= 70) {
+    q8RevenueMultiplier = 1.35;
+  }
+
+  const q8Revenue = startingState.revenue * q8RevenueMultiplier;
+  const revenueChange = q8Revenue - startingState.revenue;
+
+  let ebitdaMargin = 0.38;
+  if (startingState.capabilities.enterprise >= 60) {
+    ebitdaMargin = 0.50;
+  } else if (startingState.capabilities.ai >= 60) {
+    ebitdaMargin = 0.42;
+  }
+
+  const q8EBITDA = q8Revenue * ebitdaMargin;
+  const cashChange = q8EBITDA - startingState.operatingCost;
+  const q8Cash = startingState.cash + cashChange;
+
+  // TERMINAL SCORE (0-100)
+  let terminalScore = 0;
+
+  // Financial (0-33)
+  let financialScore = 0;
+  const revenuePct = q8RevenueMultiplier;
+  if (revenuePct >= 1.5) financialScore += 11;
+  else if (revenuePct >= 1.35) financialScore += 8;
+  else financialScore += 5;
+
+  if (ebitdaMargin > 0.45) financialScore += 11;
+  else if (ebitdaMargin > 0.35) financialScore += 8;
+  else financialScore += 5;
+
+  if (q8Cash > 80) financialScore += 11;
+  else if (q8Cash > 50) financialScore += 8;
+  else financialScore += 3;
+
+  // Strategic (0-33)
+  let strategicScore = 0;
+  if (startingState.capabilities.enterprise >= 70 || startingState.capabilities.ai >= 70 || startingState.capabilities.consumer >= 75) {
+    strategicScore += 11;
+  } else if (startingState.capabilities.enterprise >= 55 || startingState.capabilities.ai >= 55) {
+    strategicScore += 7;
+  } else {
+    strategicScore += 4;
+  }
+
+  strategicScore += 8; // Coherence bonus (simplified; would check allocation history)
+
+  strategicScore += 10; // Market position (simplified)
+
+  // Organizational (0-34)
+  let orgScore = 0;
+  if (startingState.culture >= 75) orgScore += 11;
+  else if (startingState.culture >= 60) orgScore += 7;
+  else orgScore += 4;
+
+  if (startingState.capabilities.talent >= 70) orgScore += 11;
+  else if (startingState.capabilities.talent >= 55) orgScore += 7;
+  else orgScore += 4;
+
+  orgScore += 10; // Execution alignment (simplified)
+
+  terminalScore = Math.min(100, financialScore + strategicScore + orgScore);
+
+  let verdict = 'FAILURE';
+  if (terminalScore >= 80) verdict = 'WINNER';
+  else if (terminalScore >= 60) verdict = 'SURVIVOR';
+  else if (terminalScore >= 40) verdict = 'STRUGGLING';
+
+  const narrative = `Q8: Terminal Outcome
+
+Your eight-quarter journey complete.
+
+FINANCIAL:
+Revenue: $${Math.round(q8Revenue)}M (${((q8RevenueMultiplier - 1) * 100).toFixed(0)}% growth)
+EBITDA: $${Math.round(q8EBITDA)}M (${(ebitdaMargin * 100).toFixed(0)}% margin)
+Cash: $${Math.round(q8Cash)}M
+
+TERMINAL SCORE: ${Math.round(terminalScore)}/100 - ${verdict}
+
+Your strategic choices in Q1-Q3 determined your Q4 options. Q4 destination locked your path. Q5-Q8 execution determined your outcome.
+
+${terminalVerdictNarrative(terminalScore)}`;
+
+  return {
+    narrative,
+    revenueChange,
+    cashChange,
+    stockPriceChange: 0,
+    capabilityChanges: {},
+    thresholdsCrossed: [
+      `Terminal Score: ${Math.round(terminalScore)}/100`,
+      `Financial: ${financialScore}/33 | Strategic: ${strategicScore}/33 | Organizational: ${orgScore}/34`,
+      verdict,
+    ],
+  };
+}
+
+function terminalVerdictNarrative(score: number): string {
+  if (score >= 80) {
+    return 'Congratulations. You are the market leader. Your financial returns justify the bet. Your team is engaged. Your company is sustainable and growable.';
+  } else if (score >= 60) {
+    return 'You survived. Your position is defensible but not dominant. Your organization held together. You are a valuable acquisition target or sustainable niche player.';
+  } else if (score >= 40) {
+    return 'You are struggling. Strategy had flaws or execution failed. Fundamental restructuring required. Acquisition or merger likely.';
+  } else {
+    return 'Your strategy failed. Financial crisis. Organization broken. Bankruptcy or acquisition imminent.';
   }
 }
 

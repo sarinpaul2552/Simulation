@@ -11,34 +11,34 @@
       "description": "Q2: ChatGPT Arrives"
     },
     "q3": {
-      "available": false,
-      "consequenceEngine": null,
-      "description": "Q3: Not yet available"
+      "available": true,
+      "consequenceEngine": "calculateQ3Consequence",
+      "description": "Q3: Market Consolidation"
     },
     "q4": {
-      "available": false,
-      "consequenceEngine": null,
-      "description": "Q4: Not yet available"
+      "available": true,
+      "consequenceEngine": "calculateQ4Consequence",
+      "description": "Q4: Destination Locked"
     },
     "q5": {
-      "available": false,
-      "consequenceEngine": null,
-      "description": "Q5: Not yet available"
+      "available": true,
+      "consequenceEngine": "calculateQ5Consequence",
+      "description": "Q5: Market Validation"
     },
     "q6": {
-      "available": false,
-      "consequenceEngine": null,
-      "description": "Q6: Not yet available"
+      "available": true,
+      "consequenceEngine": "calculateQ6Consequence",
+      "description": "Q6: Competitive Attack"
     },
     "q7": {
-      "available": false,
-      "consequenceEngine": null,
-      "description": "Q7: Not yet available"
+      "available": true,
+      "consequenceEngine": "calculateQ7Consequence",
+      "description": "Q7: Execution Stress"
     },
     "q8": {
-      "available": false,
-      "consequenceEngine": null,
-      "description": "Q8: Not yet available"
+      "available": true,
+      "consequenceEngine": "calculateQ8Consequence",
+      "description": "Q8: Terminal Outcome"
     }
   },
   "q1": {
@@ -194,6 +194,354 @@
       "product": "AI is now table stakes. Is our current product investment sufficient?",
       "people": "Our team is stressed by rapid change. Culture may suffer. How do we support them?",
       "growth": "Revenue is under pressure from consumer churn, but enterprise is waking up. Where is your growth focus?"
+    }
+  },
+  "q3": {
+    "event_title": "Market Consolidation",
+    "event_description": "The market is consolidating post-ChatGPT shakeout. Weak competitors are fading. Instructors are choosing platforms. Enterprises are evaluating. Your Q1-Q2 choices now determine your market access and capability advantage.",
+    "available_capital": 30,
+    "belief": {
+      "prompt": "What is your core competitive advantage going into Q4?",
+      "options": [
+        {
+          "value": "quality_moat",
+          "label": "Quality differentiation. Our content and instructors are the moat."
+        },
+        {
+          "value": "enterprise_integration",
+          "label": "Enterprise integration. We're becoming the embedded learning platform."
+        },
+        {
+          "value": "ai_innovation",
+          "label": "AI innovation. Our AI capabilities are pulling ahead of competitors."
+        },
+        {
+          "value": "diversified_presence",
+          "label": "Diversified presence. We're winning across multiple segments."
+        }
+      ]
+    },
+    "risks": {
+      "prompt": "What worries you most about Q3 market shifts?",
+      "options": [
+        {
+          "value": "consumer_decline",
+          "label": "Consumer segment continuing to decline",
+          "description": "Free AI alternatives are real threat"
+        },
+        {
+          "value": "enterprise_delay",
+          "label": "Enterprise sales cycles taking longer than expected",
+          "description": "B2B decision-making is slow"
+        },
+        {
+          "value": "ai_leapfrog",
+          "label": "Competitors leapfrogging us on AI",
+          "description": "Venture-backed startups moving fast"
+        },
+        {
+          "value": "cash_pressure",
+          "label": "Cash runway pressure from dual investment",
+          "description": "Maintaining old model while building new"
+        }
+      ]
+    },
+    "role_hints": {
+      "ceo": "Q3 reveals which of your Q1-Q2 bets are working. Are you prepared to make Q4 a true strategic choice, or are you hedging?",
+      "cfo": "Cash runway is your Q4 option generator. What options does current cash give us?",
+      "product": "Your capability stack from Q1-Q2 now determines what's possible in Q3-Q8. Can we fix weak areas, or do we live with what we built?",
+      "people": "Team is watching market moves closely. Uncertainty is growing. Q4 clarity will either energize or demoralize. Prepare them.",
+      "growth": "Market segments are differentiating. Volume consumer is under pressure. Enterprise and AI are the growth vectors. Where do you want to win?"
+    }
+  },
+  "q4": {
+    "event_title": "Destination Locked",
+    "event_description": "This is the pivot point. You choose your destination for Q5-Q8. This choice is irreversible. Your Q1-Q3 allocation and capabilities determine your readiness to execute. Choose wisely.",
+    "available_capital": 30,
+    "belief": {
+      "prompt": "Which destination best fits our company?",
+      "options": [
+        {
+          "value": "consumer",
+          "label": "Consumer. Premium experience for individual learners."
+        },
+        {
+          "value": "enterprise",
+          "label": "Enterprise. Embedded learning platform for organizations."
+        },
+        {
+          "value": "ai_native",
+          "label": "AI-native. Pure-play AI learning engine."
+        },
+        {
+          "value": "balanced",
+          "label": "Balanced. Diversified across all three segments."
+        }
+      ]
+    },
+    "risks": {
+      "prompt": "What is the biggest risk in your chosen destination?",
+      "options": [
+        {
+          "value": "unprepared",
+          "label": "We're not prepared for this destination",
+          "description": "Q1-Q3 didn't build the right capabilities"
+        },
+        {
+          "value": "execution",
+          "label": "Our team can't execute at this scale",
+          "description": "Talent and culture constraints"
+        },
+        {
+          "value": "market_shift",
+          "label": "Market shifts away from our chosen segment",
+          "description": "Our bet on the wrong horse"
+        },
+        {
+          "value": "competitor",
+          "label": "Competitors dominate our chosen destination",
+          "description": "We're not the market leader"
+        }
+      ]
+    },
+    "role_hints": {
+      "ceo": "This is your call. Unit test your rationale: Can we execute this? Do we have the capabilities? Is this where we want to win?",
+      "cfo": "Cash runway determines Q4-Q8 survival. Conservative destination if cash tight. Aggressive destination if cash strong.",
+      "product": "Our product capabilities have been set by Q1-Q3 investment. This destination choice either leverages our strengths or exposes our weaknesses.",
+      "people": "Team unity on Q4 choice determines Q5-Q8 execution. Override their dissent and you risk execution failure during crunch times.",
+      "growth": "Your chosen destination determines your revenue model Q5-Q8. Growth rates, margins, and volatility all change based on this choice."
+    }
+  },
+  "q5": {
+    "event_title": "Market Validation",
+    "event_description": "Your Q4 destination choice meets the market for the first time. Is your strategy gaining traction? Do customers respond? Are your capabilities sufficient for execution?",
+    "available_capital": 30,
+    "belief": {
+      "prompt": "How is the market responding to your Q4 choice?",
+      "options": [
+        {
+          "value": "stronger_expected",
+          "label": "Stronger than expected. Early validation is clear."
+        },
+        {
+          "value": "as_expected",
+          "label": "As expected. Tracking to plan."
+        },
+        {
+          "value": "weaker_expected",
+          "label": "Weaker than expected. Market is skeptical."
+        },
+        {
+          "value": "unclear",
+          "label": "Unclear. Too early to tell."
+        }
+      ]
+    },
+    "risks": {
+      "prompt": "What's the biggest Q5 surprise?",
+      "options": [
+        {
+          "value": "capability_gap",
+          "label": "Our capabilities aren't ready to execute",
+          "description": "We chose strategy we can't yet deliver"
+        },
+        {
+          "value": "market_access",
+          "label": "Market access is harder than expected",
+          "description": "Customers take longer to commit"
+        },
+        {
+          "value": "competitive_response",
+          "label": "Competitors responded faster than expected",
+          "description": "Market is already crowded"
+        },
+        {
+          "value": "cash_burn",
+          "label": "Cash burn faster than modeled",
+          "description": "Q8 survival may require profitability sooner"
+        }
+      ]
+    },
+    "role_hints": {
+      "ceo": "Q5 validation determines team morale. Strong signal energizes. Weak signal creates doubt. How do you communicate this result?",
+      "cfo": "Q5 revenue trajectory determines Q8 cash position. Early weakness means we need profitability by Q7.",
+      "product": "Q5 market response tests if your capabilities are truly differentiated. Execution gaps will be visible now.",
+      "people": "Q5 result impacts team confidence. Clear strategy validation (or refutation) affects culture and attrition risk.",
+      "growth": "Q5 determines if your Q4 destination has market demand. No validation = execution becomes much harder Q6-Q8."
+    }
+  },
+  "q6": {
+    "event_title": "Competitive Attack",
+    "event_description": "Q5 proved your strategy is real. Now competitors respond. Market gets crowded. Weak positions get crushed. Strong moats pay off. Can you defend your position?",
+    "available_capital": 30,
+    "belief": {
+      "prompt": "How do you defend your position against competitive attack?",
+      "options": [
+        {
+          "value": "quality_differentiation",
+          "label": "Quality differentiation. Our product/experience is superior."
+        },
+        {
+          "value": "switching_costs",
+          "label": "Switching costs. Our customers are locked in."
+        },
+        {
+          "value": "price_leadership",
+          "label": "Price leadership. We out-compete on cost."
+        },
+        {
+          "value": "segment_migration",
+          "label": "Segment migration. Move upmarket or into new segment."
+        }
+      ]
+    },
+    "risks": {
+      "prompt": "What's your biggest Q6 vulnerability?",
+      "options": [
+        {
+          "value": "no_moat",
+          "label": "We have no defensible moat",
+          "description": "Competitors are feature-parity or better"
+        },
+        {
+          "value": "margin_pressure",
+          "label": "Margin pressure from price competition",
+          "description": "We must discount or lose share"
+        },
+        {
+          "value": "customer_churn",
+          "label": "Customer churn to competitors",
+          "description": "Switching costs are lower than we thought"
+        },
+        {
+          "value": "talent_drain",
+          "label": "Talent drain to better-funded competitors",
+          "description": "Our best people are leaving"
+        }
+      ]
+    },
+    "role_hints": {
+      "ceo": "Q6 is your moat test. Do you have a defensible position? If not, Q7-Q8 are about survival, not growth.",
+      "cfo": "Competitive pressure means margin pressure. Can we sustain profitability while defending share?",
+      "product": "Competitive attack targets capability gaps. What's our sustainable competitive advantage?",
+      "people": "Team morale is under pressure from competitive intensity. Culture takes a hit Q6. How do we keep the team unified?",
+      "growth": "Q6 is about defending share or accepting decline. Growth is likely on hold. Focus is execution."
+    }
+  },
+  "q7": {
+    "event_title": "Organizational Execution Stress",
+    "event_description": "Q6 competitive pressure is passing. But now Q7 asks: Can your organization actually scale? Execution and talent constraints become visible. This is the final test before Q8.",
+    "available_capital": 30,
+    "belief": {
+      "prompt": "Are we scaling our strategy successfully?",
+      "options": [
+        {
+          "value": "scaling_smoothly",
+          "label": "Scaling smoothly. Organization is keeping pace."
+        },
+        {
+          "value": "hitting_limits",
+          "label": "Hitting organizational limits. Friction is increasing."
+        },
+        {
+          "value": "organizational_stress",
+          "label": "Serious stress. Scaling is straining the organization."
+        },
+        {
+          "value": "talent_shortage",
+          "label": "Talent shortage. We cannot hire/retain what we need."
+        }
+      ]
+    },
+    "risks": {
+      "prompt": "What's blocking Q7 scaling?",
+      "options": [
+        {
+          "value": "culture_damage",
+          "label": "Culture damage from stress and uncertainty",
+          "description": "Team morale is fragile"
+        },
+        {
+          "value": "tech_debt",
+          "label": "Technical debt limiting our ability to scale",
+          "description": "System is creaking under load"
+        },
+        {
+          "value": "execution_alignment",
+          "label": "Execution alignment issues (roles pulling different directions)",
+          "description": "Team is not unified"
+        },
+        {
+          "value": "cash_constraint",
+          "label": "Cash constraint limiting investments",
+          "description": "We're out of runway to invest"
+        }
+      ]
+    },
+    "role_hints": {
+      "ceo": "Q7 is your scaling test. Can the organization actually deliver Q4 strategy? Q8 will show if you chose the right destination AND could execute.",
+      "cfo": "Q7 is the final cash runway check. Q8 must be profitable or we die. Do we have runway to reach profitability?",
+      "product": "Q7 tests if your product can scale without quality degradation. Tech debt from Q1-Q6 now comes due.",
+      "people": "Q7 is crunch time. Team stress is maximum. Culture must hold or attrition spikes. Burnout is real risk.",
+      "growth": "Q7 is about execution, not growth. Revenue scaling depends on organizational capacity. Can we scale without breaking?"
+    }
+  },
+  "q8": {
+    "event_title": "Terminal Outcome",
+    "event_description": "Eight quarters complete. Your strategy revealed. Winners and losers clear. Now the retrospective: Did your choices lead to winning? Multidimensional scorecard: Financial + Strategic + Organizational. What did you learn?",
+    "available_capital": 0,
+    "belief": {
+      "prompt": "What does your Q1-Q8 journey teach you?",
+      "options": [
+        {
+          "value": "strategy_was_right",
+          "label": "Strategy was right. Market validated our bet."
+        },
+        {
+          "value": "strategy_was_wrong",
+          "label": "Strategy was wrong. Market rejected our destination."
+        },
+        {
+          "value": "execution_failed",
+          "label": "Strategy was right but execution failed."
+        },
+        {
+          "value": "luck_helped",
+          "label": "Our strategy worked but market luck helped."
+        }
+      ]
+    },
+    "risks": {
+      "prompt": "What would you do differently?",
+      "options": [
+        {
+          "value": "capability_build",
+          "label": "Invest more in capability building Q1-Q3",
+          "description": "Readiness matters"
+        },
+        {
+          "value": "culture_focus",
+          "label": "Invest more in culture and talent Q1-Q3",
+          "description": "Execution requires healthy team"
+        },
+        {
+          "value": "different_destination",
+          "label": "Choose different Q4 destination",
+          "description": "This market wasn't right for us"
+        },
+        {
+          "value": "earlier_pivot",
+          "label": "Pivot earlier when strategy failed",
+          "description": "Don't stay locked in failed destination"
+        }
+      ]
+    },
+    "role_hints": {
+      "ceo": "Your Q4 destination choice cascaded through Q5-Q8. Early capability bets determined whether you were ready. Smart strategy + execution = winning.",
+      "cfo": "Cash management Q1-Q7 determined your Q8 options. Conservative burn enabled strategic optionality.",
+      "product": "Your Q1-Q3 capability investments are now your competitive advantage or disadvantage. No shortcuts.",
+      "people": "Your team's culture and execution alignment determined Q5-Q8 success. Happy, unified teams execute strategy. Fractured teams fail.",
+      "growth": "Q1-Q8 was about choosing where to compete and building the capabilities to win there. Growth came from coherence and execution, not luck."
     }
   }
 }
