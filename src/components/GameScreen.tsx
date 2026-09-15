@@ -12,6 +12,7 @@ import ConsequenceScreen from './quarters/ConsequenceScreen';
 import ReflectScreen from './quarters/ReflectScreen';
 import EventScreen from './quarters/EventScreen';
 import CompanyDashboard from './CompanyDashboard';
+import ScenarioContextPanel from './ScenarioContextPanel';
 import gameplayContent from '../content/gameplay.json';
 
 interface GameScreenProps {
@@ -152,6 +153,8 @@ export default function GameScreen({ sessionCode, onExit }: GameScreenProps) {
       </header>
 
       <CompanyDashboard team={game.currentTeam} quarter={game.currentQuarter} />
+
+      <ScenarioContextPanel />
 
       <main className="game-main">
         {game.quarterPhase === 'event' && <EventScreen />}

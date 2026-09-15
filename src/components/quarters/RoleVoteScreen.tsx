@@ -74,7 +74,8 @@ export default function RoleVoteScreen({}: RoleVoteScreenProps) {
       roleVotesMap[role] = votes[role];
     });
     game.setBulkRoleVotes(roleVotesMap);
-    game.setQuarterPhase('team-check');
+    // After role votes submitted, go directly to consequence (skip team-check and commit)
+    game.setQuarterPhase('consequence');
   };
 
   // Team-device sequential voting UI
@@ -181,8 +182,8 @@ export default function RoleVoteScreen({}: RoleVoteScreenProps) {
     <div className="quarter-screen role-vote-screen">
       <div className="card">
         <div className="error">Role voting not available in this mode</div>
-        <button onClick={() => game.setQuarterPhase('team-check')} className="btn-primary">
-          Skip to Team Check
+        <button onClick={() => game.setQuarterPhase('consequence')} className="btn-primary">
+          Proceed to Consequence
         </button>
       </div>
     </div>

@@ -38,8 +38,8 @@ export default function RiskScreen() {
   const handleProceed = () => {
     if (selectedRisks.length > 0) {
       game.setCurrentRisks(selectedRisks);
-      // Skip role-vote if voting is disabled
-      const nextPhase = game.participationMode === 'voting_disabled' ? 'team-check' : 'role-vote';
+      // Skip role-vote and team-check; go directly to consequence
+      const nextPhase = game.participationMode === 'voting_disabled' ? 'consequence' : 'role-vote';
       game.setQuarterPhase(nextPhase);
     }
   };
