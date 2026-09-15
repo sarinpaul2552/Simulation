@@ -29,9 +29,21 @@ export interface SessionRestoreResult {
 export function useSessionRestore(): SessionRestoreResult {
   const game = useGame();
   const [result, setResult] = useState<SessionRestoreResult>({ status: 'idle' });
+  const [executionCount] = useState(() => {
+    const count = { value: 0 };
+    console.log('[useSessionRestore] Hook instantiated');
+    return count;
+  });
 
   useEffect(() => {
+    executionCount.value++;
+    console.log(`[useSessionRestore] Effect running, execution #${executionCount.value}`);
+    console.log('[useSessionRestore] Current game object:',
+      `quarter=${game.currentQuarter}, phase=${game.quarterPhase}, teamCode=${game.teamCode}`);
+    
     const restore = async () => {
+      console.log(`[useSessionRestore] Effect #${executionCount.value}: restore() executing`);
+      
       // Check for stored session
       const storedState = loadSessionState();
       if (!storedState) {
