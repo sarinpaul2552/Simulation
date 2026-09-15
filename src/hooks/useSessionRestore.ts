@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useGame } from '../context/GameContext';
 import { supabase } from '../services/supabase';
 import { loadSessionState, clearSessionState, StoredSessionState } from '../services/sessionPersistence';
@@ -10,63 +10,69 @@ export interface SessionRestoreResult {
 }
 
 /**
- * Hook to automatically restore game session on app load.
+ * Hook to automatically restore game session on app load ONCE.
  * 
- * Flow:
- * 1. Check if stored session exists in sessionStorage
- * 2. If yes, validate credentials through Supabase RPC (get_team_state)
- * 3. If valid, restore all GameContext state and return status='restored'
- * 4. If invalid/error, clear storage and return appropriate error status
+ * Restoration lifecycle: not_started → restoring → restored
  * 
- * Usage in App.tsx:
- *   const restore = useSessionRestore();
- *   if (restore.status === 'restored') {
- *     // Show GameScreen
- *   } else if (restore.status === 'invalid') {
- *     // Show error message: restore.error
- *   }
+ * After reaching 'restored' state, this hook will NOT run restore again
+ * unless there is an explicit reconnect/logout action.
+ * 
+ * This is a one-shot bootstrap operation only.
+ * Ordinary gameplay state changes (quarter, phase, etc.) MUST NOT trigger restore.
  */
 export function useSessionRestore(): SessionRestoreResult {
   const game = useGame();
   const [result, setResult] = useState<SessionRestoreResult>({ status: 'idle' });
-  const [executionCount] = useState(() => {
-    const count = { value: 0 };
-    console.log('[useSessionRestore] Hook instantiated');
-    return count;
-  });
+  
+  // Track restoration state to prevent re-running after bootstrap
+  const restoreStateRef = useRef<'not_started' | 'restoring' | 'restored'>('not_started');
+  const restoreInProgressRef = useRef<boolean>(false);
 
+  // Run ONLY once at app bootstrap, when component first mounts
+  // Empty dependency array = run only on initial mount, never again
   useEffect(() => {
-    executionCount.value++;
-    console.log(`[useSessionRestore] Effect running, execution #${executionCount.value}`);
-    console.log('[useSessionRestore] Current game object:',
-      `quarter=${game.currentQuarter}, phase=${game.quarterPhase}, teamCode=${game.teamCode}`);
-    
+    // If already restored or restore is in progress, don't run again
+    if (restoreStateRef.current !== 'not_started' || restoreInProgressRef.current) {
+      console.log('[useSessionRestore] Already in progress or completed, skipping');
+      return;
+    }
+
     const restore = async () => {
-      console.log(`[useSessionRestore] Effect #${executionCount.value}: restore() executing`);
-      
-      // Check for stored session
-      const storedState = loadSessionState();
-      if (!storedState) {
-        // No stored session - this is normal on first visit
-        console.log('[SessionRestore] No stored session found, starting fresh');
-        setResult({ status: 'idle' });
+      // Prevent concurrent restore attempts
+      if (restoreInProgressRef.current) {
+        console.log('[useSessionRestore] Restore already in progress, ignoring duplicate request');
         return;
       }
 
-      // Stored session exists - validate it through Supabase
-      console.log('[SessionRestore] Found stored session, validating...', storedState);
-      setResult({ status: 'checking' });
+      restoreInProgressRef.current = true;
+      restoreStateRef.current = 'restoring';
+      console.log('[useSessionRestore] Bootstrap: Starting one-shot restore');
 
       try {
+        // Check for stored session
+        const storedState = loadSessionState();
+        if (!storedState) {
+          // No stored session - this is normal on first visit
+          console.log('[useSessionRestore] Bootstrap: No stored state, starting fresh');
+          restoreStateRef.current = 'restored';
+          setResult({ status: 'idle' });
+          return;
+        }
+
+        // Stored session exists - validate it through Supabase
+        console.log('[useSessionRestore] Bootstrap: Validating stored session');
+        setResult({ status: 'checking' });
+
         // Validate team code through RPC
         const { data: teamData, error } = await supabase.rpc('get_team_state', {
           p_team_code: storedState.teamCode,
         });
 
         if (error || !teamData) {
-          // Validation failed - team code is invalid or session expired
-          console.warn('[SessionRestore] Validation failed, session expired or invalid', error);
+          // Validation failed
+          console.warn('[useSessionRestore] Bootstrap: Validation failed, clearing storage');
           clearSessionState();
+          restoreStateRef.current = 'restored';
           setResult({
             status: 'invalid',
             error: 'Session expired or team code invalid. Please join again.',
@@ -75,9 +81,8 @@ export function useSessionRestore(): SessionRestoreResult {
         }
 
         // Validation succeeded - restore GameContext state
-        console.log('[SessionRestore] Validation succeeded, restoring state...');
-        console.log(`[SessionRestore] Setting currentQuarter=${storedState.currentQuarter}`);
-        console.log(`[SessionRestore] Setting quarterPhase=${storedState.quarterPhase}`);
+        console.log('[useSessionRestore] Bootstrap: Restoration validated, restoring GameContext');
+        
         game.setSessionCode(storedState.sessionCode);
         game.setSessionId(storedState.sessionId);
         game.setTeamCode(storedState.teamCode);
@@ -118,20 +123,24 @@ export function useSessionRestore(): SessionRestoreResult {
         game.setTeams([team]);
         game.setCurrentTeamId(team.id);
 
-        console.log('[SessionRestore] State restored successfully');
+        console.log('[useSessionRestore] Bootstrap: Restoration complete');
+        restoreStateRef.current = 'restored';
         setResult({ status: 'restored', restoredState: storedState });
       } catch (err: any) {
-        console.error('Session restoration error:', err);
+        console.error('[useSessionRestore] Bootstrap: Restoration error:', err);
         clearSessionState();
+        restoreStateRef.current = 'restored';
         setResult({
           status: 'error',
           error: `Failed to restore session: ${err?.message || 'Unknown error'}`,
         });
+      } finally {
+        restoreInProgressRef.current = false;
       }
     };
 
     restore();
-  }, [game]);
+  }, []); // ← EMPTY dependency array: runs only once on mount, never again
 
   return result;
 }

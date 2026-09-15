@@ -15,8 +15,6 @@ function AppContent() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   
   const restore = useSessionRestore();
-  
-  console.log('[AppContent] Render, restore.status=' + restore.status);
 
   // On mount, check if we can restore a session
   useEffect(() => {

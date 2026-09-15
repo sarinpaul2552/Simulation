@@ -200,9 +200,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return quarterMetadata[key]?.available || false;
   }, [quarterMetadata]);
   
-  const value = useMemo<GameContextType>(() => {
-    console.log('[GameContext] useMemo recreating value object, quarter=' + currentQuarter + ', phase=' + quarterPhase);
-    return ({
+  const value = useMemo<GameContextType>(() => ({
     sessionCode,
     sessionId,
     facilitatorEmail,
@@ -255,8 +253,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getAvailableQuarters,
     getNextAvailableQuarter,
     isQuarterAvailable,
-  }); // Close return statement for object
-  }, [
+  }), [
     sessionCode,
     sessionId,
     facilitatorEmail,

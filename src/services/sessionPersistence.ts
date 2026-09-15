@@ -37,23 +37,7 @@ const STORAGE_KEY = 'coursera_sim_session';
 export function saveSessionState(state: StoredSessionState): void {
   try {
     const stateStr = JSON.stringify(state);
-    console.log(`[SessionPersistence] SAVE: Q${state.currentQuarter} phase=${state.quarterPhase}`, state);
-    console.log(`[SessionPersistence] SAVE KEY: "${STORAGE_KEY}"`);
-    console.log(`[SessionPersistence] SAVE ORIGIN: ${window.location.origin}`);
-    console.log(`[SessionPersistence] SAVE localStorage available: ${typeof localStorage !== 'undefined'}`);
-    console.log('[SessionPersistence] SAVE STACK:', new Error().stack?.split('\n').slice(1, 5).join('\n'));
-    
     localStorage.setItem(STORAGE_KEY, stateStr);
-    
-    // Immediately verify what was actually saved
-    const verification = localStorage.getItem(STORAGE_KEY);
-    console.log(`[SessionPersistence] SAVE VERIFICATION - getItem("${STORAGE_KEY}"):`, verification ? 'FOUND' : 'NOT FOUND');
-    if (verification) {
-      console.log(`[SessionPersistence] SAVE VERIFICATION - length=${verification.length}`);
-    }
-    
-    // Also log all keys in localStorage
-    console.log(`[SessionPersistence] SAVE - All localStorage keys:`, Object.keys(localStorage));
   } catch (err) {
     console.error('[SessionPersistence] Failed to save session state:', err);
     // Don't throw - graceful degradation if storage fails
@@ -66,26 +50,16 @@ export function saveSessionState(state: StoredSessionState): void {
  */
 export function loadSessionState(): StoredSessionState | null {
   try {
-    console.log(`[SessionPersistence] LOAD - Attempting to load key: "${STORAGE_KEY}"`);
-    console.log(`[SessionPersistence] LOAD - Origin: ${window.location.origin}`);
-    console.log(`[SessionPersistence] LOAD localStorage available: ${typeof localStorage !== 'undefined'}`);
-    console.log(`[SessionPersistence] LOAD - All localStorage keys:`, Object.keys(localStorage));
-    console.log('[SessionPersistence] LOAD STACK:', new Error().stack?.split('\n').slice(1, 5).join('\n'));
-    
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) {
-      console.log(`[SessionPersistence] LOAD: No stored state found (getItem returned null)`);
-      console.log(`[SessionPersistence] LOAD: Checked key "${STORAGE_KEY}" in origin ${window.location.origin}`);
       return null;
     }
     
-    console.log(`[SessionPersistence] LOAD - Found stored data, length=${stored.length}`);
     const state = JSON.parse(stored) as StoredSessionState;
-    console.log(`[SessionPersistence] LOAD: Q${state.currentQuarter} phase=${state.quarterPhase}`, state);
     
     // Validate required fields exist
     if (!state.sessionCode || !state.teamCode || !state.teamId) {
-      console.warn('[SessionPersistence] LOAD: Missing required fields', state);
+      console.warn('[SessionPersistence] Loaded state missing required fields');
       return null;
     }
     
@@ -102,14 +76,7 @@ export function loadSessionState(): StoredSessionState | null {
  */
 export function clearSessionState(): void {
   try {
-    console.log('[SessionPersistence] CLEAR: Removing stored session');
-    console.log('[SessionPersistence] CLEAR - Key: "${STORAGE_KEY}"');
-    console.log('[SessionPersistence] CLEAR - Origin:', window.location.origin);
-    console.log(`[SessionPersistence] CLEAR - Before: localStorage has key? ${localStorage.getItem(STORAGE_KEY) !== null}`);
-    
     localStorage.removeItem(STORAGE_KEY);
-    
-    console.log(`[SessionPersistence] CLEAR - After: localStorage has key? ${localStorage.getItem(STORAGE_KEY) !== null}`);
   } catch (err) {
     console.error('[SessionPersistence] Failed to clear session state:', err);
   }
