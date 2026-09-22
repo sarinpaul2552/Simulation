@@ -1,0 +1,223 @@
+.final-results-screen {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  padding: 40px 20px;
+}
+
+.final-results-card {
+  max-width: 1200px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.results-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 40px;
+  text-align: center;
+}
+
+.results-header h1 {
+  margin: 0;
+  font-size: 2.5em;
+  margin-bottom: 10px;
+}
+
+.results-header .subtitle {
+  margin: 0;
+  font-size: 1.1em;
+  opacity: 0.9;
+}
+
+.results-grid {
+  padding: 40px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 30px;
+}
+
+.results-section {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 25px;
+  border-left: 4px solid #667eea;
+}
+
+.results-section h3 {
+  margin: 0 0 20px 0;
+  font-size: 1.3em;
+  color: #333;
+}
+
+/* Scores Grid */
+.results-section.scores {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 20px;
+  border-left: none;
+  background: transparent;
+  padding: 0;
+}
+
+.score-box {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  border: 2px solid #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+}
+
+.score-box h3 {
+  margin: 0 0 15px 0;
+  font-size: 0.9em;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.score-value {
+  margin: 0;
+  font-size: 1.8em;
+  font-weight: bold;
+  color: #667eea;
+}
+
+.score-box.financial { border-color: #4CAF50; }
+.score-box.financial .score-value { color: #4CAF50; }
+
+.score-box.strategic { border-color: #2196F3; }
+.score-box.strategic .score-value { color: #2196F3; }
+
+.score-box.organizational { border-color: #FF9800; }
+.score-box.organizational .score-value { color: #FF9800; }
+
+.score-box.terminal {
+  border-color: #667eea;
+  border-width: 3px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
+}
+
+.score-box.terminal .score-value.total {
+  font-size: 2.2em;
+}
+
+.score-box .verdict {
+  margin: 10px 0 0 0;
+  font-size: 0.9em;
+  color: #764ba2;
+  font-weight: bold;
+}
+
+/* Metrics */
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 0.95em;
+}
+
+.metric:last-child {
+  border-bottom: none;
+}
+
+.metric .value {
+  font-weight: bold;
+  color: #333;
+  font-size: 1.05em;
+}
+
+/* Destination */
+.destination-choice {
+  font-size: 1.4em;
+  font-weight: bold;
+  color: #667eea;
+  margin: 0 0 15px 0;
+}
+
+.strategy-text {
+  margin: 0;
+  color: #666;
+  line-height: 1.6;
+  font-size: 0.95em;
+}
+
+/* Takeaway */
+.takeaway-box {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+  border-left: 4px solid #667eea;
+  padding: 20px;
+  border-radius: 4px;
+}
+
+.takeaway-box p {
+  margin: 0;
+  line-height: 1.8;
+  color: #333;
+}
+
+/* Actions */
+.results-actions {
+  padding: 30px 40px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.results-actions button {
+  padding: 12px 30px;
+  font-size: 1em;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.results-actions .btn-secondary {
+  background: #f0f0f0;
+  color: #333;
+  border: 2px solid #ddd;
+}
+
+.results-actions .btn-secondary:hover {
+  background: #e0e0e0;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.results-actions .btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.results-actions .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .results-header h1 {
+    font-size: 1.8em;
+  }
+
+  .results-actions {
+    flex-direction: column;
+  }
+
+  .results-actions button {
+    width: 100%;
+  }
+}
