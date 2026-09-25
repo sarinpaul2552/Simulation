@@ -1,24 +1,23 @@
-# CURRENT STATUS — Phase 1 & 1B Complete
+# CURRENT STATUS — Phase 1 Economics Audit CLOSED
 
-**Last Updated:** 2026-09-25  
+**Last Updated:** 2026-09-25 17:35 UTC  
 **Commits:** 
-- 5583202 (Phase 1 Audit — 3 audit documents)
-- 9b502c2 (Phase 1 Completion guide)
-- 6744fee (Phase 1B Instrumentation — diagnostic logging)
-- e7e803b (Phase 1B Instructions)
-- 0a2ba64 (Phase 1B Summary)
+- c8f246e (Phase 1D Findings — Cash State Reconciliation Complete)
+- d8a7940 (Phase 1D Trace Analysis)
+- bb6f880 (Phase 1C Diagnostic Observability)
+- 5583202 (Phase 1 Audit)
+
+**Engine Baseline:** V1 Audited (all Phase 1 findings documented; no fixes applied)
 
 ---
 
 ## TIMELINE
 
 ```
-Phase 1  (COMPLETE) — Formula diagnosis from Test Lab results
-Phase 1B (COMPLETE) — Instrumentation for empirical verification
-Phase 2  (PENDING)  — Run diagnostics, resolve unknowns, classify findings
-Phase 3  (PENDING)  — Bug fixes (once classification complete)
-Phase 4  (PENDING)  — Calibration adjustments
-Phase 5  (PENDING)  — New mechanics implementation
+Phase 1  (CLOSED)    — Economics audit complete; V1 baseline frozen
+Phase 1C (COMPLETE)  — Diagnostic observability infrastructure
+Phase 1D (COMPLETE)  — Cash state reconciliation; semantic violations identified
+Next: Economics V2 Design (approval pending)
 ```
 
 ---
@@ -79,139 +78,121 @@ Phase 5  (PENDING)  — New mechanics implementation
 
 ---
 
-## PHASE 1B DELIVERABLES
+## PHASE 1D FINDINGS — CASH STATE RECONCILIATION
 
-### Diagnostic Instrumentation (No Logic Changes)
+### Confirmed Implementation Issues
 
-**calculateQ8Consequence** — Terminal scoring breakdown
-- Q8 inputs (revenue, EBITDA, cash)
-- Revenue component (points awarded)
-- EBITDA component (points awarded)
-- Cash component (points awarded)
-- Strategic components
-- Organizational components
-- Subtotals and final score
+**Q7 (Line 986):** Semantic Violation
+```
+Actual:   cashChange = newOperatingProfit - startingState.operatingCost
+Should be: cashChange = newOperatingProfit - startingState.operatingProfit
+Impact: Subtracts absolute cost (~$170M) instead of profit delta → −$170M unexplained deduction
+Classification: CONFIRMED IMPLEMENTATION BUG
+```
 
-**calculateExecutionAlignment** — Execution score formation
-- roleVotes input type and value
-- Null guard behavior
-- Vote counts and bonuses
-- Final score calculation
+**Q8 (Line 1072):** Semantic Inconsistency
+```
+Actual:   cashChange = q8EBITDA - startingState.operatingCost
+Pattern: Uses EBITDA instead of operating profit; incompatible with Q1–Q7
+Classification: SEMANTIC INCONSISTENCY (requires Economics V2 design decision)
+```
 
-**calculateQ1Consequence** — Cash accounting
-- Opening cash
-- Revenue and operating cost
-- Operating profit
-- Strategic spend breakdown
-- Closing cash
+**Q2 Floor (Line 495):** Untracked Adjustment
+```
+Issue: Math.max(5, ...) applied to newCash but not reflected in returned cashChange
+Impact: If floor triggers, closing ≠ opening + reported cashChange
+Classification: DIAGNOSTIC OMISSION (not a logic error, diagnostic incomplete)
+```
 
-### Diagnostic Instructions
+### Correct Pattern (Q1–Q6)
 
-**DIAGNOSTICS_PHASE1B.md** (371 lines)
-- How to run tests in browser (dev, Vercel)
-- How to capture console output
-- Analysis guide per finding
-- Expected output per strategy
-- Troubleshooting
-- Diagnostic checklist
+All quarters Q1–Q6 correctly use:
+```
+cashChange = newOperatingProfit - startingState.operatingProfit (delta)
+```
+
+This is intentional and requires **Economics V2** design decision to address how cashChange semantics interact with overall system architecture.
+
+### Missing Diagnostics
+
+**startingState.operatingProfit** is never captured in diagnostic ledger.
+- **Impact:** Cannot independently verify `cashChange = newOp - startOp` formula
+- **Fix:** Add to Phase 1C diagnostic observability (low priority; documentation only)
+
+### Terminal Score Discrepancies (Phase 1 Audit)
+
+**Resolved:** All Phase 1 audit discrepancies (People 100%: −7 point gap, Enterprise/AI financial gaps, execution alignment gaps) are **audit reconstruction errors**, not engine bugs.
+
+**Evidence:** Phase 1C and 1D instrumentation confirmed:
+- ✓ Q8 terminal formula is correct
+- ✓ Execution alignment null guard works as designed
+- ✓ Financial component calculations are correct
+- ✓ Audit reverse-engineering was imperfect (expected)
 
 ---
 
-## CURRENT KNOWN ISSUES
+## PHASE 1 CLOSURE — FINAL FINDINGS
 
-| Finding | Classification | Confidence | Status |
-|---------|---|---|---|
-| People 100% score 73 vs 80 | Unknown (bug or missing code) | HIGH | **NEEDS DIAGNOSTIC** |
-| Enterprise financial 25 vs 21 | Unknown (gap pattern) | HIGH | **NEEDS DIAGNOSTIC** |
-| AI financial 22 vs 19 | Unknown (gap pattern) | HIGH | **NEEDS DIAGNOSTIC** |
-| Execution 62 vs 75 pathological | Unknown (null handling) | HIGH | **NEEDS DIAGNOSTIC** |
-| Cash 100% doesn't preserve more | Unknown (revenue calculation) | HIGH | **NEEDS DIAGNOSTIC** |
-| Cash score cliff too harsh | Calibration | MEDIUM | Confirmed (no fix yet) |
-| Enterprise +6% baseline exogenous | Calibration | MEDIUM | Confirmed (no fix yet) |
-| Q4 destination no Q5–Q8 effect | Missing mechanic | MEDIUM | Confirmed (no fix yet) |
+### Architecture Assessment
 
----
+The audit reveals that cash and financial systems require **coordinated redesign**, not isolated fixes:
 
-## WHAT DIAGNOSTICS WILL PROVE
+1. **Q1–Q6 Pattern:** Correct deltas on operating profit (`newOp - startingOp`)
+2. **Q7 Issue:** Wrong metric (uses cost instead of profit) → -$170M deduction
+3. **Q8 Issue:** Incompatible formula (EBITDA-based) instead of profit delta
+4. **System Design:** Current architecture assumes cashChange is always a consistent semantic type (delta), but Q7–Q8 violate this assumption
 
-Running the test lab with instrumentation will:
+### What Cannot Be Fixed in Isolation
 
-1. **Capture authoritative Q8 values** (not reverse-engineered)
-   - Financial score components and points
-   - Strategic score components and points
-   - Organizational score components and points
-   - Total before/after clamping
-   - Final verdict
+- ✗ Q7 formula fix alone will break cash flow continuity (depends on Q1–Q6 semantics)
+- ✗ Q8 terminal formula fix alone will break terminal scoring logic
+- ✗ Insolvency/financing mechanics cannot be added without addressing cash semantics first
+- ✗ Q4 destination propagation requires decision on Q5–Q8 architecture
 
-2. **Explain financial score gaps** (if log ≠ observed)
-   - Determine if opex calculation differs
-   - Identify missing bonus logic
-   - Validate or reject audit reconstruction
+### Economics V2 Design Required
 
-3. **Explain People 100% −7 point gap**
-   - Show if subtotals match audit
-   - Identify where −7 comes from
-   - Prove or reject terminal score formula
+Phase 1 audit provides the architectural baseline. Economics V2 must decide:
 
-4. **Explain execution alignment discrepancy**
-   - Confirm null guard works
-   - Identify source of +2 bonus
-   - Explain why pathological ≠ balanced
+1. **Cash semantics:** Should all quarters use consistent delta pattern or is variable semantics acceptable?
+2. **Terminal scoring:** Should Q8 use operating profit deltas or EBITDA-based approach?
+3. **Q7 correction:** Revert to operatingProfit or intentionally use operatingCost?
+4. **Insolvency gate:** When/how to apply? Does it affect Q7–Q8?
+5. **Q4 destination:** Should it propagate to Q5–Q8 or apply only at Q4?
 
-5. **Explain cash accounting differences**
-   - Confirm Q1 profit is identical across strategies
-   - Trace cumulative cash flow Q1→Q8
-   - Explain why allocating less doesn't save more cash
+**No production code changes until Economics V2 design is approved.**
 
 ---
 
-## NEXT IMMEDIATE STEPS
+## V1 ENGINE BASELINE — FROZEN
 
-### 1. Run Diagnostics (15 min per strategy)
+**Current engine (commit c8f246e) is the V1 audited baseline:**
+- All Phase 1–1D findings documented
+- No fixes applied
+- Diagnostic instrumentation active
+- Ready for Economics V2 design reference
 
-**In browser console:**
-```javascript
-localStorage.setItem('ENABLE_TESTLAB', 'true');
-location.href = '/devlab';
-```
+**Preserved Documentation:**
+- ECONOMICS_AUDIT_PHASE1.md (full analysis)
+- ECONOMICS_AUDIT_SUMMARY.md (executive brief)
+- ECONOMICS_AUDIT_TABLES.md (detailed tables)
+- PHASE_1D_CASH_TRACE.md (code path analysis)
+- PHASE_1D_FINDINGS.md (semantic violations)
+- DIAGNOSTICS_PHASE1B.md (how to run tests)
+- PHASE_1C_DIAGNOSTIC_OBSERVABILITY.md (observability setup)
 
-**Run Mode 2: Full Strategy Test** for:
-- Balanced + Leadership Aligned
-- Enterprise 100% Every Q
-- AI 100% Every Q
-- People 100% Every Q
-- Cash 100% Every Q
+---
 
-**Capture console output** (F12 DevTools)
+## NEXT: ECONOMICS V2 DESIGN
 
-### 2. Analyze Logs (30 min)
+**Awaiting approval to proceed with:**
 
-**For each strategy, compare:**
-- Log output vs observed results
-- Log subtotals vs expected calculation
-- Identify any discrepancies
+1. Architecture review (cash semantics, terminal scoring)
+2. Mechanic design (insolvency, financing, Q4 propagation)
+3. Design decision document
+4. Implementation plan
+5. Phased rollout (bug fixes → calibration → new mechanics)
 
-### 3. Report Findings (15 min)
-
-**Create table:**
-```
-Finding | Log shows | Observed | Discrepancy | Classification
-```
-
-**Classify each:**
-- Implementation bug
-- Missing code
-- Audit reconstruction error
-- Calibration problem
-- Intentional design
-
-### 4. Approve Phase 2 Actions
-
-Once diagnostics are captured:
-- Determine which findings are confirmed vs rejected
-- Classify all issues
-- Decide which phase 2 fixes to prioritize
-- Proceed to bug fixes only (no parameter changes yet)
+**No code changes until approval.**
 
 ---
 
@@ -241,57 +222,33 @@ None. Ready to proceed with diagnostics immediately.
 
 ---
 
-## SUCCESS CRITERIA FOR PHASE 1B
+## PHASE 1 COMPLETION CHECKLIST
 
-- [ ] Balanced + Leadership Aligned Q8 logs captured
-- [ ] Enterprise 100% Q8 logs captured
-- [ ] AI 100% Q8 logs captured
-- [ ] People 100% Q8 logs captured
-- [ ] Cash 100% Q8 logs captured
-- [ ] Financial score components match or explain gaps
-- [ ] Organizational score components match or explain gaps
-- [ ] Execution scores explained (why 77 vs 62)
-- [ ] Cash accounting reconciled Q1 + profit − spend = closing
-- [ ] All findings classified (bug/missing/audit-error/calibration/design)
-
----
-
-## PROCEEDING TO PHASE 2
-
-Once diagnostics are complete and findings classified:
-
-1. **Bug fixes** (Phase 2)
-   - Null guard in calculateExecutionAlignment
-   - Financial score calculation (if log ≠ code)
-   - Terminal score calculation (if bug found)
-
-2. **Calibration** (Phase 3)
-   - Cash score sliding scale
-   - Enterprise baseline gate
-   - Q4 destination effects
-   - Org score financial constraints
-
-3. **New mechanics** (Phase 4)
-   - Insolvency gate
-   - Q5–Q8 destination divergence
-   - Strategy coherence penalties
+- [x] Formula diagnosis and reverse-engineering (Phase 1)
+- [x] Diagnostic instrumentation added (Phase 1B–1C)
+- [x] Cash state reconciliation traced (Phase 1D)
+- [x] Semantic violations identified (Q7, Q8)
+- [x] Audit reconstruction errors resolved (terminal score discrepancies)
+- [x] Execution behavior explained (null guard works)
+- [x] Architecture assessment complete
+- [x] V1 baseline frozen and documented
+- [x] Economics V2 design prerequisites identified
 
 ---
 
 ## CURRENT GIT STATE
 
 ```bash
-$ git log --oneline | head -10
-0a2ba64 Add: Phase 1B completion summary
-e7e803b Add: Phase 1B Diagnostic Instructions  
-6744fee Add: Q8 terminal scoring & Q1 cash diagnostic logging
-9b502c2 Add: Phase 1 Audit completion guide
-5583202 Add: Phase 1 Economics Audit - Formula diagnosis
-d1166ea Fix: Test Lab state isolation - deep-copy capabilities
-...
+$ git log --oneline | head -5
+c8f246e Add: Phase 1D Findings - Cash State Reconciliation Complete
+d8a7940 Phase 1D: Cash State Reconciliation - Code Trace Analysis
+1dc1935 Add: Phase 1C diagnostic observability guide and validation checklist
+bb6f880 Phase 1C: Fix diagnostic observability - cash ledger and financial components
+28b2b6c Restore: Original execution alignment behavior for diagnostic baseline
 ```
 
 **Branch:** main  
+**Engine Version:** V1 Audited (frozen)  
 **Build Status:** ✓ Clean  
-**Ready for:** Test execution
+**Next Phase:** Economics V2 Design (approval required)
 
