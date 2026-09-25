@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { SingleQuarterTest } from './pages/SingleQuarterTest';
 import { FullStrategyTest } from './pages/FullStrategyTest';
 import { CompareStrategies } from './pages/CompareStrategies';
+import DiagnosticSuite from './pages/DiagnosticSuite';
 import './testlab.css';
 
-type TestMode = 'mode-select' | 'single-quarter' | 'full-strategy' | 'compare-strategies';
+type TestMode = 'mode-select' | 'single-quarter' | 'full-strategy' | 'compare-strategies' | 'diagnostic-suite';
 
 export const TestLab: React.FC = () => {
   const [mode, setMode] = useState<TestMode>('mode-select');
@@ -60,6 +61,18 @@ export const TestLab: React.FC = () => {
               Run multiple strategies and compare terminal outcomes
             </p>
           </div>
+
+          <div
+            className="mode-button"
+            onClick={() => handleModeSelect('diagnostic-suite')}
+            style={{ cursor: 'pointer' }}
+          >
+            <h3>🔍 Mode 4</h3>
+            <p>Phase 1B Diagnostic Suite</p>
+            <p style={{ fontSize: '12px', marginTop: '8px' }}>
+              Run all diagnostic strategies and capture authoritative terminal values
+            </p>
+          </div>
         </div>
       )}
 
@@ -87,6 +100,15 @@ export const TestLab: React.FC = () => {
             ← Back to Mode Select
           </button>
           <CompareStrategies />
+        </>
+      )}
+
+      {mode === 'diagnostic-suite' && (
+        <>
+          <button className="btn btn-secondary" onClick={() => handleModeSelect('mode-select')}>
+            ← Back to Mode Select
+          </button>
+          <DiagnosticSuite />
         </>
       )}
     </div>
