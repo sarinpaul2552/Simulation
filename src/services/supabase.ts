@@ -8,8 +8,31 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || '';
+
+// Validate Supabase configuration
+if (!SUPABASE_URL) {
+  console.error(
+    '[Supabase] ERROR: VITE_SUPABASE_URL environment variable is not set. ' +
+    'This is required for production. ' +
+    'Set it to: https://hrzhpxasgkjxinlhpvze.supabase.co'
+  );
+}
+
+if (!SUPABASE_KEY) {
+  console.error(
+    '[Supabase] ERROR: VITE_SUPABASE_KEY environment variable is not set. ' +
+    'Get the anon key from: https://app.supabase.com/project/hrzhpxasgkjxinlhpvze/settings/api'
+  );
+}
+
+if (SUPABASE_URL && SUPABASE_URL.includes('localhost')) {
+  console.warn(
+    '[Supabase] WARNING: Using localhost Supabase URL. ' +
+    'This will fail in production. Expected URL: https://hrzhpxasgkjxinlhpvze.supabase.co'
+  );
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 

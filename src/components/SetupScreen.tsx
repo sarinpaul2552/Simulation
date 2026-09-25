@@ -26,6 +26,26 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
     setLoading(true);
     setError(null);
     try {
+      // Validate Supabase configuration
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || '';
+
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error(
+          'Supabase configuration error: Missing environment variables. ' +
+          'Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set. ' +
+          'Contact your administrator.'
+        );
+      }
+
+      if (supabaseUrl.includes('localhost')) {
+        throw new Error(
+          'Invalid Supabase URL: Using localhost. ' +
+          'Expected: https://hrzhpxasgkjxinlhpvze.supabase.co. ' +
+          'Please configure production environment variables.'
+        );
+      }
+
       const { data, error: rpcError } = await supabase.rpc('create_session', {
         p_facilitator_email: email,
         p_team_count: teamCount
@@ -103,6 +123,26 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
     setLoading(true);
     setError(null);
     try {
+      // Validate Supabase configuration
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const supabaseKey = import.meta.env.VITE_SUPABASE_KEY || '';
+
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error(
+          'Supabase configuration error: Missing environment variables. ' +
+          'Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_KEY are set. ' +
+          'Contact your administrator.'
+        );
+      }
+
+      if (supabaseUrl.includes('localhost')) {
+        throw new Error(
+          'Invalid Supabase URL: Using localhost. ' +
+          'Expected: https://hrzhpxasgkjxinlhpvze.supabase.co. ' +
+          'Please configure production environment variables.'
+        );
+      }
+
       const { data, error: rpcError } = await supabase.rpc('join_session', {
         p_session_code: joinSessionCode,
         p_team_code: teamCode
@@ -231,7 +271,7 @@ export default function SetupScreen({ isStudent = false, onSessionCreated, onCan
                     <label htmlFor="voting_disabled">
                       <strong>No Role Voting</strong>
                       <br />
-                      <small>Team proceeds directly to commit without voting</small>
+                      <small>Team proceeds directly to results without role voting</small>
                     </label>
                   </div>
                   <div className="radio-option disabled">
