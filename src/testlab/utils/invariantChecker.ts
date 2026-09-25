@@ -171,7 +171,8 @@ export function checkConsequence(
 export function checkEndingState(
   startingState: TeamState,
   consequence: Consequence,
-  endingState: TeamState
+  endingState: TeamState,
+  quarter?: number
 ): InvariantCheck[] {
   const checks: InvariantCheck[] = [];
 
@@ -211,13 +212,40 @@ export function checkEndingState(
   // Capabilities (check a few key ones)
   if (consequence.capabilityChanges?.consumer !== undefined) {
     const expectedCap = startingState.capabilities.consumer + consequence.capabilityChanges.consumer;
+    const passed = Math.abs(endingState.capabilities.consumer - expectedCap) < 0.1;
+    
+    // DIAGNOSTIC: Log invariant inputs for Q1
+    if (quarter === 1) {
+      console.log(`\nINVARIANT DETAILED EVALUATION (consumer):`);
+      console.log(`  startingState.capabilities.consumer: ${startingState.capabilities.consumer.toFixed(1)}`);
+      console.log(`  consequence.capabilityChanges.consumer: ${consequence.capabilityChanges.consumer.toFixed(1)}`);
+      console.log(`  expectedCap (starting + delta): ${expectedCap.toFixed(1)}`);
+      console.log(`  endingState.capabilities.consumer: ${endingState.capabilities.consumer.toFixed(1)}`);
+      console.log(`  Difference (expected - actual): ${(expectedCap - endingState.capabilities.consumer).toFixed(1)}`);
+      console.log(`  PASS/FAIL: ${passed ? 'PASS' : 'FAIL'}`);
+    }
+    
     checks.push({
       id: 'state_consumer_cap_consistent',
       category: 'state',
       severity: 'error',
       message: 'Consumer capability after consequence matches starting + delta',
-      passed: Math.abs(endingState.capabilities.consumer - expectedCap) < 0.1,
+      passed: passed,
       details: `Expected: ${expectedCap.toFixed(1)}, Got: ${endingState.capabilities.consumer.toFixed(1)}`,
+    });
+  }
+
+  // DIAGNOSTIC: All capability deltas for Q1
+  if (quarter === 1) {
+    console.log(`\nALL CAPABILITY DELTAS:`);
+    const capabilityKeys = ['consumer', 'enterprise', 'ai', 'talent', 'credential', 'customerSuccess', 'growth', 'execution'];
+    capabilityKeys.forEach(cap => {
+      const starting = (startingState.capabilities as any)[cap];
+      const delta = (consequence.capabilityChanges as any)?.[cap];
+      const ending = (endingState.capabilities as any)[cap];
+      const expected = starting + (delta || 0);
+      const match = delta !== undefined ? Math.abs(ending - expected) < 0.1 : 'N/A (no delta)';
+      console.log(`  ${cap}: starting=${starting?.toFixed(1) || 'undefined'}, delta=${delta?.toFixed(1) || 'undefined'}, expected=${expected?.toFixed(1) || 'undefined'}, actual=${ending?.toFixed(1) || 'undefined'}, match=${match}`);
     });
   }
 
@@ -337,7 +365,7 @@ export function generateInvariantReport(
 
   checks.push(...checkAllocation(allocation, availableCapital, quarter));
   checks.push(...checkConsequence(consequence, quarter));
-  checks.push(...checkEndingState(startingState, consequence, endingState));
+  checks.push(...checkEndingState(startingState, consequence, endingState, quarter));
   checks.push(...checkTerminalResult(consequence.terminalResult, quarter));
 
   const errorCount = checks.filter(c => c.severity === 'error' && !c.passed).length;
