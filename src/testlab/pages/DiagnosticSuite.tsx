@@ -72,7 +72,8 @@ export default function DiagnosticSuite() {
           <strong>Strategies:</strong> Balanced + Leadership Aligned, Enterprise 100%, AI 100%, People 100%, Cash 100%
         </p>
         <p>
-          <strong>Output:</strong> Summary table, financial score breakdown, execution traces, cash ledgers, and console export
+          <strong>Output:</strong> Summary table, execution traces, cash ledgers, and console export.
+          Results are observational—no expected verdicts, no pre-judgment.
         </p>
         <p>
           <strong>No changes:</strong> Uses existing presets and production engine exactly as-is. Observability only.

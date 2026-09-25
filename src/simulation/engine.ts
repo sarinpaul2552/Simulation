@@ -347,7 +347,7 @@ export function calculateQ1Consequence(
 
 function calculateExecutionAlignment(
   _allocation: Allocation,
-  roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
+  roleVotes: Record<string, 'yes' | 'no' | 'abstain'>,
   override: boolean,
   dissents: string[]
 ): number {
@@ -355,13 +355,7 @@ function calculateExecutionAlignment(
   let score = 60;
 
   // DIAGNOSTIC: Log roleVotes input
-  console.log(`  [calculateExecutionAlignment] roleVotes type: ${typeof roleVotes}, value: ${roleVotes === null ? 'null' : JSON.stringify(roleVotes)}`);
-
-  // Handle null roleVotes (stay-course behavior)
-  if (roleVotes === null) {
-    console.log(`  [calculateExecutionAlignment] null roleVotes detected → returning base score 60`);
-    return score;
-  }
+  console.log(`  [calculateExecutionAlignment] roleVotes type: ${typeof roleVotes}, value: ${JSON.stringify(roleVotes)}`);
 
   // Count unanimous agreement
   const totalVotes = Object.entries(roleVotes).filter(([_, v]) => v !== 'abstain').length;

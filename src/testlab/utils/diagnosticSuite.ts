@@ -209,7 +209,7 @@ export async function runDiagnosticSuite(): Promise<DiagnosticSuiteResults> {
     { id: 'ai-100-every-q', name: 'AI 100% Every Q', alloc: 'ai-100', behav: 'stay-course' },
     { id: 'people-100-every-q', name: 'People 100% Every Q', alloc: 'people-100', behav: 'stay-course' },
     { id: 'cash-100-every-q', name: 'Cash 100% Every Q (No Investment)', alloc: 'cash-100', behav: 'stay-course' },
-  ];
+  ]; // Observational suite — no expected verdicts
   
   const results: DiagnosticResult[] = [];
   
