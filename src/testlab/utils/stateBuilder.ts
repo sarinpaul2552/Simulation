@@ -22,7 +22,13 @@ export function applyConsequence(
   state: TeamState,
   consequence: Consequence
 ): TeamState {
-  const newState = { ...state };
+  // FIX: Deep-copy capabilities object to prevent aliasing
+  // Shallow copy alone leaves newState.capabilities === state.capabilities (same reference)
+  // This caused mutations to affect the original startingState
+  const newState = { 
+    ...state,
+    capabilities: { ...state.capabilities }  // Create independent capabilities object
+  };
 
   // Apply all deltas
   newState.revenue += consequence.revenueChange;
