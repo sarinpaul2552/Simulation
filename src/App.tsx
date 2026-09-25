@@ -4,9 +4,10 @@ import SetupScreen from './components/SetupScreen';
 import GameScreen from './components/GameScreen';
 import FacilitatorScreen from './components/FacilitatorScreen';
 import { useSessionRestore } from './hooks/useSessionRestore';
+import TestLab from './testlab';
 import './App.css';
 
-type Mode = 'mode-select' | 'facilitator-setup' | 'team-join' | 'team-game' | 'facilitator-game' | 'restore-checking' | 'restore-error';
+type Mode = 'mode-select' | 'facilitator-setup' | 'team-join' | 'team-game' | 'facilitator-game' | 'restore-checking' | 'restore-error' | 'devlab';
 
 function AppContent() {
   const [mode, setMode] = useState<Mode>('restore-checking');
@@ -15,6 +16,18 @@ function AppContent() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   
   const restore = useSessionRestore();
+
+  // Check for dev-only test lab route
+  useEffect(() => {
+    const isDev = import.meta.env.DEV || 
+                  window.localStorage.getItem('ENABLE_TESTLAB') === 'true';
+    const url = window.location.pathname;
+    
+    if (isDev && url === '/devlab') {
+      setMode('devlab');
+      return;
+    }
+  }, []);
 
   // On mount, check if we can restore a session
   useEffect(() => {
@@ -119,6 +132,27 @@ function AppContent() {
           adminPin={adminPin}
           onExit={() => setMode('mode-select')}
         />
+      )}
+
+      {mode === 'devlab' && (
+        <div style={{ padding: '20px' }}>
+          <button
+            onClick={() => setMode('mode-select')}
+            style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              padding: '8px 12px',
+              background: '#e0e0e0',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            ← Exit Test Lab
+          </button>
+          <TestLab />
+        </div>
       )}
     </div>
   );
