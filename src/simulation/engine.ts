@@ -283,6 +283,16 @@ export function calculateQ1Consequence(
                          allocation.instructorPeople + allocation.universityCredential;
   const q1ClosingCash = currentState.cash + q1OpProfit - strategicSpend;
 
+  // DIAGNOSTIC: Cash accounting
+  console.log(`\nQ1 CASH ACCOUNTING:`);
+  console.log(`  Opening Cash: $${currentState.cash.toFixed(1)}M`);
+  console.log(`  Revenue: $${q1Revenue.toFixed(1)}M`);
+  console.log(`  Operating Cost: $${currentState.operatingCost}M`);
+  console.log(`  Operating Profit: $${q1OpProfit.toFixed(1)}M`);
+  console.log(`  Strategic Spend: $${strategicSpend.toFixed(1)}M (Consumer: $${allocation.consumerGrowth}M, Enterprise: $${allocation.enterpriseSales}M, AI: $${allocation.aiProduct}M, People: $${allocation.instructorPeople}M, Credential: $${allocation.universityCredential}M, Cash retained: $${allocation.cash}M)`);
+  console.log(`  Cash Change: $${(q1OpProfit - strategicSpend).toFixed(1)}M`);
+  console.log(`  Closing Cash: $${q1ClosingCash.toFixed(1)}M`);
+
   // Stock price response
   const growthVsExpectation = (q1Revenue - currentState.revenue) / currentState.revenue; // vs baseline
   const stockChangeFromGrowth = growthVsExpectation * 0.35 * 100;
@@ -337,31 +347,48 @@ export function calculateQ1Consequence(
 
 function calculateExecutionAlignment(
   _allocation: Allocation,
-  roleVotes: Record<string, 'yes' | 'no' | 'abstain'>,
+  roleVotes: Record<string, 'yes' | 'no' | 'abstain'> | null,
   override: boolean,
   dissents: string[]
 ): number {
   // Base execution alignment
   let score = 60;
 
+  // DIAGNOSTIC: Log roleVotes input
+  console.log(`  [calculateExecutionAlignment] roleVotes type: ${typeof roleVotes}, value: ${roleVotes === null ? 'null' : JSON.stringify(roleVotes)}`);
+
+  // Handle null roleVotes (stay-course behavior)
+  if (roleVotes === null) {
+    console.log(`  [calculateExecutionAlignment] null roleVotes detected → returning base score 60`);
+    return score;
+  }
+
   // Count unanimous agreement
   const totalVotes = Object.entries(roleVotes).filter(([_, v]) => v !== 'abstain').length;
   const yesVotes = Object.entries(roleVotes).filter(([_, v]) => v === 'yes').length;
 
+  console.log(`  [calculateExecutionAlignment] totalVotes: ${totalVotes}, yesVotes: ${yesVotes}`);
+
   if (yesVotes === totalVotes && totalVotes === 5) {
     score += 15; // Unanimous
+    console.log(`  [calculateExecutionAlignment] unanimous → +15`);
   } else if (yesVotes >= 4) {
     score += 8; // Broad alignment
+    console.log(`  [calculateExecutionAlignment] broad alignment → +8`);
   } else if (yesVotes >= 3) {
     score += 3; // Debate but some agreement
+    console.log(`  [calculateExecutionAlignment] some agreement → +3`);
   }
 
   // Override penalty (but not if all agree with override)
   if (override && dissents.length > 0) {
     score -= 5;
+    console.log(`  [calculateExecutionAlignment] override with dissent → −5`);
   }
 
-  return Math.max(0, Math.min(100, score));
+  const finalScore = Math.max(0, Math.min(100, score));
+  console.log(`  [calculateExecutionAlignment] final score: ${finalScore}`);
+  return finalScore;
 }
 
 function getAlignmentMultiplier(executionAlignment: number): number {
@@ -955,51 +982,102 @@ export function calculateQ8Consequence(
   const cashChange = q8EBITDA - startingState.operatingCost;
   const q8Cash = startingState.cash + cashChange;
 
+  // DIAGNOSTIC LOGGING: Q8 TERMINAL INPUTS
+  console.log(`\n=== Q8 TERMINAL SCORE DIAGNOSTIC ===`);
+  console.log(`INPUTS:`);
+  console.log(`  Revenue: $${q8Revenue.toFixed(1)}M (multiplier: ${q8RevenueMultiplier.toFixed(2)}x)`);
+  console.log(`  Operating Cost: $${startingState.operatingCost}M`);
+  console.log(`  EBITDA Margin: ${(ebitdaMargin * 100).toFixed(1)}%`);
+  console.log(`  EBITDA: $${q8EBITDA.toFixed(1)}M`);
+  console.log(`  Starting Cash: $${startingState.cash.toFixed(1)}M`);
+  console.log(`  Cash Change: $${cashChange.toFixed(1)}M`);
+  console.log(`  Q8 Cash: $${q8Cash.toFixed(1)}M`);
+  console.log(`CAPABILITIES AT Q8:`);
+  console.log(`  Consumer: ${startingState.capabilities.consumer}`);
+  console.log(`  Enterprise: ${startingState.capabilities.enterprise}`);
+  console.log(`  AI: ${startingState.capabilities.ai}`);
+  console.log(`  Talent: ${startingState.capabilities.talent}`);
+  console.log(`CULTURAL STATE:`);
+  console.log(`  Culture: ${startingState.culture}`);
+  console.log(`  Trust: ${startingState.trust}`);
+
   // TERMINAL SCORE (0-100)
   let terminalScore = 0;
 
   // Financial (0-33)
   let financialScore = 0;
   const revenuePct = q8RevenueMultiplier;
-  if (revenuePct >= 1.5) financialScore += 11;
-  else if (revenuePct >= 1.35) financialScore += 8;
-  else financialScore += 5;
+  let revenuePtsComponent = 0;
+  if (revenuePct >= 1.5) { financialScore += 11; revenuePtsComponent = 11; }
+  else if (revenuePct >= 1.35) { financialScore += 8; revenuePtsComponent = 8; }
+  else { financialScore += 5; revenuePtsComponent = 5; }
 
-  if (ebitdaMargin > 0.45) financialScore += 11;
-  else if (ebitdaMargin > 0.35) financialScore += 8;
-  else financialScore += 5;
+  let ebitdaPtsComponent = 0;
+  if (ebitdaMargin > 0.45) { financialScore += 11; ebitdaPtsComponent = 11; }
+  else if (ebitdaMargin > 0.35) { financialScore += 8; ebitdaPtsComponent = 8; }
+  else { financialScore += 5; ebitdaPtsComponent = 5; }
 
-  if (q8Cash > 80) financialScore += 11;
-  else if (q8Cash > 50) financialScore += 8;
-  else financialScore += 3;
+  let cashPtsComponent = 0;
+  if (q8Cash > 80) { financialScore += 11; cashPtsComponent = 11; }
+  else if (q8Cash > 50) { financialScore += 8; cashPtsComponent = 8; }
+  else { financialScore += 3; cashPtsComponent = 3; }
+
+  console.log(`\nFINANCIAL SCORE COMPONENTS:`);
+  console.log(`  Revenue (${revenuePct.toFixed(2)}x): +${revenuePtsComponent}`);
+  console.log(`  EBITDA Margin (${(ebitdaMargin * 100).toFixed(1)}%): +${ebitdaPtsComponent}`);
+  console.log(`  Cash ($${q8Cash.toFixed(1)}M): +${cashPtsComponent}`);
+  console.log(`  Financial Subtotal: ${financialScore}/33`);
 
   // Strategic (0-33)
   let strategicScore = 0;
+  let capabilityPts = 0;
   if (startingState.capabilities.enterprise >= 70 || startingState.capabilities.ai >= 70 || startingState.capabilities.consumer >= 75) {
-    strategicScore += 11;
+    strategicScore += 11; capabilityPts = 11;
   } else if (startingState.capabilities.enterprise >= 55 || startingState.capabilities.ai >= 55) {
-    strategicScore += 7;
+    strategicScore += 7; capabilityPts = 7;
   } else {
-    strategicScore += 4;
+    strategicScore += 4; capabilityPts = 4;
   }
 
   strategicScore += 8; // Coherence bonus (simplified; would check allocation history)
 
   strategicScore += 10; // Market position (simplified)
 
+  console.log(`\nSTRATEGIC SCORE COMPONENTS:`);
+  console.log(`  Capability strength (E${startingState.capabilities.enterprise}, A${startingState.capabilities.ai}, C${startingState.capabilities.consumer}): +${capabilityPts}`);
+  console.log(`  Coherence bonus: +8`);
+  console.log(`  Market position: +10`);
+  console.log(`  Strategic Subtotal: ${strategicScore}/33`);
+
   // Organizational (0-34)
   let orgScore = 0;
-  if (startingState.culture >= 75) orgScore += 11;
-  else if (startingState.culture >= 60) orgScore += 7;
-  else orgScore += 4;
+  let culturePts = 0;
+  if (startingState.culture >= 75) { orgScore += 11; culturePts = 11; }
+  else if (startingState.culture >= 60) { orgScore += 7; culturePts = 7; }
+  else { orgScore += 4; culturePts = 4; }
 
-  if (startingState.capabilities.talent >= 70) orgScore += 11;
-  else if (startingState.capabilities.talent >= 55) orgScore += 7;
-  else orgScore += 4;
+  let talentPts = 0;
+  if (startingState.capabilities.talent >= 70) { orgScore += 11; talentPts = 11; }
+  else if (startingState.capabilities.talent >= 55) { orgScore += 7; talentPts = 7; }
+  else { orgScore += 4; talentPts = 4; }
 
   orgScore += 10; // Execution alignment (simplified)
 
+  console.log(`\nORGANIZATIONAL SCORE COMPONENTS:`);
+  console.log(`  Culture (${startingState.culture}): +${culturePts}`);
+  console.log(`  Talent (${startingState.capabilities.talent}): +${talentPts}`);
+  console.log(`  Execution alignment: +10`);
+  console.log(`  Organizational Subtotal: ${orgScore}/34`);
+
   terminalScore = Math.min(100, financialScore + strategicScore + orgScore);
+  
+  console.log(`\nFINAL SCORE:`);
+  console.log(`  Financial: ${financialScore}/33`);
+  console.log(`  Strategic: ${strategicScore}/33`);
+  console.log(`  Organizational: ${orgScore}/34`);
+  console.log(`  Sum before clamp: ${financialScore + strategicScore + orgScore}`);
+  console.log(`  Final (capped at 100): ${terminalScore.toFixed(1)}`);
+  console.log(`=== END DIAGNOSTIC ===\n`);
 
   let verdict: 'WINNER' | 'SURVIVOR' | 'STRUGGLING' | 'FAILURE' = 'FAILURE';
   if (terminalScore >= 80) verdict = 'WINNER';
