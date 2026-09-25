@@ -47,6 +47,24 @@ export interface TeamState {
   q4Commitment?: string;
 }
 
+// ============ Q8 TERMINAL RESULT (Single Source of Truth) ============
+
+export interface TerminalResult {
+  // Financial absolutes (post-Q8)
+  revenue: number;
+  cash: number;
+  stockPrice: number;
+  ebitda: number;
+  ebitdaMargin: number;
+  
+  // Scores (0-100 scale)
+  financialScore: number;      // 0-33
+  strategicScore: number;      // 0-33
+  organizationalScore: number; // 0-34
+  totalScore: number;          // 0-100
+  verdict: 'WINNER' | 'SURVIVOR' | 'STRUGGLING' | 'FAILURE';
+}
+
 export interface Consequence {
   revenueChange: number;
   cashChange: number;
@@ -57,6 +75,9 @@ export interface Consequence {
   productQualityChange?: number;  // Added: Product quality change from people investment
   cultureChange?: number;          // Added: Culture change from people investment
   trustChange?: number;            // Added: Trust change from university investment
+  
+  // Q8 terminal result (populated only by calculateQ8Consequence)
+  terminalResult?: TerminalResult;
 }
 
 // ============ DIMINISHING RETURNS ============
@@ -980,7 +1001,7 @@ export function calculateQ8Consequence(
 
   terminalScore = Math.min(100, financialScore + strategicScore + orgScore);
 
-  let verdict = 'FAILURE';
+  let verdict: 'WINNER' | 'SURVIVOR' | 'STRUGGLING' | 'FAILURE' = 'FAILURE';
   if (terminalScore >= 80) verdict = 'WINNER';
   else if (terminalScore >= 60) verdict = 'SURVIVOR';
   else if (terminalScore >= 40) verdict = 'STRUGGLING';
@@ -1011,6 +1032,19 @@ ${terminalVerdictNarrative(terminalScore)}`;
       `Financial: ${financialScore}/33 | Strategic: ${strategicScore}/33 | Organizational: ${orgScore}/34`,
       verdict,
     ],
+    // AUTHORITATIVE Q8 TERMINAL STATE (single source of truth)
+    terminalResult: {
+      revenue: q8Revenue,
+      cash: q8Cash,
+      stockPrice: startingState.stockPrice, // Q8 doesn't change stock price
+      ebitda: q8EBITDA,
+      ebitdaMargin,
+      financialScore: Math.round(financialScore),
+      strategicScore: Math.round(strategicScore),
+      organizationalScore: Math.round(orgScore),
+      totalScore: Math.round(terminalScore),
+      verdict,
+    },
   };
 }
 

@@ -5,19 +5,26 @@ import './FinalResultsScreen.css';
 export default function FinalResultsScreen() {
   const game = useGame();
   
-  // Extract terminal score data from Q8 consequence
+  // Read AUTHORITATIVE terminal result from Q8 consequence
   const consequence = game.lastConsequence;
   const team = game.currentTeam;
 
-  if (!consequence || !team) {
+  if (!consequence || !team || !consequence.terminalResult) {
     return <div className="error">Unable to load simulation results.</div>;
   }
 
-  // Parse terminal score from narrative (it's calculated in Q8Consequence)
-  // For now, we'll calculate it similarly or extract from the narrative text
-  const q8Revenue = team.revenue + consequence.revenueChange;
+  // Use the authoritative terminal result calculated once by calculateQ8Consequence
+  const terminalResult = consequence.terminalResult;
+  const q8Revenue = terminalResult.revenue;
+  const q8Cash = terminalResult.cash;
+  const ebitdaMargin = terminalResult.ebitdaMargin;
+  const financialScore = terminalResult.financialScore;
+  const strategicScore = terminalResult.strategicScore;
+  const orgScore = terminalResult.organizationalScore;
+  const terminalScore = terminalResult.totalScore;
+  const verdict = terminalResult.verdict;
   
-  // Infer destination from capabilities (simplified)
+  // Infer destination from capabilities (for narrative only)
   const getDestination = () => {
     if (team.capability_enterprise >= 65) return 'Enterprise';
     if (team.capability_ai >= 65) return 'AI-Native';
@@ -26,55 +33,6 @@ export default function FinalResultsScreen() {
   };
 
   const destination = getDestination();
-
-  // Calculate terminal score (mirrored from Q8Consequence logic)
-  const ebitdaMargin = team.capability_enterprise >= 60 ? 0.50 : team.capability_ai >= 60 ? 0.42 : 0.38;
-  const q8Revenue_calc = team.revenue * (q8Revenue / team.revenue); // Use actual revenue
-  const q8EBITDA = q8Revenue_calc * ebitdaMargin;
-  const q8Cash = team.cash + (q8EBITDA - team.operating_cost);
-
-  let financialScore = 0;
-  const revenueMult = q8Revenue_calc / team.revenue;
-  if (revenueMult >= 1.5) financialScore += 11;
-  else if (revenueMult >= 1.35) financialScore += 8;
-  else financialScore += 5;
-  
-  if (ebitdaMargin > 0.45) financialScore += 11;
-  else if (ebitdaMargin > 0.35) financialScore += 8;
-  else financialScore += 5;
-  
-  if (q8Cash > 80) financialScore += 11;
-  else if (q8Cash > 50) financialScore += 8;
-  else financialScore += 3;
-
-  let strategicScore = 0;
-  if (team.capability_enterprise >= 70 || team.capability_ai >= 70 || team.capability_consumer >= 75) {
-    strategicScore += 11;
-  } else if (team.capability_enterprise >= 55 || team.capability_ai >= 55) {
-    strategicScore += 7;
-  } else {
-    strategicScore += 4;
-  }
-  strategicScore += 8; // Coherence bonus
-  strategicScore += 10; // Market position
-
-  let orgScore = 0;
-  if (team.culture >= 75) orgScore += 11;
-  else if (team.culture >= 60) orgScore += 7;
-  else orgScore += 4;
-
-  if (team.capability_talent >= 70) orgScore += 11;
-  else if (team.capability_talent >= 55) orgScore += 7;
-  else orgScore += 4;
-
-  orgScore += 10; // Execution alignment
-
-  const terminalScore = Math.min(100, financialScore + strategicScore + orgScore);
-
-  let verdict = 'FAILURE';
-  if (terminalScore >= 80) verdict = 'WINNER';
-  else if (terminalScore >= 60) verdict = 'SURVIVOR';
-  else if (terminalScore >= 40) verdict = 'STRUGGLING';
 
   const handleFinish = () => {
     clearSessionState();
@@ -118,7 +76,7 @@ export default function FinalResultsScreen() {
             <h3>Final Financial Position</h3>
             <div className="metric">
               <span>Final Revenue</span>
-              <span className="value">${Math.round(q8Revenue_calc)}M</span>
+              <span className="value">${Math.round(q8Revenue)}M</span>
             </div>
             <div className="metric">
               <span>Final Cash</span>
@@ -126,7 +84,7 @@ export default function FinalResultsScreen() {
             </div>
             <div className="metric">
               <span>Stock Price</span>
-              <span className="value">${Math.round(team.stock_price * 10) / 10}</span>
+              <span className="value">${Math.round(terminalResult.stockPrice * 10) / 10}</span>
             </div>
             <div className="metric">
               <span>EBITDA Margin</span>
