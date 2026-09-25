@@ -111,29 +111,31 @@ function extractCashLedger(testRun: StrategyTestRun): DiagnosticResult['cashLedg
     const quarterResult = testRun.quarters[q - 1];
     if (!quarterResult) continue;
     
-    const openingCash = quarterResult.startingState.cash;
-    const closingCash = quarterResult.endingState.cash;
-    const profitOrLoss = closingCash - openingCash + quarterResult.consequence.cashChange;
-    const spend = -quarterResult.consequence.cashChange + profitOrLoss;
+    // Extract authoritative values from diagnostic ledger in consequence
+    const diagnosticLedger = (quarterResult.consequence as any).__diagnostic__cashLedger;
     
-    // Simplified: assume no explicit financing or other adjustments
-    // (These would need to be instrumented if required)
-    const financing = 0;
-    const otherAdjustment = 0;
-    
-    // Reconciliation: Opening + Profit - Spend + Financing ± Other = Closing
-    const reconciliation = openingCash + profitOrLoss - spend + financing + otherAdjustment - closingCash;
-    
-    ledger.push({
-      quarter: q,
-      openingCash,
-      operatingProfit: quarterResult.consequence.cashChange,
-      strategicSpend: spend,
-      financing,
-      otherAdjustment,
-      closingCash,
-      reconciliation,
-    });
+    if (diagnosticLedger) {
+      const openingCash = diagnosticLedger.openingCash;
+      const operatingProfit = diagnosticLedger.operatingProfit;
+      const strategicSpend = diagnosticLedger.strategicSpend;
+      const financing = diagnosticLedger.financing;
+      const otherAdjustment = diagnosticLedger.otherAdjustment;
+      const closingCash = diagnosticLedger.closingCash;
+      
+      // Reconciliation: Opening + Profit − Spend + Financing ± Other = Closing
+      const reconciliation = openingCash + operatingProfit - strategicSpend + financing + otherAdjustment - closingCash;
+      
+      ledger.push({
+        quarter: q,
+        openingCash,
+        operatingProfit,
+        strategicSpend,
+        financing,
+        otherAdjustment,
+        closingCash,
+        reconciliation,
+      });
+    }
   }
   
   return ledger;
@@ -164,12 +166,12 @@ async function runDiagnosticStrategy(
   
   const tr = q8Quarter.consequence.terminalResult;
   
-  // Financial score components are captured in console logs from engine diagnostics
-  // Shown here as aggregate only; detailed breakdown available in browser console
-  const financialRevenuePoints = 0;  // See console diagnostics for breakdown
-  const financialEbitdaPoints = 0;
-  const financialCashPoints = 0;
-  const financialOtherPoints = 0;
+  // Extract financial score components from diagnostic data in terminalResult
+  const diagnosticFinancialComponents = (tr as any).__diagnostic__financialComponents;
+  const financialRevenuePoints = diagnosticFinancialComponents?.revenueComponent || 0;
+  const financialEbitdaPoints = diagnosticFinancialComponents?.ebitdaComponent || 0;
+  const financialCashPoints = diagnosticFinancialComponents?.cashComponent || 0;
+  const financialOtherPoints = diagnosticFinancialComponents?.otherComponent || 0;
   
   const result: DiagnosticResult = {
     strategyId,
@@ -281,22 +283,24 @@ function formatSummaryTable(results: DiagnosticResult[]): string {
  * Format financial score breakdown
  */
 function formatFinancialBreakdown(results: DiagnosticResult[]): string {
-  let table = '\nFINANCIAL SCORE AGGREGATE (Detailed components in console diagnostics)\n';
-  table += '─'.repeat(110) + '\n';
-  table += 'Strategy | Final Score | Component Notes\n';
-  table += '─'.repeat(110) + '\n';
+  let table = '\nFINANCIAL SCORE BREAKDOWN\n';
+  table += '─'.repeat(130) + '\n';
+  table += 'Strategy | Revenue Pts | EBITDA Pts | Cash Pts | Other | Raw Subtotal | Final Score\n';
+  table += '─'.repeat(130) + '\n';
   
   for (const r of results) {
     const name = r.strategyName.substring(0, 25).padEnd(25);
-    const score = `${r.financialScore}/33`.padEnd(11);
-    const notes = 'Check browser console Q8 diagnostics for revenue/EBITDA/cash components';
+    const revPts = `${r.financialRevenuePoints}`.padEnd(11);
+    const ebitdaPts = `${r.financialEbitdaPoints}`.padEnd(10);
+    const cashPts = `${r.financialCashPoints}`.padEnd(8);
+    const other = `${r.financialOtherPoints}`.padEnd(5);
+    const raw = `${r.financialRevenuePoints + r.financialEbitdaPoints + r.financialCashPoints}`.padEnd(12);
+    const final = `${r.financialScore}/33`;
     
-    table += `${name} │ ${score} │ ${notes}\n`;
+    table += `${name} │ ${revPts} │ ${ebitdaPts} │ ${cashPts} │ ${other} │ ${raw} │ ${final}\n`;
   }
   
-  table += '─'.repeat(110) + '\n';
-  table += '\nDetailed financial components are printed in browser console during each quarter run.\n';
-  table += 'Open DevTools Console (F12) to view complete diagnostics.\n';
+  table += '─'.repeat(130) + '\n';
   return table;
 }
 

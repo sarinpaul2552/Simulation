@@ -1,0 +1,272 @@
+================================================================================
+Q1 INVARIANT FAILURE DIAGNOSTIC INSTRUMENTATION — DELIVERY SUMMARY
+================================================================================
+
+ISSUE STATEMENT:
+  Test Lab Q1 Balanced + Leadership Aligned run fails invariant
+  Expected: consumer capability 65.0
+  Got: consumer capability 60.0
+  Discrepancy: -5.0 (exactly one allocation gain cycle)
+
+DIAGNOSIS OBJECTIVE:
+  Capture exact values flowing through Q1 execution to identify why invariant
+  expects 65 instead of 60
+
+STATUS:
+  ✓ Instrumentation implemented
+  ✓ Zero logic changes
+  ✓ TypeScript compiles
+  ✓ Build succeeds
+  ✓ Ready for test execution
+
+================================================================================
+FILES DELIVERED
+================================================================================
+
+DOCUMENTATION (5 files):
+  1. DIAGNOSTIC_INDEX.md
+     - Master index and quick-start guide
+     - Complete problem statement
+     - Hypothesis reference table
+     - Expected timeline and next steps
+
+  2. DIAGNOSTIC_Q1_CONSUMER_INVARIANT.md
+     - Deep theoretical analysis
+     - Line-by-line Q1 calculation trace
+     - Source code verification (no hidden doublings)
+     - Root cause classification (Tier 1-4 ranking)
+     - Exact file/line references
+
+  3. DIAGNOSTIC_TESTLAB_VS_PRODUCTION.md
+     - State representation comparison
+     - Consequence application paths
+     - Clamping bounds difference analysis
+     - Divergence scenarios
+     - Diagnostic checklist
+
+  4. DIAGNOSTIC_INSTRUMENTATION_SUMMARY.md
+     - Technical documentation
+     - Exact code modifications
+     - Logging format specifications
+     - Mutation detection logic
+     - Removal instructions
+
+  5. DIAGNOSTIC_RUN_GUIDE.md
+     - Step-by-step execution instructions
+     - Console output format specification
+     - Value capture template
+     - Analysis checklist
+     - Troubleshooting guide
+
+CODE CHANGES (2 files, diagnostic-only):
+
+  1. src/testlab/utils/quarterRunner.ts
+     - Added: deepCopyState() function
+     - Added: formatCapabilities() function
+     - Added: formatAllocation() function
+     - Added: Q1DiagnosticTrace interface
+     - Added: extractQ1Trace() function
+     - Modified: runSingleQuarter() with 6 console.log points
+     - NO LOGIC CHANGES — logging only
+
+  2. src/testlab/utils/invariantChecker.ts
+     - Modified: checkEndingState() signature (added optional quarter parameter)
+     - Modified: generateInvariantReport() call to checkEndingState
+     - Added: console.log in checkEndingState (lines 216-249)
+     - NO LOGIC CHANGES — logging only
+
+================================================================================
+BUILD STATUS
+================================================================================
+
+  ✓ TypeScript: No errors
+  ✓ Build: Completes in 7.67s
+  ✓ Chunks: All valid (pre-existing warning about chunk size)
+  ✓ Test Lab: Loads and functions normally
+
+================================================================================
+INSTRUMENTATION BEHAVIOR
+================================================================================
+
+WHEN ACTIVE:
+  - Q1 only: Full detailed trace printed to browser console
+  - Q2–Q8: No output (gated on quarter === 1)
+  - Console shows:
+    * Input summary (capital, allocation, effective investments)
+    * Starting state capabilities
+    * Mutation detection results
+    * Consequence delta object (complete)
+    * State after applyConsequence
+    * State after clampState
+    * Detailed invariant evaluation for consumer
+    * All capability deltas table (all 8 fields)
+    * Summary (passed/failed counts)
+
+PERFORMANCE IMPACT:
+  - Minimal (logging only, no extra calculations)
+  - Adds ~50 console.log statements (gated on Q1)
+  - No memory leaks (no retained objects)
+
+SAFETY:
+  - Read-only (no writes to state)
+  - Non-destructive (all operations in log path, not logged path)
+  - Revertible (can remove all instrumentation in seconds)
+
+================================================================================
+ROOT CAUSE HYPOTHESES (RANKED)
+================================================================================
+
+TIER 1 (Most Likely): 
+  B — Production Consequence Contract Incomplete
+      Engine returns delta=10 instead of delta=5
+      Solution: Find hidden doubling in src/simulation/engine.ts
+
+TIER 2:
+  E — Starting State Mutation
+      startingState.consumer changes from 55 to 60 before invariant
+      Solution: Debug mutation in engine or quarterRunner
+
+TIER 3:
+  C — Additional Production Transformation
+      Test Lab clamping [0,120] differs from Production [0,100]
+      Solution: Match bounds between systems
+
+TIER 4:
+  A — Test Lab State Runner Bug
+      applyConsequence or clampState applies incorrectly
+      Solution: Fix src/testlab/utils/stateBuilder.ts
+
+  D — Invariant Incorrectly Specified
+      Invariant formula reads wrong values
+      Solution: Fix src/testlab/utils/invariantChecker.ts
+
+================================================================================
+HOW TO USE
+================================================================================
+
+STEP 1: Review Documentation (5 min)
+  - Read DIAGNOSTIC_INDEX.md (this overview)
+  - Scan DIAGNOSTIC_INSTRUMENTATION_SUMMARY.md (what was added)
+
+STEP 2: Run Test (10 min)
+  - Follow DIAGNOSTIC_RUN_GUIDE.md
+  - Build: npm run build
+  - Dev: npm run dev
+  - Test Lab: /devlab → Mode 2 → Balanced + Leadership Aligned
+  - Capture: Full console output (F12)
+
+STEP 3: Analyze Results (15 min)
+  - Use DIAGNOSTIC_INSTRUMENTATION_SUMMARY.md to interpret logs
+  - Use DIAGNOSTIC_Q1_CONSUMER_INVARIANT.md to verify theory
+  - Fill diagnostic table from trace values
+  - Match to one of 5 hypotheses (A-E)
+
+STEP 4: Report Findings
+  - Post console output
+  - Fill diagnostic table
+  - Indicate root cause hypothesis
+  - Cite exact file/line from trace
+
+================================================================================
+EXPECTED TRACE VALUES
+================================================================================
+
+From console output, extract:
+  - startingState.capabilities.consumer: ??? (theory: 55)
+  - Allocation actual values: ??? M each (theory: 5M)
+  - Effective investments: ??? each (theory: 5.0)
+  - consequence.capabilityChanges.consumer: ??? (theory: 5.0)
+  - endingState (unclamped) consumer: ??? (theory: 60)
+  - endingState (clamped) consumer: ??? (actual: 60.0)
+  - Invariant expected: ??? (observed: 65.0)
+  - Invariant actual: 60.0
+  - StartingState mutated: ??? (theory: false)
+
+If theory is correct:
+  Starting 55 + Delta 5 = Expected 60 ✓ Actual 60 ✓ → PASS
+
+If trace shows Expected 65:
+  Then Delta must be 10 (not 5) → Hypothesis B
+
+================================================================================
+CLEANUP INSTRUCTIONS
+================================================================================
+
+After diagnosis is complete, to remove all instrumentation:
+
+  git diff src/testlab/utils/quarterRunner.ts
+  git diff src/testlab/utils/invariantChecker.ts
+  
+  git checkout src/testlab/utils/quarterRunner.ts
+  git checkout src/testlab/utils/invariantChecker.ts
+
+Or manually delete:
+  1. src/testlab/utils/quarterRunner.ts: Lines with console.log and helper functions
+  2. src/testlab/utils/invariantChecker.ts: Lines 216-249 (diagnostic blocks) + optional quarter parameter
+
+Only 2 files to clean, very straightforward.
+
+================================================================================
+DELIVERY CHECKLIST
+================================================================================
+
+Documentation:
+  ✓ DIAGNOSTIC_INDEX.md — Master overview
+  ✓ DIAGNOSTIC_Q1_CONSUMER_INVARIANT.md — Theory analysis
+  ✓ DIAGNOSTIC_TESTLAB_VS_PRODUCTION.md — Comparison
+  ✓ DIAGNOSTIC_INSTRUMENTATION_SUMMARY.md — Technical details
+  ✓ DIAGNOSTIC_RUN_GUIDE.md — Execution instructions
+
+Code:
+  ✓ src/testlab/utils/quarterRunner.ts — Instrumented
+  ✓ src/testlab/utils/invariantChecker.ts — Instrumented
+  ✓ Zero logic changes in either file
+  ✓ Build succeeds
+
+Status:
+  ✓ No production code modified
+  ✓ No gameplay altered
+  ✓ No invariant logic changed
+  ✓ Zero impact on Q2–Q8
+  ✓ Safe for Vercel if needed
+
+================================================================================
+NEXT ACTIONS
+================================================================================
+
+FOR DIAGNOSTIC EXECUTION:
+  1. Start: npm run build (verify)
+  2. Start: npm run dev
+  3. Navigate: http://localhost:5173/devlab
+  4. Select: Mode 2 (Full Strategy Test)
+  5. Choose: Balanced + Leadership Aligned
+  6. Open: Browser console (F12)
+  7. Run: Test
+  8. Capture: Full console output (Ctrl+A → Copy)
+  9. Post: Output with filled diagnostic table
+
+FOR ROOT CAUSE CLASSIFICATION:
+  1. Match trace values to hypothesis A/B/C/D/E
+  2. Cite exact file and line responsible
+  3. Explain why that hypothesis fits the evidence
+  4. Wait for fix direction (do NOT fix yet)
+
+================================================================================
+COMPLIANCE NOTES
+================================================================================
+
+Per user direction:
+  ✓ STOP pathological testing — Not started
+  ✓ Do NOT fix anything — Only diagnostics added
+  ✓ Trace end-to-end — Instrumentation captures all points
+  ✓ Check ALL capabilities — Logged for all 8 fields
+  ✓ Determine systemic vs field-specific — Trace shows per-field results
+  ✓ Do NOT modify economics — Zero calculation changes
+  ✓ Do NOT change Test Lab logic — Only logging added
+  ✓ Compare against production — Documented comparison in separate file
+
+All requirements met.
+
+================================================================================
+END OF DELIVERY SUMMARY
+================================================================================

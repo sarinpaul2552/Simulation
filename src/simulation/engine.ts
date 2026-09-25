@@ -63,6 +63,16 @@ export interface TerminalResult {
   organizationalScore: number; // 0-34
   totalScore: number;          // 0-100
   verdict: 'WINNER' | 'SURVIVOR' | 'STRUGGLING' | 'FAILURE';
+  
+  // DIAGNOSTIC: Financial score component breakdown
+  __diagnostic__financialComponents?: {
+    revenueComponent: number;
+    ebitdaComponent: number;
+    cashComponent: number;
+    otherComponent: number;
+    rawSubtotal: number;
+    finalFinancialScore: number;
+  };
 }
 
 export interface Consequence {
@@ -78,6 +88,18 @@ export interface Consequence {
   
   // Q8 terminal result (populated only by calculateQ8Consequence)
   terminalResult?: TerminalResult;
+  
+  // DIAGNOSTIC: Cash ledger details (all quarters Q1-Q8)
+  __diagnostic__cashLedger?: {
+    openingCash: number;
+    revenue: number;
+    operatingCost: number;
+    operatingProfit: number;
+    strategicSpend: number;
+    financing: number;
+    otherAdjustment: number;
+    closingCash: number;
+  };
 }
 
 // ============ DIMINISHING RETURNS ============
@@ -340,6 +362,17 @@ export function calculateQ1Consequence(
     productQualityChange: productQualityGain,
     cultureChange: cultureGain,
     trustChange: trustGain,
+    // DIAGNOSTIC: Cash ledger details (Q1)
+    __diagnostic__cashLedger: {
+      openingCash: currentState.cash,
+      revenue: q1Revenue,
+      operatingCost: currentState.operatingCost,
+      operatingProfit: q1OpProfit,
+      strategicSpend: strategicSpend,
+      financing: 0,
+      otherAdjustment: 0,
+      closingCash: q1ClosingCash,
+    },
   };
 }
 
@@ -523,6 +556,17 @@ ${aiCapability >= 30 && consumerAllocation > 0 ? 'Your AI capability shielded co
       execution: executionChange,
     },
     thresholdsCrossed,
+    // DIAGNOSTIC: Cash ledger details (Q2)
+    __diagnostic__cashLedger: {
+      openingCash: startingState.cash,
+      revenue: newRevenue,
+      operatingCost: newOpex,
+      operatingProfit: newOperatingProfit,
+      strategicSpend: 0, // Q2+ no explicit strategic spend allocation
+      financing: 0,
+      otherAdjustment: 0,
+      closingCash: newCash,
+    },
   };
 }
 
@@ -675,6 +719,8 @@ ${newRevenue + cashChange >= 15 ? '✓ Cash runway comfortable.' : '🚨 Cash ru
 
 Cash impact: ${cashChange > 0 ? '+$' + cashChange.toFixed(1) + 'M' : '−$' + Math.abs(cashChange).toFixed(1) + 'M'}`;
 
+  const newCash = startingState.cash + cashChange;
+  
   return {
     narrative,
     revenueChange,
@@ -686,6 +732,17 @@ Cash impact: ${cashChange > 0 ? '+$' + cashChange.toFixed(1) + 'M' : '−$' + Ma
       ai: newCapabilities.ai - startingState.capabilities.ai,
     },
     thresholdsCrossed,
+    // DIAGNOSTIC: Cash ledger details (Q3)
+    __diagnostic__cashLedger: {
+      openingCash: startingState.cash,
+      revenue: newRevenue,
+      operatingCost: newOpex,
+      operatingProfit: newOperatingProfit,
+      strategicSpend: 0, // Q2+ no explicit strategic spend allocation
+      financing: 0,
+      otherAdjustment: 0,
+      closingCash: newCash,
+    },
   };
 }
 
@@ -789,6 +846,8 @@ Revenue impact: ${revenueChange > 0 ? '+$' + revenueChange.toFixed(1) + 'M' : '�
 
 ${thresholdsCrossed.join('\n')}`;
 
+  const newCash = startingState.cash + cashChange;
+  
   return {
     narrative,
     revenueChange,
@@ -796,6 +855,17 @@ ${thresholdsCrossed.join('\n')}`;
     stockPriceChange,
     capabilityChanges: {},
     thresholdsCrossed,
+    // DIAGNOSTIC: Cash ledger details (Q5)
+    __diagnostic__cashLedger: {
+      openingCash: startingState.cash,
+      revenue: newRevenue,
+      operatingCost: newOpex,
+      operatingProfit: newOperatingProfit,
+      strategicSpend: 0,
+      financing: 0,
+      otherAdjustment: 0,
+      closingCash: newCash,
+    },
   };
 }
 
@@ -850,6 +920,8 @@ Revenue impact: ${revenueChange < 0 ? '−$' + Math.abs(revenueChange).toFixed(1
 
 ${thresholdsCrossed.join('\n')}`;
 
+  const newCash = startingState.cash + cashChange;
+  
   return {
     narrative,
     revenueChange,
@@ -857,6 +929,17 @@ ${thresholdsCrossed.join('\n')}`;
     stockPriceChange,
     capabilityChanges: {},
     thresholdsCrossed,
+    // DIAGNOSTIC: Cash ledger details (Q6)
+    __diagnostic__cashLedger: {
+      openingCash: startingState.cash,
+      revenue: newRevenue,
+      operatingCost: newOpex,
+      operatingProfit: newOperatingProfit,
+      strategicSpend: 0,
+      financing: 0,
+      otherAdjustment: 0,
+      closingCash: newCash,
+    },
   };
 }
 
@@ -929,6 +1012,8 @@ Revenue scaling: ${actualScaling > 0 ? '+' + (actualScaling * 100).toFixed(1) + 
 
 ${thresholdsCrossed.join('\n')}`;
 
+  const newCash = startingState.cash + cashChange;
+  
   return {
     narrative,
     revenueChange,
@@ -937,6 +1022,17 @@ ${thresholdsCrossed.join('\n')}`;
     capabilityChanges: {},
     thresholdsCrossed,
     cultureChange: cultureStress,
+    // DIAGNOSTIC: Cash ledger details (Q7)
+    __diagnostic__cashLedger: {
+      openingCash: startingState.cash,
+      revenue: newRevenue,
+      operatingCost: newOpex,
+      operatingProfit: newOperatingProfit,
+      strategicSpend: 0,
+      financing: 0,
+      otherAdjustment: 0,
+      closingCash: newCash,
+    },
   };
 }
 
@@ -1116,6 +1212,15 @@ ${terminalVerdictNarrative(terminalScore)}`;
       organizationalScore: Math.round(orgScore),
       totalScore: Math.round(terminalScore),
       verdict,
+      // DIAGNOSTIC: Financial score component breakdown
+      __diagnostic__financialComponents: {
+        revenueComponent: revenuePtsComponent,
+        ebitdaComponent: ebitdaPtsComponent,
+        cashComponent: cashPtsComponent,
+        otherComponent: 0,
+        rawSubtotal: revenuePtsComponent + ebitdaPtsComponent + cashPtsComponent,
+        finalFinancialScore: financialScore,
+      },
     },
   };
 }
