@@ -149,29 +149,50 @@ The audit reveals that cash and financial systems require **coordinated redesign
 - ✗ Insolvency/financing mechanics cannot be added without addressing cash semantics first
 - ✗ Q4 destination propagation requires decision on Q5–Q8 architecture
 
-### Economics V2 Design Required
+### V1 ENGINE BASELINE — FROZEN
 
-Phase 1 audit provides the architectural baseline. Economics V2 must decide:
-
-1. **Cash semantics:** Should all quarters use consistent delta pattern or is variable semantics acceptable?
-2. **Terminal scoring:** Should Q8 use operating profit deltas or EBITDA-based approach?
-3. **Q7 correction:** Revert to operatingProfit or intentionally use operatingCost?
-4. **Insolvency gate:** When/how to apply? Does it affect Q7–Q8?
-5. **Q4 destination:** Should it propagate to Q5–Q8 or apply only at Q4?
-
-**No production code changes until Economics V2 design is approved.**
-
----
-
-## V1 ENGINE BASELINE — FROZEN
-
-**Current engine (commit c8f246e) is the V1 audited baseline:**
+**Current engine (commit 336a4a2) is the V1 audited baseline:**
 - All Phase 1–1D findings documented
 - No fixes applied
 - Diagnostic instrumentation active
 - Ready for Economics V2 design reference
 
-**Preserved Documentation:**
+---
+
+## ECONOMICS V2 ARCHITECTURE — LOCKED
+
+**Approved:** 2026-09-25 17:45 UTC  
+**Document:** ECONOMICS_V2_ARCHITECTURE.md (2300 lines)
+
+### 16 Approved Architecture Decisions
+
+1. **Financial Accounting:** Real cash; no artificial floor; strategic investment as cash outflow
+2. **Revenue Model:** Four-segment structure; revenue driven by market × capability × strategy
+3. **Cost Architecture:** Separate fixed/variable; revenue declines don't produce proportional cost declines
+4. **Six Allocation Buckets:** Consumer, Enterprise, AI & Product, People, University & Credentials, Cash Reserve
+5. **Capability-Mediated Returns:** Money builds capabilities; different investments have different payoff speeds and diminishing returns
+6. **Segment Personalities:** Consumer (fast/large), Enterprise (slow/sticky), University (slow/retention), AI-native (explosive/threshold)
+7. **Core Capabilities:** Consumer, Enterprise, AI, Talent, Credential, Customer Success, Product Quality, Trust, Execution
+8. **Organizational Capacity:** Finite transformation capacity; multiple initiatives create load that reduces execution effectiveness
+9. **Leading/Lagging Indicators:** Students see leading signals early; lagging outcomes materialize with delay
+10. **Q1–Q8 Quarter Architecture:** Each quarter has distinct theme and mechanics; Q8 is active decision, not passive score
+11. **Q4 Strategic Destinations:** Five options (Consumer AI, Enterprise AI, Premium Human+AI, University Credentials, Balanced); Q5–Q8 respond to choice
+12. **Liquidity and Financing:** Investment funded from profit/liquidity/financing; no arbitrary insolvency patch yet
+13. **Scoring Architecture:** Financial, Strategic, Organizational dimensions with viability gates (catastrophic failure in one cannot be offset)
+14. **Asymmetric Leadership Information:** Five roles (CEO, CFO, Product, People, Growth) receive role-specific private indicators
+15. **Core Design Philosophy:** No universally correct strategy; outcomes depend on market evidence + investments + capabilities + execution + finances
+16. **Student Experience:** Simple interface (10–12 KPIs) hiding complex economics; easy interface, difficult decisions
+
+### Key Principles
+
+- **Cash is real:** No operating-profit-delta semantics; no artificial floor
+- **No direct investment conversion:** Money builds capabilities; capabilities drive revenue (not 1:1 mapping)
+- **Strategic focus matters:** Organizational capacity limits simultaneous initiatives; focus creates economic value
+- **Evidence-based adaptation:** Switching strategies based on new evidence is pragmatic but carries realistic costs
+- **Viability gates prevent absurdity:** Financial catastrophe cannot be offset by strong culture; forces all-or-nothing outcomes realistic
+
+### Documentation Preserved
+
 - ECONOMICS_AUDIT_PHASE1.md (full analysis)
 - ECONOMICS_AUDIT_SUMMARY.md (executive brief)
 - ECONOMICS_AUDIT_TABLES.md (detailed tables)
@@ -179,20 +200,26 @@ Phase 1 audit provides the architectural baseline. Economics V2 must decide:
 - PHASE_1D_FINDINGS.md (semantic violations)
 - DIAGNOSTICS_PHASE1B.md (how to run tests)
 - PHASE_1C_DIAGNOSTIC_OBSERVABILITY.md (observability setup)
+- PHASE_1_CLOSURE.md (audit closure)
+- **ECONOMICS_V2_ARCHITECTURE.md** (approved specification)
 
 ---
 
-## NEXT: ECONOMICS V2 DESIGN
+## NEXT: ECONOMICS V2 QUANTITATIVE CALIBRATION
 
-**Awaiting approval to proceed with:**
+**No production code changes until calibration is complete.**
 
-1. Architecture review (cash semantics, terminal scoring)
-2. Mechanic design (insolvency, financing, Q4 propagation)
-3. Design decision document
-4. Implementation plan
-5. Phased rollout (bug fixes → calibration → new mechanics)
+Quantitative calibration will define:
+- Solvency thresholds (when does < $0M trigger consequences?)
+- Segment revenue models (exact payoff curves for each segment)
+- Capability growth curves (ROI for each investment type)
+- Transformation load mechanics (capacity curves, cost multipliers)
+- Scoring gates and thresholds (financial/strategic/organizational viability limits)
+- Role-specific information metrics (what does each role see?)
+- Q4 destination economics (specific Q5–Q8 multiplier/effect curves per destination)
+- Financing options mechanics (equity dilution %, debt terms, partnership costs)
 
-**No code changes until approval.**
+**Timeline:** Phase 1 complete; Phase 1D complete; Economics V2 Architecture locked; ready for quantitative calibration.
 
 ---
 
