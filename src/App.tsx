@@ -31,6 +31,16 @@ function AppContent() {
 
   // On mount, check if we can restore a session
   useEffect(() => {
+    // Skip session restoration if we're in devlab mode
+    const isDev = import.meta.env.DEV || 
+                  window.localStorage.getItem('ENABLE_TESTLAB') === 'true';
+    const isDevlab = isDev && window.location.pathname === '/devlab';
+    
+    if (isDevlab) {
+      // Stay in devlab mode, don't run restore logic
+      return;
+    }
+
     if (restore.status === 'restored' && restore.restoredState) {
       // Successfully restored - go directly to game
       setSessionCode(restore.restoredState.sessionCode);
