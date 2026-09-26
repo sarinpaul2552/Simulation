@@ -3,7 +3,8 @@
  *
  * Parallel to the frozen V1 engine (engine.ts). Self-contained: imports nothing
  * from V1 (no runtime logic, no types). Phase 2B capability logic lives in
- * engineV2Capabilities.ts and is orchestrated here, but audited separately.
+ * engineV2Capabilities.ts and Phase 2C commercial logic in engineV2Commercial.ts;
+ * both are orchestrated here but audited separately from the financial ledger.
  *
  * Canonical accounting identity (ECONOMICS_V2_ARCHITECTURE.md §1):
  *
@@ -32,7 +33,19 @@ import {
   calculateV2CapabilityConsequence,
 } from './engineV2Capabilities';
 
+import {
+  V2CommercialState,
+  V2CommercialConsequence,
+  V2MarketConditions,
+  calculateV2CommercialConsequence,
+  calculateAIReadiness,
+  getNeutralMarket,
+  getV2CommercialBaseline,
+} from './engineV2Commercial';
+
 export type { V2Capabilities, V2CapabilityConsequence, V2InvestmentCohort } from './engineV2Capabilities';
+export type { V2CommercialState, V2CommercialConsequence, V2MarketConditions } from './engineV2Commercial';
+export { getNeutralMarket } from './engineV2Commercial';
 
 // ============ TYPES ============
 
@@ -132,10 +145,15 @@ export interface V2TeamState {
   /** Investment cohorts still maturing into capability. */
   pendingCohorts: V2InvestmentCohort[];
 
+  /** Leading commercial indicators (Phase 2C). Not revenue. */
+  commercial: V2CommercialState;
+
   /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
   /** Every completed quarter's capability consequence, in order. */
   capabilityHistory: V2CapabilityConsequence[];
+  /** Every completed quarter's commercial consequence, in order. */
+  commercialHistory: V2CommercialConsequence[];
 }
 
 export interface V2QuarterInput {
@@ -147,6 +165,8 @@ export interface V2QuarterInput {
   operatingInputs?: V2OperatingInputs;
   /** Itemised event costs; defaults to none. */
   eventCosts?: V2EventCost[];
+  /** Market conditions for the commercial engine; defaults to the neutral market. */
+  market?: V2MarketConditions;
 }
 
 /**
@@ -163,6 +183,9 @@ export interface V2Consequence {
   // Capability consequence (Phase 2B)
   capability: V2CapabilityConsequence;
   capabilityFlags: string[];
+  // Commercial consequence (Phase 2C) — leading indicators only, no revenue
+  commercial: V2CommercialConsequence;
+  commercialFlags: string[];
 }
 
 export interface V2IdentityCheck {
@@ -180,6 +203,19 @@ export const V2_IDENTITY_TOLERANCE = 1e-9;
 
 /** V2 starting company (Architecture §1–2; Notion "Starting company"). */
 export function getV2Baseline(): V2TeamState {
+  const capabilities = {
+    consumer: 55,
+    enterprise: 30,
+    ai: 10,
+    talent: 55,
+    credential: 40,
+    customerSuccess: 30,
+    execution: 60,
+  };
+  const productQuality = 70;
+  const trust = 70;
+  const commercial = getV2CommercialBaseline();
+  commercial.aiCommercialReadiness = calculateAIReadiness({ capabilities, productQuality, trust }).readiness;
   return {
     quarter: 0,
     revenue: 200,
@@ -188,25 +224,19 @@ export function getV2Baseline(): V2TeamState {
     cash: 60,
     debt: 0,
     stockPrice: 100,
-    productQuality: 70,
+    productQuality,
     culture: 72,
-    trust: 70,
-    capabilities: {
-      consumer: 55,
-      enterprise: 30,
-      ai: 10,
-      talent: 55,
-      credential: 40,
-      customerSuccess: 30,
-      execution: 60,
-    },
+    trust,
+    capabilities,
     organizationalCapacity: 60,
     transformationLoad: 0,
     innovationVelocity: 55,
     technicalDebt: 25,
     pendingCohorts: [],
+    commercial,
     ledgerHistory: [],
     capabilityHistory: [],
+    commercialHistory: [],
   };
 }
 
@@ -356,7 +386,16 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   if (capability.loadToCapacityRatio > 1) capabilityFlags.push('LOAD_EXCEEDS_CAPACITY');
   if (capability.targets.some(t => t.wastedSaturation > 1e-9)) capabilityFlags.push('CAPABILITY_SATURATION_WASTE');
 
-  return { quarter: input.quarter, ledger, identity, flags, capability, capabilityFlags };
+  // Commercial consequence (Phase 2C) — reads post-maturation capabilities + market; never touches cash
+  const commercial = calculateV2CommercialConsequence(
+    opening.commercial,
+    capability.closing,
+    input.market ?? getNeutralMarket(),
+    input.quarter
+  );
+  const commercialFlags = commercial.indicators.filter(i => i.clipped).map(i => `CLIPPED_${i.indicator}`);
+
+  return { quarter: input.quarter, ledger, identity, flags, capability, capabilityFlags, commercial, commercialFlags };
 }
 
 /**
@@ -381,7 +420,9 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     innovationVelocity: capability.closing.innovationVelocity,
     technicalDebt: capability.closing.technicalDebt,
     pendingCohorts: capability.pendingCohortsAfter,
+    commercial: consequence.commercial.closing,
     ledgerHistory: [...state.ledgerHistory, ledger],
     capabilityHistory: [...state.capabilityHistory, capability],
+    commercialHistory: [...state.commercialHistory, consequence.commercial],
   };
 }

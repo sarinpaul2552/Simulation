@@ -4,6 +4,7 @@ import {
   V2EventCost,
   V2OperatingInputs,
   V2TeamState,
+  V2MarketConditions,
   calculateV2QuarterConsequence,
   getV2Baseline,
   V2_IDENTITY_TOLERANCE,
@@ -119,6 +120,57 @@ export function checkV2Quarter(
   });
 
   checks.push(...checkV2CapabilityQuarter(opening, consequence, ending));
+  checks.push(...checkV2CommercialQuarter(opening, consequence, ending));
+
+  return checks;
+}
+
+/** Phase 2C commercial invariants: every indicator's movement is fully explained. */
+export function checkV2CommercialQuarter(
+  opening: V2TeamState,
+  consequence: V2Consequence,
+  ending: V2TeamState
+): V2LedgerCheck[] {
+  const M = consequence.commercial;
+  const tol = 1e-9;
+  const checks: V2LedgerCheck[] = [];
+
+  const badDecomp = M.indicators.filter(i =>
+    !near(i.unclipped, i.opening + i.baseInflow + i.marketContribution + i.capabilityContribution + i.dependencyContribution + i.decayOrAttrition, tol));
+  checks.push({
+    id: 'com_movement_explained',
+    message: 'Each indicator: opening + base inflow + market + capability + dependency + decay/attrition = unclipped',
+    passed: badDecomp.length === 0,
+    details: badDecomp.map(i => i.indicator).join(', '),
+  });
+
+  const badClip = M.indicators.filter(i =>
+    i.closing < i.bounds[0] - tol || i.closing > i.bounds[1] + tol ||
+    !near(i.closing, Math.min(i.bounds[1], Math.max(i.bounds[0], i.unclipped)), tol) ||
+    i.clipped !== (Math.abs(i.clipAmount) > 0) || !near(i.clipAmount, i.closing - i.unclipped, tol));
+  checks.push({
+    id: 'com_bounds_and_clipping_reported',
+    message: 'Closing = unclipped clamped to bounds; clipping reported',
+    passed: badClip.length === 0,
+    details: badClip.map(i => i.indicator).join(', '),
+  });
+
+  const openingMatches = M.indicators.every(i => near(i.opening, (opening.commercial as any)[i.indicator], tol));
+  const closingMatches = M.indicators.every(i => near(i.closing, (ending.commercial as any)[i.indicator], tol));
+  checks.push({
+    id: 'com_state_links',
+    message: 'Indicators open at prior commercial state and close into ending state',
+    passed: openingMatches && closingMatches,
+    details: `opening ${openingMatches ? 'ok' : 'mismatch'}, closing ${closingMatches ? 'ok' : 'mismatch'}`,
+  });
+
+  checks.push({
+    id: 'com_reads_post_maturation_capability',
+    message: 'Commercial engine read the post-maturation capability state',
+    passed: near(M.aiReadiness.aiCapability, ending.capabilities.ai, tol) &&
+      near(M.relativeCapability.consumer, ending.capabilities.consumer - M.competitorBenchmarks.consumer, tol),
+    details: `AI ${M.aiReadiness.aiCapability.toFixed(2)} vs state ${ending.capabilities.ai.toFixed(2)}`,
+  });
 
   return checks;
 }
@@ -215,7 +267,8 @@ export function runV2Quarter(
   allocation: V2Allocation,
   strategicEnvelope: number,
   operatingInputs?: V2OperatingInputs,
-  eventCosts?: V2EventCost[]
+  eventCosts?: V2EventCost[],
+  market?: V2MarketConditions
 ): V2QuarterRecord {
   const consequence = calculateV2QuarterConsequence(opening, {
     quarter,
@@ -223,6 +276,7 @@ export function runV2Quarter(
     strategicEnvelope,
     operatingInputs,
     eventCosts,
+    market,
   });
   const ending = applyV2(opening, consequence);
   const checks = checkV2Quarter(opening, allocation, consequence, ending, operatingInputs);
@@ -552,4 +606,62 @@ export function runV2CapabilityScenario(scenario: V2CapabilityScenario): V2Capab
 
 export function runAllV2CapabilityScenarios(): V2CapabilityScenarioResult[] {
   return V2_CAPABILITY_SCENARIOS.map(runV2CapabilityScenario);
+}
+
+// ============ PHASE 2C COMMERCIAL CALIBRATION SCENARIOS ============
+
+/**
+ * Twelve required Q1→Q8 calibration strategies under the neutral market.
+ * Each runs a constant $30M envelope in every quarter (including Q8) so that
+ * strategies are comparable. "Deliberately weak" scenarios inject the weak
+ * capability into the opening state (no Phase 2B curve moves CS/Execution yet).
+ */
+export interface V2CommercialScenario {
+  id: string;
+  name: string;
+  description: string;
+  opening: () => V2TeamState;
+  allocation: V2Allocation;
+  market?: V2MarketConditions;
+}
+
+const withCaps = (p: Partial<V2TeamState['capabilities']>, extra: Partial<V2TeamState> = {}) => () => {
+  const b = getV2Baseline();
+  return { ...b, ...extra, capabilities: { ...b.capabilities, ...p } };
+};
+
+export const V2_COMMERCIAL_SCENARIOS: V2CommercialScenario[] = [
+  { id: 'consumer100', name: 'Consumer100', description: '$30M Consumer every quarter', opening: getV2Baseline, allocation: alloc({ consumer: 30 }) },
+  { id: 'enterprise100', name: 'Enterprise100', description: '$30M Enterprise every quarter', opening: getV2Baseline, allocation: alloc({ enterprise: 30 }) },
+  { id: 'ai100', name: 'AI100', description: '$30M AI & Product every quarter', opening: getV2Baseline, allocation: alloc({ aiProduct: 30 }) },
+  { id: 'people100', name: 'People100', description: '$30M People every quarter', opening: getV2Baseline, allocation: alloc({ people: 30 }) },
+  { id: 'university100', name: 'University100', description: '$30M University & Credentials every quarter', opening: getV2Baseline, allocation: alloc({ universityCredentials: 30 }) },
+  { id: 'cash100', name: 'Cash100', description: '$30M Cash Reserve every quarter (no investment)', opening: getV2Baseline, allocation: alloc({ cashReserve: 30 }) },
+  { id: 'balanced', name: 'Balanced', description: '$5M in each bucket incl. $5M reserve', opening: getV2Baseline, allocation: alloc({ consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 5, cashReserve: 5 }) },
+  { id: 'consumer-ai', name: 'Consumer + AI', description: '$15M Consumer + $15M AI', opening: getV2Baseline, allocation: alloc({ consumer: 15, aiProduct: 15 }) },
+  { id: 'enterprise-ai', name: 'Enterprise + AI', description: '$15M Enterprise + $15M AI', opening: getV2Baseline, allocation: alloc({ enterprise: 15, aiProduct: 15 }) },
+  { id: 'enterprise-weak-cs', name: 'Enterprise100, weak CS', description: '$30M Enterprise with Customer Success injected at 15 (vs 30)', opening: withCaps({ customerSuccess: 15 }), allocation: alloc({ enterprise: 30 }) },
+  { id: 'ai-weak-org', name: 'AI100, weak Talent/Execution', description: '$30M AI with Talent 35 and Execution 35 injected (vs 55/60)', opening: withCaps({ talent: 35, execution: 35 }), allocation: alloc({ aiProduct: 30 }) },
+  { id: 'university-weak-trust', name: 'University100, weak Trust', description: '$30M University with Trust injected at 45 (vs 70)', opening: withCaps({}, { trust: 45 }), allocation: alloc({ universityCredentials: 30 }) },
+];
+
+export interface V2CommercialScenarioResult {
+  scenario: V2CommercialScenario;
+  quarters: V2QuarterRecord[];
+  passed: boolean;
+}
+
+export function runV2CommercialScenario(scenario: V2CommercialScenario, quarters = 8): V2CommercialScenarioResult {
+  let state = scenario.opening();
+  const recs: V2QuarterRecord[] = [];
+  for (let q = 1; q <= quarters; q++) {
+    const rec = runV2Quarter(state, q, scenario.allocation, 30, undefined, undefined, scenario.market);
+    recs.push(rec);
+    state = rec.ending;
+  }
+  return { scenario, quarters: recs, passed: recs.every(r => r.passed) };
+}
+
+export function runAllV2CommercialScenarios(): V2CommercialScenarioResult[] {
+  return V2_COMMERCIAL_SCENARIOS.map(s => runV2CommercialScenario(s));
 }

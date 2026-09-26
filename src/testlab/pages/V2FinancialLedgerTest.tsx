@@ -4,6 +4,8 @@ import {
   runAllV2Scenarios,
   runAllV2CapabilityScenarios,
   V2CapabilityScenarioResult,
+  runAllV2CommercialScenarios,
+  V2CommercialScenarioResult,
   runV2Strategy,
   V2QuarterRecord,
   V2ScenarioResult,
@@ -247,6 +249,113 @@ const CapabilityPipeline: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarter
   );
 };
 
+// ============ PHASE 2C: COMMERCIAL INDICATORS ============
+
+const IND_LABEL: Record<string, string> = {
+  consumerRetention: 'Consumer Retention %', consumerCacIndex: 'Consumer CAC Index', enterprisePipeline: 'Enterprise Pipeline $M',
+  enterpriseWinRate: 'Enterprise Win Rate %', aiCommercialReadiness: 'AI Commercial Readiness', aiAdoptionIndex: 'AI Adoption Index',
+  universityPipeline: 'University Pipeline $M', universityRenewalRate: 'University Renewal %', pricingPower: 'Pricing Power',
+};
+const sgn = (n: number) => (Math.abs(n) < 5e-4 ? '0' : `${n > 0 ? '+' : '−'}${Math.abs(n).toFixed(3)}`);
+const bnd = (b: readonly [number, number]) => `${b[0]}–${Number.isFinite(b[1]) ? b[1] : '∞'}`;
+
+const CommercialOverview: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }) => (
+  <div style={{ overflowX: 'auto', marginTop: '12px' }}>
+    <table className="comparison-table">
+      <thead>
+        <tr>
+          <th>Q</th><th>Retention %</th><th>CAC</th><th>Ent. Pipeline</th><th>Win %</th><th>AI Readiness</th>
+          <th>AI Adoption</th><th>Univ. Pipeline</th><th>Renewal %</th><th>Pricing</th><th>Clipped</th><th>Comm. checks</th>
+        </tr>
+      </thead>
+      <tbody>
+        {quarters.map(rec => {
+          const c = rec.ending.commercial;
+          const M = rec.consequence.commercial;
+          const failed = rec.checks.filter(x => x.id.startsWith('com_') && !x.passed);
+          return (
+            <tr key={rec.quarter}>
+              <td>Q{rec.quarter}</td>
+              <td>{c.consumerRetention.toFixed(2)}</td>
+              <td>{c.consumerCacIndex.toFixed(1)}</td>
+              <td>{money(c.enterprisePipeline)}</td>
+              <td>{c.enterpriseWinRate.toFixed(2)}</td>
+              <td title={M.aiReadiness.band}>{c.aiCommercialReadiness.toFixed(1)} <span style={{ fontSize: '10px', color: '#777' }}>({M.aiReadiness.band})</span></td>
+              <td>{c.aiAdoptionIndex.toFixed(1)}</td>
+              <td>{money(c.universityPipeline)}</td>
+              <td>{c.universityRenewalRate.toFixed(2)}</td>
+              <td>{c.pricingPower.toFixed(1)}</td>
+              <td style={{ fontSize: '11px', color: rec.consequence.commercialFlags.length ? '#c62828' : undefined }}>
+                {rec.consequence.commercialFlags.map(f => f.replace('CLIPPED_', '')).join(', ') || '—'}
+              </td>
+              <td title={failed.map(x => `${x.id}: ${x.details}`).join('\n')}>{failed.length === 0 ? '✅' : `🚨 ${failed.length}`}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+);
+
+const CommercialQuarterDetail: React.FC<{ rec: V2QuarterRecord }> = ({ rec }) => {
+  const M = rec.consequence.commercial;
+  const r = M.aiReadiness;
+  return (
+    <div className="audit-section">
+      <h4>Q{rec.quarter} commercial indicators: why each metric moved</h4>
+      <div style={{ fontSize: '12px', marginBottom: '6px' }}>
+        Relative capability vs competitor benchmark: Consumer {sgn(M.relativeCapability.consumer)} · Enterprise{' '}
+        {sgn(M.relativeCapability.enterprise)} · Credential {sgn(M.relativeCapability.credential)} &nbsp;|&nbsp; AI readiness:{' '}
+        AI {r.aiCapability.toFixed(1)} ({r.band}) → capability-only {r.capabilityOnlyScore.toFixed(1)} × support{' '}
+        {r.supportMultiplier.toFixed(3)} (PQ {r.productQualitySupport.toFixed(2)}, Talent {r.talentSupport.toFixed(2)}, Exec{' '}
+        {r.executionSupport.toFixed(2)}) = {r.readiness.toFixed(2)}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="comparison-table">
+          <thead>
+            <tr>
+              <th>Indicator</th><th>Opening</th><th>Base inflow</th><th>Market</th><th>Capability</th><th>Dependency / support</th>
+              <th>Decay / attrition</th><th>Unclipped</th><th>Closing</th><th>Bounds</th><th>Target / steady state</th><th>Drivers</th>
+            </tr>
+          </thead>
+          <tbody>
+            {M.indicators.map(i => (
+              <tr key={i.indicator} style={i.clipped ? { background: '#fff3f3' } : undefined}>
+                <td>{IND_LABEL[i.indicator]}</td>
+                <td>{i.opening.toFixed(3)}</td>
+                <td>{i.kind === 'stock' ? i.baseInflow.toFixed(3) : '—'}</td>
+                <td>{sgn(i.marketContribution)}</td>
+                <td>{sgn(i.capabilityContribution)}</td>
+                <td>{sgn(i.dependencyContribution)}</td>
+                <td>{sgn(i.decayOrAttrition)}</td>
+                <td>{i.unclipped.toFixed(3)}</td>
+                <td><strong>{i.closing.toFixed(3)}</strong>{i.clipped && <span style={{ color: '#c62828' }}> (clipped {sgn(i.clipAmount)})</span>}</td>
+                <td>{bnd(i.bounds)}</td>
+                <td>{i.target.toFixed(2)}</td>
+                <td style={{ fontSize: '11px' }}>{i.drivers.map(d => `${d.label}: ${d.value.toFixed(3)}`).join(' · ')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const CommercialPanel: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: '12px' }}>
+      <h4 style={{ marginBottom: 0 }}>Commercial consequence (Phase 2C): leading indicators, not revenue</h4>
+      <CommercialOverview quarters={quarters} />
+      <button className="btn btn-secondary" style={{ marginTop: '8px' }} onClick={() => setOpen(!open)}>
+        {open ? 'Hide' : 'Show'} per-quarter indicator diagnostics
+      </button>
+      {open && quarters.map(rec => <CommercialQuarterDetail key={rec.quarter} rec={rec} />)}
+    </div>
+  );
+};
+
 export const V2FinancialLedgerTest: React.FC = () => {
   const [scenarioResults, setScenarioResults] = useState<V2ScenarioResult[] | null>(null);
   const [strategyId, setStrategyId] = useState('balanced');
@@ -254,6 +363,16 @@ export const V2FinancialLedgerTest: React.FC = () => {
   const [run, setRun] = useState<V2StrategyRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [capResults, setCapResults] = useState<V2CapabilityScenarioResult[] | null>(null);
+  const [comResults, setComResults] = useState<V2CommercialScenarioResult[] | null>(null);
+
+  const runCommercialScenarios = () => {
+    try {
+      setError(null);
+      setComResults(runAllV2CommercialScenarios());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const runCapabilityScenarios = () => {
     try {
@@ -286,7 +405,7 @@ export const V2FinancialLedgerTest: React.FC = () => {
 
   return (
     <div className="testlab-form">
-      <h2>Mode 5: V2 Engine: Financial Ledger (2A) + Capability Pipeline (2B)</h2>
+      <h2>Mode 5: V2 Engine: Ledger (2A) + Capabilities (2B) + Commercial Indicators (2C)</h2>
       <p>
         V2 accounting core, running in parallel to the frozen V1 engine. Every quarter exposes its full ledger and
         re-checks the identity:
@@ -296,9 +415,9 @@ export const V2FinancialLedgerTest: React.FC = () => {
 Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − Event Costs + Financing`}
       </pre>
       <div className="testlab-warning">
-        <strong>Scope (Phase 2A + 2B):</strong> financial ledger plus the capability and investment pipeline. Revenue and
-        operating cost are still carried forward (or injected by a test): capability gains have <em>no</em> revenue
-        effect yet. There are no financing choices (financing = $0), no Q1–Q8 event rebalance, no scoring and no Q4
+        <strong>Scope (Phase 2A–2C):</strong> financial ledger, capability pipeline and leading commercial indicators under
+        a neutral market. Revenue and operating cost are still carried forward (or injected by a test): capabilities and
+        indicators have <em>no</em> revenue effect yet. There are no financing choices (financing = $0), no Q1–Q8 event rebalance, no scoring and no Q4
         destination effects. Negative cash is shown in red and is never floored.
       </div>
 
@@ -362,6 +481,7 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
           <h4 style={{ marginBottom: 0 }}>Financial consequence (Phase 2A)</h4>
           <LedgerTable quarters={run.quarters} />
           <CapabilityPipeline quarters={run.quarters} />
+          <CommercialPanel quarters={run.quarters} />
           <QuarterCheckDetails quarters={run.quarters} />
         </div>
       )}
@@ -380,6 +500,47 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
           <p style={{ fontSize: '13px' }}>{r.scenario.description}</p>
           <CapabilityPipeline quarters={r.quarters} />
           <QuarterCheckDetails quarters={r.quarters} />
+        </div>
+      ))}
+
+      <h3 style={{ marginTop: '30px' }}>D. Commercial calibration scenarios (Phase 2C)</h3>
+      <p style={{ fontSize: '13px' }}>
+        Twelve Q1→Q8 strategies under the neutral market, $30M envelope every quarter. The three "weak" scenarios inject the
+        weak capability into the opening state. These are leading indicators only; no revenue is calculated.
+      </p>
+      <div className="button-group">
+        <button className="btn btn-primary" onClick={runCommercialScenarios}>Run commercial scenarios</button>
+      </div>
+      {comResults && (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="comparison-table">
+            <thead>
+              <tr><th>Strategy</th><th>Q</th><th>Retention %</th><th>CAC</th><th>Ent. Pipeline</th><th>Win %</th><th>AI Readiness</th><th>AI Adoption</th><th>Univ. Pipeline</th><th>Renewal %</th><th>Pricing</th></tr>
+            </thead>
+            <tbody>
+              {comResults.flatMap(r => [1, 4, 8].map(q => {
+                const c = r.quarters[q - 1].ending.commercial;
+                return (
+                  <tr key={`${r.scenario.id}-${q}`} style={q === 1 ? { borderTop: '2px solid #667eea' } : undefined}>
+                    <td>{q === 1 ? `${r.passed ? '✅' : '🚨'} ${r.scenario.name}` : ''}</td>
+                    <td>Q{q}</td>
+                    <td>{c.consumerRetention.toFixed(1)}</td><td>{c.consumerCacIndex.toFixed(1)}</td>
+                    <td>{money(c.enterprisePipeline)}</td><td>{c.enterpriseWinRate.toFixed(1)}</td>
+                    <td>{c.aiCommercialReadiness.toFixed(1)}</td><td>{c.aiAdoptionIndex.toFixed(1)}</td>
+                    <td>{money(c.universityPipeline)}</td><td>{c.universityRenewalRate.toFixed(1)}</td><td>{c.pricingPower.toFixed(1)}</td>
+                  </tr>
+                );
+              }))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {comResults && comResults.map(r => (
+        <div key={r.scenario.id} className="audit-card" style={{ padding: '12px' }}>
+          <h4>{r.passed ? '✅' : '🚨'} {r.scenario.name}</h4>
+          <p style={{ fontSize: '13px' }}>{r.scenario.description}</p>
+          <CommercialPanel quarters={r.quarters} />
+          <CapabilityPipeline quarters={r.quarters} />
         </div>
       ))}
     </div>

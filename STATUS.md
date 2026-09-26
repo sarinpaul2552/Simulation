@@ -1,4 +1,32 @@
-# CURRENT STATUS — Phase 2B V2 Capability & Investment Pipeline (awaiting review)
+# CURRENT STATUS — Phase 2C V2 Commercial & Leading-Indicator Engine (awaiting review)
+
+**Last Updated:** 2026-09-26
+**Approved/frozen:** Phase 2A e84978b · Phase 2B 330edac. **V1 restore point:** tag `v1-engine-frozen` → ee4a8bc.
+
+## Phase 2C — Commercial & Leading Indicators (COMPLETE, STOPPED FOR REVIEW)
+
+Market conditions + post-maturation capabilities + Product/Trust/Execution → leading commercial indicators with memory.
+No revenue, cost, cash, stock or score effects.
+
+- New: `src/simulation/engineV2Commercial.ts` (market input, commercial state, Draft 1 calibration constants, indicator
+  engine, AI readiness), `src/simulation/engineV2Commercial.test.ts`.
+- Modified: `engineV2.ts` (state.commercial + commercialHistory; optional `market` per quarter; separate
+  `commercial` consequence), `engineV2.test.ts` (import allow-list), `v2Diagnostics.ts` (commercial checks, 12 calibration
+  scenarios), Mode 5 page (commercial panels, section D), Test Lab tile.
+- Indicators: Consumer Retention 85% (60–95), CAC Index 100 (50–200), Enterprise Pipeline $80M (stock, 30% resolves/qtr),
+  Win Rate 25% (10–45), AI Commercial Readiness (calculated), AI Adoption 10 (lagged), University Pipeline $24M (stock,
+  20%/qtr), Renewal 90% (75–97), Pricing Power 50 (slow).
+- Neutral market includes competitor progress (Consumer/Enterprise 0.75, Credential 0.5 capability pts/qtr): standing still
+  slowly loses relative position. Zero competitor progress makes the starting company an exact fixed point.
+- Known constraints for review: Customer Success/Execution have no investment curve, so enterprise upside is CS-limited in
+  all strategies; "weak" scenarios inject weak opening state. Balanced edges Consumer100 on Q8 retention (91.9 vs 91.2)
+  because Consumer100 saturates at 100 by Q4 while Balanced gets AI×Consumer synergy.
+
+NOT done (by design): revenue conversion, opex, payroll, destinations, financing, insolvency, stock, scoring, events, Q7/Q8.
+
+---
+
+## Phase 2B status (approved, frozen at 330edac)
 
 **Last Updated:** 2026-09-26
 **Approved:** Phase 2A at e84978b. **V1 restore point:** tag `v1-engine-frozen` → ee4a8bc.

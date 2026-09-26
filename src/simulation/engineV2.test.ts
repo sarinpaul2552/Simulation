@@ -138,7 +138,7 @@ describe('V1 frozen baseline is unchanged', () => {
 describe('V2 baseline is self-contained (no dependency on V1 engine)', () => {
   it('engineV2.ts imports only V2 modules, never the V1 engine', () => {
     const froms = [...engineV2Source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
-    expect(froms.every(f => f === './engineV2Capabilities')).toBe(true);
+    expect(froms.every(f => f === './engineV2Capabilities' || f === './engineV2Commercial')).toBe(true);
     expect(froms).not.toContain('./engine');
   });
 
