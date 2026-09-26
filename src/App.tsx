@@ -5,6 +5,8 @@ import GameScreen from './components/GameScreen';
 import FacilitatorScreen from './components/FacilitatorScreen';
 import { useSessionRestore } from './hooks/useSessionRestore';
 import TestLab from './testlab';
+import V2App from './production/v2/ui/V2App';
+import { v1FallbackEnabled } from './production/v2/ui/storage';
 import './App.css';
 
 type Mode = 'mode-select' | 'facilitator-setup' | 'team-join' | 'team-game' | 'facilitator-game' | 'restore-checking' | 'restore-error' | 'devlab';
@@ -168,10 +170,31 @@ function AppContent() {
   );
 }
 
-export default function App() {
+/** Legacy V1 classroom app + Test Lab route (unchanged). V1 gameplay is reachable only behind the dev fallback flag. */
+function LegacyApp() {
   return (
     <GameProvider>
       <AppContent />
     </GameProvider>
+  );
+}
+
+function isDevlabRoute(): boolean {
+  const isDev = import.meta.env.DEV || window.localStorage.getItem('ENABLE_TESTLAB') === 'true';
+  return isDev && window.location.pathname === '/devlab';
+}
+
+/**
+ * Batch 5: production classroom gameplay runs on the V2 engine. The V1 app remains available only behind the
+ * developer fallback flag (VITE_ENABLE_V1_FALLBACK=true or localStorage ENABLE_V1_FALLBACK=true); the Test Lab
+ * keeps its /devlab route.
+ */
+export default function App() {
+  const [legacy, setLegacy] = useState(false);
+  if (isDevlabRoute() || legacy) return <LegacyApp />;
+  return (
+    <div className="app-container">
+      <V2App onOpenLegacy={v1FallbackEnabled() ? () => setLegacy(true) : undefined} />
+    </div>
   );
 }
