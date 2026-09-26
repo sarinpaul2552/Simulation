@@ -46,7 +46,7 @@ export interface V2Deliberation {
 export type V2VoteValue = 'support' | 'concern' | 'oppose';
 
 /** Production classroom loop phases (V2). */
-export const V2_PHASES = ['briefing', 'decide', 'belief', 'risk', 'vote', 'commit', 'results', 'reflect'] as const;
+export const V2_PHASES = ['briefing', 'decide', 'belief', 'risk', 'vote', 'commit', 'results', 'reflect', 'final'] as const;
 export type V2Phase = typeof V2_PHASES[number];
 
 export type V2SeverityBand = 'minor' | 'moderate' | 'serious';

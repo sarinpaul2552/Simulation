@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:local": "bash scripts/v2-local/up.sh",
+    "test:db": "V2_DB_URL=http://localhost:54321 V2_DB_KEY=$(node scripts/v2-local/anon-key.mjs local-dev-jwt-secret-at-least-32-characters-long) vitest run src/production/v2/db.integration.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",

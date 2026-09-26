@@ -386,11 +386,13 @@ export function resolveQuarter(snap: V2GameSnapshot, input: V2PlayerQuarterInput
 /** Normalized form of an input as it is logged (only the fields relevant to its quarter, canonical key order). */
 export function storedInput(input: V2PlayerQuarterInput): V2PlayerQuarterInput {
   const sq = getScenarioQuarter(input.quarter);
+  const z = (x: number) => x + 0; // −0 → 0 so the logged input is identical in JSON and jsonb
+  const al = input.allocation;
   const out: V2PlayerQuarterInput = {
     quarter: input.quarter,
     allocation: {
-      consumer: input.allocation.consumer, enterprise: input.allocation.enterprise, aiProduct: input.allocation.aiProduct,
-      people: input.allocation.people, universityCredentials: input.allocation.universityCredentials, cashReserve: input.allocation.cashReserve,
+      consumer: z(al.consumer), enterprise: z(al.enterprise), aiProduct: z(al.aiProduct),
+      people: z(al.people), universityCredentials: z(al.universityCredentials), cashReserve: z(al.cashReserve),
     },
   };
   if (input.quarter === 4 && input.destination) out.destination = input.destination;
@@ -398,7 +400,7 @@ export function storedInput(input: V2PlayerQuarterInput): V2PlayerQuarterInput {
   if (sq?.events?.recessionResponse && input.management && Object.keys(input.management).length > 0) out.management = input.management;
   if (sq?.events?.crisis && input.crisisResponse) out.crisisResponse = input.crisisResponse;
   if (sq?.events?.finalDecision && input.finalOption) out.finalOption = input.finalOption;
-  if (input.financing && input.financing.length > 0) out.financing = input.financing;
+  if (input.financing && input.financing.length > 0) out.financing = input.financing.map(f => ('amount' in f ? { ...f, amount: z(f.amount) } : { ...f }));
   return canonical(out);
 }
 
