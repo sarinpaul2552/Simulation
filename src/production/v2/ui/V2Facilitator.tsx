@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { V2Api, V2FacilitatorOverview } from '../api';
 import { V2_TOTAL_QUARTERS } from '../adapter';
+import { auditTeam } from '../gameService';
 import { ErrorBox } from './common';
 import { money, destinationName, FINAL_LABELS } from './format';
 
@@ -17,6 +18,11 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
   const [o, setO] = useState<V2FacilitatorOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [audit, setAudit] = useState<Record<string, { status: 'verified' | 'mismatch'; detail: string | null }> | null>(null);
+  const runAudit = () => act(async () => {
+    const entries = await api.facilitatorAudit(sessionCode, adminPin);
+    setAudit(Object.fromEntries(entries.map(e => [e.team_id, auditTeam(e)])));
+  });
   const refresh = useCallback(async () => {
     try { setO(await api.facilitatorOverview(sessionCode, adminPin)); setError(null); } catch (e) { setError((e as Error).message); }
   }, [api, sessionCode, adminPin]);
@@ -58,8 +64,12 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
         )}
       </section>
       <section className="v2-panel">
+        <div className="v2-inline">
+          <button className="btn-secondary" data-testid="v2-fac-verify" disabled={busy} onClick={() => void runAudit()}>Verify integrity (replay every team's decisions)</button>
+          {audit && <span className="v2-muted">Checked {Object.keys(audit).length} team(s).</span>}
+        </div>
         <table className="v2-table" data-testid="v2-fac-teams">
-          <thead><tr><th>Team</th><th>Code</th><th>Progress</th><th>Now</th><th>Votes</th><th>Revenue</th><th>Cash</th><th>Strategy</th><th>Finance</th><th>Final</th></tr></thead>
+          <thead><tr><th>Team</th><th>Code</th><th>Progress</th><th>Now</th><th>Votes</th><th>Revenue</th><th>Cash</th><th>Strategy</th><th>Finance</th><th>Final</th><th>Integrity</th></tr></thead>
           <tbody>
             {o.teams.map(t => {
               const h = t.headline;
@@ -84,6 +94,9 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
                     </> : '—'}
                   </td>
                   <td data-testid="v2-fac-final">{h?.final ? <><b>{h.final.overall.toFixed(1)}</b> · {h.finalOption ? FINAL_LABELS[h.finalOption] : ''}</> : '—'}</td>
+                  <td data-testid="v2-fac-integrity" title={audit?.[t.team_id]?.detail ?? ''}>
+                    {audit?.[t.team_id] ? (audit[t.team_id].status === 'verified' ? 'verified' : <span className="v2-badge v2-badge-bad">mismatch</span>) : '—'}
+                  </td>
                 </tr>
               );
             })}

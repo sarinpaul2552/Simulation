@@ -5,7 +5,7 @@
  * the schema contract, replay exactly from its own input log, and agree with the server's per-quarter resolution rows.
  */
 import {
-  initializeGame, headlineOf, resolveQuarter, storedInput, verifySnapshot, workingQuarter, validateQuarterInput,
+  initializeGame, headlineOf, resolveQuarter, storedInput, verifySnapshot, workingQuarter, validateQuarterInput, replayInputs,
 } from './adapter';
 import { V2GameSnapshot, toStorable, fromStorable, encodeLossless, firstDifference } from './snapshot';
 import type { V2Api, V2GameRecord, V2ResolutionRecord, V2SessionInfo, V2TeamGameResponse, V2Draft } from './api';
@@ -80,4 +80,19 @@ export async function commitQuarter(api: V2Api, game: V2LoadedGame, input: V2Pla
   const res = resolveQuarter(game.snapshot, input);
   const out = await api.resolveQuarter(game.teamCode, q, game.record.state_version, storableInput(input), toStorable(res.snapshot), headlineOf(res.snapshot));
   return { status: out.status, game: fromResponse(game.teamCode, out.game) };
+}
+
+/**
+ * Facilitator integrity audit: replay each team's committed decisions with the frozen engine and compare the result
+ * with the headline the team's client stored. 'mismatch' means the stored state cannot be reproduced.
+ */
+export function auditTeam(entry: { completed_quarter: number; headline: unknown; inputs: V2PlayerQuarterInput[] }): { status: 'verified' | 'mismatch'; detail: string | null } {
+  try {
+    const snap = replayInputs(entry.inputs);
+    if (snap.completedQuarter !== entry.completed_quarter) return { status: 'mismatch', detail: 'quarter count differs' };
+    const d = firstDifference(JSON.parse(JSON.stringify(headlineOf(snap))), entry.headline); // as sent by the client (plain JSON)
+    return d ? { status: 'mismatch', detail: d } : { status: 'verified', detail: null };
+  } catch (e) {
+    return { status: 'mismatch', detail: e instanceof Error ? e.message : String(e) };
+  }
 }

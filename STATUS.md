@@ -1,3 +1,10 @@
+# CURRENT STATUS — Autonomous Batch 5 (V2 Production Integration)
+
+- Classroom gameplay now runs on the frozen V2 engine through `src/production/v2` (adapter, snapshot contract, RPC client,
+  UI). V1 stays intact behind the developer fallback flag; Test Lab unchanged. See `PRODUCTION_V2_INTEGRATION.md`.
+- DB: `database/MIGRATION_V2_PRODUCTION.sql` (block-all RLS tables, SECURITY DEFINER RPCs, single idempotent resolution).
+- Tests: 446 unit (393 V2 + 53 production), 9 live-DB, 7 Playwright E2E. Engine economics unchanged (parity-tested).
+
 # CURRENT STATUS — Autonomous Batch 4 (Destination Architecture Repair) — PASS
 
 - Premium Value Proposition and Credential Network Value added in the commercial layer (see

@@ -110,6 +110,8 @@ export function createV2Api(client: SupabaseClient) {
       call<{ open_quarter: number }>('v2_facilitator_set_open_quarter', { p_session_code: sessionCode, p_admin_pin: adminPin, p_quarter: quarter }),
     setPacing: (sessionCode: string, adminPin: string, pacing: V2Pacing) =>
       call<{ pacing: V2Pacing }>('v2_facilitator_set_pacing', { p_session_code: sessionCode, p_admin_pin: adminPin, p_pacing: pacing }),
+    facilitatorAudit: (sessionCode: string, adminPin: string) =>
+      call<{ team_id: string; completed_quarter: number; headline: V2Headline; inputs: V2PlayerQuarterInput[] }[]>('v2_facilitator_audit', { p_session_code: sessionCode, p_admin_pin: adminPin }),
     join: (sessionCode: string, teamCode: string) =>
       call<V2TeamGameResponse>('v2_join', { p_session_code: sessionCode, p_team_code: teamCode }),
     getGame: (teamCode: string) => call<V2TeamGameResponse>('v2_get_game', { p_team_code: teamCode }),

@@ -177,6 +177,10 @@ test('Q1→Q8: two teams, facilitator pacing, refresh at every phase, facilitato
   await fac.reload();
   const alphaOut = getFinalOutcome(replayInputs(alphaInputs));
   await expect((await facilitatorRow(fac, 'Alpha')).getByTestId('v2-fac-final')).toContainText(alphaOut.score.overall.toFixed(1));
+  // Facilitator integrity audit: every team's stored state replays exactly from its committed decisions
+  await fac.getByTestId('v2-fac-verify').click();
+  await expect((await facilitatorRow(fac, 'Alpha')).getByTestId('v2-fac-integrity')).toHaveText('verified');
+  await expect((await facilitatorRow(fac, 'Beta')).getByTestId('v2-fac-integrity')).toHaveText('verified');
 });
 
 test('reconnect: closing the team browser mid-quarter and rejoining restores the exact step and draft', async ({ browser }) => {

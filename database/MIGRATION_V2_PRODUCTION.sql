@@ -326,6 +326,28 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+/**
+ * Integrity audit for the facilitator: each team's committed input log and stored headline. The facilitator's browser
+ * replays the log with the frozen engine and flags any team whose stored headline does not match (tampering or a
+ * client defect). Contains decisions only — never role briefs, drafts, deliberation or votes.
+ */
+CREATE OR REPLACE FUNCTION v2_facilitator_audit(p_session_code TEXT, p_admin_pin TEXT)
+RETURNS JSON
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE v_session_id UUID := v2__facilitator_session(p_session_code, p_admin_pin);
+BEGIN
+  RETURN COALESCE((
+    SELECT json_agg(json_build_object(
+      'team_id', g.team_id,
+      'completed_quarter', g.completed_quarter,
+      'headline', g.headline,
+      'inputs', COALESCE((SELECT json_agg(r.input ORDER BY r.quarter) FROM v2_quarter_resolutions r WHERE r.team_id = g.team_id), '[]'::json)))
+    FROM v2_team_games g WHERE g.session_id = v_session_id), '[]'::json);
+END;
+$$ LANGUAGE plpgsql;
+
 -- ---------------------------------------------------------------------------
 -- 5. Team RPCs
 -- ---------------------------------------------------------------------------
@@ -580,7 +602,7 @@ $$ LANGUAGE plpgsql;
 DO $$ BEGIN
   EXECUTE 'GRANT EXECUTE ON FUNCTION
     v2_create_session(TEXT, TEXT[], TEXT, TEXT), v2_facilitator_overview(TEXT, TEXT), v2_facilitator_set_open_quarter(TEXT, TEXT, INT),
-    v2_facilitator_set_pacing(TEXT, TEXT, TEXT), v2_join(TEXT, TEXT), v2_get_game(TEXT), v2_init_game(TEXT, JSONB, JSONB),
+    v2_facilitator_set_pacing(TEXT, TEXT, TEXT), v2_facilitator_audit(TEXT, TEXT), v2_join(TEXT, TEXT), v2_get_game(TEXT), v2_init_game(TEXT, JSONB, JSONB),
     v2_save_draft(TEXT, INT, JSONB), v2_set_phase(TEXT, INT, TEXT, TEXT), v2_submit_vote(TEXT, INT, TEXT, TEXT),
     v2_get_votes(TEXT, INT), v2_resolve_quarter(TEXT, INT, INT, JSONB, JSONB, JSONB), v2_save_reflection(TEXT, INT, TEXT)
   TO anon, authenticated';

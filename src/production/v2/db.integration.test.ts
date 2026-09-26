@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { createV2Api, V2Api, V2CreatedSession } from './api';
-import { loadTeamGame, commitQuarter, saveDecisionDraft, storableInput, V2LoadedGame } from './gameService';
+import { loadTeamGame, commitQuarter, saveDecisionDraft, storableInput, V2LoadedGame, auditTeam } from './gameService';
 import { ARC_STRATEGIES, runArc, V2ArcRun, a } from '../../testlab/utils/v2ScenarioArc';
 import { firstDifference } from './snapshot';
 import { resolveQuarter, headlineOf } from './adapter';
@@ -223,6 +223,49 @@ describe.skipIf(!URL || !KEY)('Batch 5 · 5B persistence, RPC and RLS (live Post
     const beta = await api.getGame(s.teams[1].team_code);
     expect(beta.team_name).toBe('Beta');
     expect(beta.game!.completed_quarter).toBe(1);
+  });
+});
+
+describe.skipIf(!URL || !KEY)('Batch 5 · 5B voting-disabled mode and facilitator integrity audit (live DB)', () => {
+  it('voting-disabled: risk → commit without votes; vote phase unavailable', async () => {
+    const api = createV2Api(createClient(URL!, KEY!, { auth: { persistSession: false } }));
+    const s = await api.createSession('f@school.edu', ['NoVote'], 'voting_disabled', 'self');
+    const tc = s.teams[0].team_code;
+    const game = await loadTeamGame(api, tc);
+    const input: V2PlayerQuarterInput = { quarter: 1, allocation: a({ enterprise: 15, aiProduct: 15 }) };
+    await api.setPhase(tc, 1, 'briefing', 'decide');
+    await saveDecisionDraft(api, game, { input });
+    await api.setPhase(tc, 1, 'decide', 'belief');
+    await api.setPhase(tc, 1, 'belief', 'risk');
+    await expectRpcError(api.setPhase(tc, 1, 'risk', 'vote'), /not allowed/);
+    await api.setPhase(tc, 1, 'risk', 'commit');
+    const out = await commitQuarter(api, await loadTeamGame(api, tc), input);
+    expect(out.status).toBe('resolved');
+    await api.setPhase(tc, 1, 'results', 'reflect');
+    await api.setPhase(tc, 1, 'reflect', 'briefing'); // self-paced: no facilitator gate
+  });
+
+  it('facilitator audit verifies honest teams and flags a team whose client stored a forged headline', async () => {
+    const api = createV2Api(createClient(URL!, KEY!, { auth: { persistSession: false } }));
+    const s = await api.createSession('f@school.edu', ['Honest', 'Forger'], 'voting_disabled', 'self');
+    const input: V2PlayerQuarterInput = { quarter: 1, allocation: a({ consumer: 10, aiProduct: 20 }) };
+    for (const [i, t] of s.teams.entries()) {
+      const g = await loadTeamGame(api, t.team_code);
+      await api.setPhase(t.team_code, 1, 'briefing', 'decide');
+      await saveDecisionDraft(api, g, { input });
+      await api.setPhase(t.team_code, 1, 'decide', 'belief');
+      await api.setPhase(t.team_code, 1, 'belief', 'risk');
+      await api.setPhase(t.team_code, 1, 'risk', 'commit');
+      const res = resolveQuarter(g.snapshot, input);
+      const headline = headlineOf(res.snapshot);
+      await api.resolveQuarter(t.team_code, 1, 0, storableInput(input), toStorable(res.snapshot), i === 0 ? headline : { ...headline, cash: headline.cash + 50 });
+    }
+    const audit = await api.facilitatorAudit(s.session_code, s.admin_pin);
+    const byTeam = Object.fromEntries(audit.map(e => [e.team_id, auditTeam(e)]));
+    expect(byTeam[s.teams[0].team_id].status).toBe('verified');
+    expect(byTeam[s.teams[1].team_id].status).toBe('mismatch');
+    expect(JSON.stringify(audit)).not.toMatch(/deliberation|belief|draft|vote/);
+    await expectRpcError(api.facilitatorAudit(s.session_code, 'nope'), /Invalid admin PIN/);
   });
 });
 
