@@ -1,13 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { ARC_STRATEGIES, runArc, liquidityPolicy } from '../testlab/utils/v2ScenarioArc';
 import { scoreV2Company, V2_SCORING_CALIBRATION } from './engineV2Scoring';
-import type { V2TeamState } from './engineV2';
+import { getV2Baseline, type V2TeamState } from './engineV2';
 import engineV2Source from './engineV2.ts?raw';
 import scoringSource from './engineV2Scoring.ts?raw';
 
 const strat = (id: string) => ARC_STRATEGIES.find(s => s.id === id)!;
 const final = (id: string, extra: object = {}) => runArc(strat(id), 8, extra).finalState;
 const K = V2_SCORING_CALIBRATION;
+/** Batch 4: a genuinely cash-thin company ($30M opening cash, People100 policy) for insolvency mechanics. People100 itself
+ *  is no longer unproductive (People builds Product Quality), so it no longer runs out of cash by Q8 on its own. */
+const thinPeople = () => ({ ...ARC_STRATEGIES.find(s => s.id === 'people100')!, id: 'people100-thin-cash', opening: () => ({ ...getV2Baseline(), cash: 30 }) });
+
 
 describe('Batch 3: terminal scoring (Financial / Strategic / Organizational + viability gates)', () => {
   it('scoring never feeds back into economics: engine does not import it; scoring is pure', () => {
@@ -33,7 +37,7 @@ describe('Batch 3: terminal scoring (Financial / Strategic / Organizational + vi
   });
 
   it('catastrophic insolvency + strong culture/organization cannot produce a high result', () => {
-    const s = final('people100', { policy: { liquidity: liquidityPolicy('refuse') } });
+    const s = runArc(thinPeople(), 8, { policy: { liquidity: liquidityPolicy('refuse') } }).finalState;
     const sc = scoreV2Company(s);
     expect(sc.gates.find(g => g.id === 'terminal-insolvency')!.triggered).toBe(true);
     expect(sc.organizational).toBeGreaterThan(55);

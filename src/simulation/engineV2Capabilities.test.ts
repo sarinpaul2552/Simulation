@@ -42,9 +42,10 @@ const target = (c: ReturnType<typeof calculateV2QuarterConsequence>, t: V2Capabi
 const SPEC: Record<V2CapabilityBucket, { gains: Partial<Record<V2CapabilityTarget, number[]>>; load: number[] }> = {
   consumer: { gains: { consumer: [0, 5, 9, 14, 17] }, load: [0, 6, 11, 20, 28] },
   enterprise: { gains: { enterprise: [0, 6, 11, 17, 21], customerSuccess: [0, 1, 2, 3.5, 5] }, load: [0, 5, 10, 18, 26] },
-  aiProduct: { gains: { ai: [0, 7, 13, 21, 27] }, load: [0, 7, 13, 23, 32] },
+  // Batch 4 calibration: AI/Product also builds Product Quality.
+  aiProduct: { gains: { ai: [0, 7, 13, 21, 27], productQuality: [0, 0.5, 1, 1.6, 2] }, load: [0, 7, 13, 23, 32] },
   people: {
-    gains: { talent: [0, 4, 7, 11, 13], organizationalCapacity: [0, 3, 6, 10, 12], productQuality: [0, 0.5, 1.0, 1.8, 2.2] },
+    gains: { talent: [0, 4, 7, 11, 13], organizationalCapacity: [0, 3, 6, 10, 12], productQuality: [0, 1, 1.8, 3.2, 4] }, // Batch 4 calibration (was 0/0.5/1.0/1.8/2.2)
     load: [0, 3, 6, 11, 16],
   },
   universityCredentials: { gains: { credential: [0, 5, 9, 14, 17], trust: [0, 0.5, 1, 2, 2.5] }, load: [0, 4, 8, 15, 22] },
@@ -82,10 +83,10 @@ describe('2. Piecewise-linear interpolation', () => {
     ['aiProduct', 7.5, { ai: 10 }, 10],
     ['aiProduct', 15, { ai: 17 }, 18],
     ['aiProduct', 25, { ai: 24 }, 27.5],
-    ['people', 2.5, { talent: 2, organizationalCapacity: 1.5, productQuality: 0.25 }, 1.5],
-    ['people', 7.5, { talent: 5.5, organizationalCapacity: 4.5, productQuality: 0.75 }, 4.5],
-    ['people', 15, { talent: 9, organizationalCapacity: 8, productQuality: 1.4 }, 8.5],
-    ['people', 25, { talent: 12, organizationalCapacity: 11, productQuality: 2.0 }, 13.5],
+    ['people', 2.5, { talent: 2, organizationalCapacity: 1.5, productQuality: 0.5 }, 1.5],
+    ['people', 7.5, { talent: 5.5, organizationalCapacity: 4.5, productQuality: 1.4 }, 4.5],
+    ['people', 15, { talent: 9, organizationalCapacity: 8, productQuality: 2.5 }, 8.5],
+    ['people', 25, { talent: 12, organizationalCapacity: 11, productQuality: 3.6 }, 13.5],
     ['universityCredentials', 2.5, { credential: 2.5, trust: 0.25 }, 2],
     ['universityCredentials', 7.5, { credential: 7, trust: 0.75 }, 6],
     ['universityCredentials', 15, { credential: 11.5, trust: 1.5 }, 11.5],
@@ -287,7 +288,8 @@ describe('8. Cohorts mature exactly across their schedules', () => {
     ['aiProduct', 'ai', 13, [0.2, 0.4, 0.4]],
     ['people', 'talent', 7, [0.5, 0.35, 0.15]],
     ['people', 'organizationalCapacity', 6, [0.5, 0.35, 0.15]],
-    ['people', 'productQuality', 1.0, [0.5, 0.35, 0.15]],
+    ['people', 'productQuality', 1.8, [0.5, 0.35, 0.15]],
+    ['aiProduct', 'productQuality', 1, [0.2, 0.4, 0.4]],
     ['universityCredentials', 'credential', 9, [0.2, 0.4, 0.4]],
     ['universityCredentials', 'trust', 1, [0.2, 0.4, 0.4]],
   ];
@@ -374,7 +376,7 @@ describe('9–10. Cap at 100 and saturation waste is observable', () => {
 });
 
 describe('11. People investment raises Organizational Capacity on its schedule', () => {
-  it('People $10M: capacity 60 → 63 → 65.1 → 66; Talent 55 → 58.5 → 60.95 → 62; PQ 70 → 70.5 → 70.85 → 71', () => {
+  it('People $10M: capacity 60 → 63 → 65.1 → 66; Talent 55 → 58.5 → 60.95 → 62; PQ 70 → 70.9 → 71.53 → 71.8', () => {
     const { out } = runQuarters(getV2Baseline(), [
       { a: alloc({ people: 10, cashReserve: 20 }), env: 30 },
       { a: alloc({ cashReserve: 30 }), env: 30 },
@@ -383,7 +385,7 @@ describe('11. People investment raises Organizational Capacity on its schedule',
     ]);
     expect(out.map(o => o.state.organizationalCapacity)).toEqual([63, expect.closeTo(65.1, 12), expect.closeTo(66, 12), expect.closeTo(66, 12)]);
     expect(out.map(o => o.state.capabilities.talent)).toEqual([58.5, expect.closeTo(60.95, 12), expect.closeTo(62, 12), expect.closeTo(62, 12)]);
-    expect(out.map(o => o.state.productQuality)).toEqual([70.5, expect.closeTo(70.85, 12), expect.closeTo(71, 12), expect.closeTo(71, 12)]);
+    expect(out.map(o => o.state.productQuality)).toEqual([expect.closeTo(70.9, 12), expect.closeTo(71.53, 12), expect.closeTo(71.8, 12), expect.closeTo(71.8, 12)]);
   });
 
   it('matured capacity feeds the next quarter’s absorption (People $30M → capacity 66; then $10M C/E/AI: 37 / 66 → 0.919697)', () => {

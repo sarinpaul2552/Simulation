@@ -160,11 +160,13 @@ describe('Phase 3A: strategic investment vs opex (no double counting)', () => {
     for (const q of cu) expect(q.cost.commitments.total).toBe(0);
   });
 
-  it('People100 shows visible carrying cost and lower operating profit than Cash100', () => {
+  it('People100 shows visible carrying cost: payroll commitments consume its extra revenue (OP below Cash100)', () => {
+    // Batch 4: People now builds Product Quality, so People100 earns more revenue than Cash100 through commercial
+    // indicators; the payroll commitments still leave it with lower operating profit.
     const p = runV2IntegratedScenario(V2_COMMERCIAL_SCENARIOS.find(s => s.id === 'people100')!, 'competitive');
     const c = runV2IntegratedScenario(V2_COMMERCIAL_SCENARIOS.find(s => s.id === 'cash100')!, 'competitive');
     expect(p.quarters[7].consequence.cost.commitments.bySource.people).toBeCloseTo(7 * 1.8, 9);
-    expect(p.quarters[7].consequence.ledger.operatingProfit).toBeLessThan(c.quarters[7].consequence.ledger.operatingProfit - 5);
+    expect(p.quarters[7].consequence.ledger.operatingProfit).toBeLessThan(c.quarters[7].consequence.ledger.operatingProfit);
     expect(p.quarters[7].ending.organizationalCapacity).toBeGreaterThan(c.quarters[7].ending.organizationalCapacity + 20);
   });
 });

@@ -35,6 +35,11 @@ export interface V2AuditRow {
   insolventAtEnd: boolean;
   score: V2TerminalScore;
   passed: boolean;
+  /** Batch 4 value indices and the commercial indicators they move. */
+  pv: number;
+  cn: number;
+  pp: number;
+  ret: number;
 }
 
 export function auditRow(run: V2ArcRun, label = run.strategy.name, history = run.strategy.id): V2AuditRow {
@@ -75,6 +80,10 @@ export function auditRow(run: V2ArcRun, label = run.strategy.name, history = run
     insolventAtEnd: s.cash < 0,
     score: scoreV2Company(s),
     passed: run.passed,
+    pv: s.commercial.premiumValue,
+    cn: s.commercial.credentialNetwork,
+    pp: s.commercial.pricingPower,
+    ret: s.commercial.consumerRetention,
   };
 }
 

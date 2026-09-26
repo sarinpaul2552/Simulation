@@ -689,6 +689,7 @@ const COMMERCIAL_SHOCK_BOUNDS: Record<V2CommercialShock['indicator'], readonly [
   universityRenewalRate: [75, 97],
   pricingPower: [0, 100],
   aiAdoptionIndex: [0, 100],
+  credentialNetwork: [0, 100],
 };
 
 function readShockTarget(s: V2TeamState, t: V2ShockTarget): number {

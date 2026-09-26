@@ -122,6 +122,16 @@ export interface V2CommercialState {
   universityRenewalRate: number;
   /** 0–100 slow-moving composite. */
   pricingPower: number;
+  /**
+   * Batch 4 · Premium Value Proposition (0–100, calculated each quarter from capabilities): weighted geometric mean of
+   * Talent, Product Quality, Trust, Execution and AI readiness — a weak dependency materially limits the premium.
+   */
+  premiumValue: number;
+  /**
+   * Batch 4 · Credential Network Value (0–100, slow level indicator): Credential capability × Trust × institutional
+   * adoption (university pipeline and renewals). Spills over into Consumer, Enterprise and pricing resilience.
+   */
+  credentialNetwork: number;
   /** Competitor capability benchmarks (start = company's starting capability). */
   competitorBenchmarks: { consumer: number; enterprise: number; credential: number };
 }
@@ -137,6 +147,13 @@ export const V2_COMMERCIAL_START = {
   pricingPower: 50,
   competitorBenchmarks: { consumer: 55, enterprise: 30, credential: 40 },
 } as const;
+
+/** Starting-company inputs used to anchor Batch 4 value indices (fixed point). */
+const START_COMPANY = {
+  capabilities: { consumer: 55, enterprise: 30, ai: 10, talent: 55, credential: 40, customerSuccess: 30, execution: 60 },
+  productQuality: 70,
+  trust: 70,
+};
 
 /** Inputs the commercial engine reads from the (post-maturation) capability state. */
 export interface V2CommercialCapabilityInput {
@@ -227,6 +244,58 @@ export const V2_COMMERCIAL_CALIBRATION = {
     renewalMktDemand: 5,
     renewalMktMacro: 2,
   },
+  /**
+   * Batch 4 · Premium Value Proposition. PV = 100 × Π max(floor, score_i)^w_i (weighted geometric mean).
+   * Effects use ΔPV = (PV − PV_start)/100, so the starting company is unchanged (fixed point preserved).
+   */
+  premium: {
+    drivers: {
+      talent: { lo: 55, hi: 100, weight: 0.3 },
+      productQuality: { lo: 70, hi: 95, weight: 0.25 },
+      trust: { lo: 65, hi: 90, weight: 0.2 },
+      execution: { lo: 45, hi: 80, weight: 0.15 },
+      aiReadiness: { lo: 20, hi: 70, weight: 0.1 },
+    },
+    floor: 0.05,
+    /** Pricing-power target points per unit ΔPV (willingness to pay). Calibrated 30 → 40 in Batch 4 audit. */
+    pricing: 40,
+    /** Consumer retention target points per unit ΔPV. Calibrated 5 → 6 in Batch 4 audit. */
+    retention: 6,
+    /** Consumer CAC index points per unit ΔPV (referrals, word of mouth; negative = cheaper). */
+    cac: -15,
+    /** Enterprise win-rate points per unit ΔPV (buyers pay for premium human + AI delivery). */
+    winRate: 5,
+    /** Commoditization protection per unit positive ΔPV (retention and pricing terms). */
+    commoditizationShield: 0.5,
+  },
+  /**
+   * Batch 4 · Credential Network Value. Target = 100 × Π max(floor, score_i)^w_i over Credential, Trust and
+   * institutional adoption; the level moves toward target at `speed`. Spillovers use ΔCNV = (CNV − CNV_start)/100
+   * from the OPENING level (lagged network effect), so the starting company is unchanged.
+   */
+  credential: {
+    drivers: {
+      credential: { lo: 40, hi: 100, weight: 0.45 },
+      trust: { lo: 55, hi: 90, weight: 0.35 },
+      adoption: { weight: 0.2 },
+    },
+    /** Adoption = ½ ramp(university pipeline ÷ 24, 0.9, 2.0) + ½ ramp(university renewal, 88, 96). */
+    adoptionPipelineRamp: [0.9, 2.0] as const,
+    adoptionRenewalRamp: [88, 96] as const,
+    floor: 0.05,
+    // Calibration (Batch 4): 0.2 → 0.3 (the level lagged its target by ~35 points at Q8).
+    speed: 0.3,
+    bounds: [0, 100] as const,
+    spill: {
+      consumerRetention: 8,
+      consumerCac: -30,
+      enterpriseInflow: 0.6,
+      enterpriseWinRate: 3,
+      pricing: 20,
+      pricingCommoditizationShield: 0.4,
+      universityInflow: 0.5,
+    },
+  },
   pricing: {
     speed: 0.1,
     bounds: [0, 100] as const,
@@ -251,6 +320,8 @@ export function getV2CommercialBaseline(): V2CommercialState {
     universityPipeline: s.universityPipeline,
     universityRenewalRate: s.universityRenewalRate,
     pricingPower: s.pricingPower,
+    premiumValue: PREMIUM_VALUE_START,
+    credentialNetwork: CREDENTIAL_NETWORK_START,
     competitorBenchmarks: { ...s.competitorBenchmarks },
   };
   return base;
@@ -395,6 +466,55 @@ export function aiCommercialEffect(readiness: number): number {
   return ramp(readiness, r[0], r[1]);
 }
 
+// ============ BATCH 4: PREMIUM VALUE & CREDENTIAL NETWORK ============
+
+export interface V2ValueDriver { driver: string; value: number; score: number; weight: number }
+
+function weightedGeometric(drivers: V2ValueDriver[], floor: number): number {
+  return 100 * Math.exp(drivers.reduce((t, d) => t + d.weight * Math.log(Math.max(floor, d.score)), 0));
+}
+
+/** Premium Value Proposition (0–100) from Talent, PQ, Trust, Execution and AI readiness. */
+export function premiumValue(company: V2CommercialCapabilityInput, aiReadiness: number): { value: number; drivers: V2ValueDriver[] } {
+  const P = V2_COMMERCIAL_CALIBRATION.premium;
+  const D = P.drivers;
+  const drivers: V2ValueDriver[] = [
+    { driver: 'talent', value: company.capabilities.talent, score: ramp(company.capabilities.talent, D.talent.lo, D.talent.hi), weight: D.talent.weight },
+    { driver: 'productQuality', value: company.productQuality, score: ramp(company.productQuality, D.productQuality.lo, D.productQuality.hi), weight: D.productQuality.weight },
+    { driver: 'trust', value: company.trust, score: ramp(company.trust, D.trust.lo, D.trust.hi), weight: D.trust.weight },
+    { driver: 'execution', value: company.capabilities.execution, score: ramp(company.capabilities.execution, D.execution.lo, D.execution.hi), weight: D.execution.weight },
+    { driver: 'aiReadiness', value: aiReadiness, score: ramp(aiReadiness, D.aiReadiness.lo, D.aiReadiness.hi), weight: D.aiReadiness.weight },
+  ];
+  return { value: weightedGeometric(drivers, P.floor), drivers };
+}
+
+/** Institutional adoption (0–1) from the university commercial indicators. */
+export function institutionalAdoption(universityPipeline: number, universityRenewalRate: number): number {
+  const C = V2_COMMERCIAL_CALIBRATION.credential;
+  const start = V2_COMMERCIAL_START.universityPipeline;
+  return 0.5 * ramp(universityPipeline / start, C.adoptionPipelineRamp[0], C.adoptionPipelineRamp[1]) +
+    0.5 * ramp(universityRenewalRate, C.adoptionRenewalRamp[0], C.adoptionRenewalRamp[1]);
+}
+
+/** Credential Network Value target (0–100): Credential capability × Trust × institutional adoption. */
+export function credentialNetworkTarget(company: V2CommercialCapabilityInput, adoption: number): { value: number; drivers: V2ValueDriver[] } {
+  const C = V2_COMMERCIAL_CALIBRATION.credential;
+  const D = C.drivers;
+  const drivers: V2ValueDriver[] = [
+    { driver: 'credential', value: company.capabilities.credential, score: ramp(company.capabilities.credential, D.credential.lo, D.credential.hi), weight: D.credential.weight },
+    { driver: 'trust', value: company.trust, score: ramp(company.trust, D.trust.lo, D.trust.hi), weight: D.trust.weight },
+    { driver: 'adoption', value: adoption, score: adoption, weight: D.adoption.weight },
+  ];
+  return { value: weightedGeometric(drivers, C.floor), drivers };
+}
+
+/** Anchors: the starting company's own values (effects are measured relative to these). */
+export const PREMIUM_VALUE_START = premiumValue(START_COMPANY, calculateAIReadiness(START_COMPANY).readiness).value;
+export const CREDENTIAL_NETWORK_START = credentialNetworkTarget(
+  START_COMPANY,
+  institutionalAdoption(V2_COMMERCIAL_START.universityPipeline, V2_COMMERCIAL_START.universityRenewalRate)
+).value;
+
 // ============ QUARTER CONSEQUENCE ============
 
 export interface V2CommercialConsequence {
@@ -459,6 +579,15 @@ export function calculateV2CommercialConsequence(
   const aiReadiness = calculateAIReadiness(company);
   const aiEffect = aiCommercialEffect(aiReadiness.readiness);
 
+  // Batch 4: Premium Value (from this quarter's capabilities) and Credential Network (opening level, lagged network)
+  const KP = K.premium;
+  const KC = K.credential;
+  const pv = premiumValue(company, aiReadiness.readiness);
+  const dPV = posScale((pv.value - PREMIUM_VALUE_START) / 100, fc.premium);
+  const dCN = posScale((opening.credentialNetwork - CREDENTIAL_NETWORK_START) / 100, fc.university);
+  const pvShield = KP.commoditizationShield * Math.max(0, dPV);
+  const cnShield = KC.spill.pricingCommoditizationShield * Math.max(0, dCN);
+
   // ---- Consumer Retention ----
   const kc = K.consumer;
   const consumerSupport = kc.supportFloor + (1 - kc.supportFloor) * ramp(Math.min(pq, trust), kc.supportRamp[0], kc.supportRamp[1]);
@@ -466,10 +595,12 @@ export function calculateV2CommercialConsequence(
   const retCapRaw = kc.retentionPerRelCapability * relativeCapability.consumer;
   const retCap = posScale(scalePositive(retCapRaw, consumerSupport), fc.consumer);
   const retAi = kc.retentionAiSynergy * aiEffect * consumerStrength * fc.consumer;
-  const retDep = posScale(kc.retentionPerTrust * (trust - 70) + kc.retentionPerProductQuality * (pq - 70), fc.premium);
+  const retPremium = KP.retention * dPV;
+  const retNetwork = KC.spill.consumerRetention * dCN;
+  const retDep = posScale(kc.retentionPerTrust * (trust - 70) + kc.retentionPerProductQuality * (pq - 70), fc.premium) + retPremium + retNetwork;
   const retMkt =
     kc.mktDemand * (market.consumerDemand - 1) -
-    kc.mktCommoditization * market.consumerCommoditization * (1 - 0.5 * aiEffect) -
+    kc.mktCommoditization * market.consumerCommoditization * Math.max(0.1, 1 - 0.5 * aiEffect - pvShield) -
     kc.mktMacro * market.macroPressure;
   const consumerRetention = levelIndicator(
     'consumerRetention', opening.consumerRetention, V2_COMMERCIAL_START.consumerRetention, kc.retentionSpeed,
@@ -481,12 +612,14 @@ export function calculateV2CommercialConsequence(
       { label: 'AI × Consumer synergy', value: retAi },
       { label: 'Trust term', value: kc.retentionPerTrust * (trust - 70) },
       { label: 'Product Quality term', value: kc.retentionPerProductQuality * (pq - 70) },
+      { label: 'Premium Value term', value: retPremium },
+      { label: 'Credential Network term', value: retNetwork },
     ]
   );
 
   // ---- Consumer CAC Index (higher is worse) ----
   const cacCap = -posScale(scalePositive(kc.cacPerRelCapability * relativeCapability.consumer, consumerSupport), fc.consumer);
-  const cacDep = -kc.cacPerProductQuality * (pq - 70);
+  const cacDep = -kc.cacPerProductQuality * (pq - 70) + KP.cac * dPV + KC.spill.consumerCac * dCN;
   const cacMkt =
     kc.cacMktPressure * (market.consumerCacPressure - 1) -
     kc.cacMktDemand * (market.consumerDemand - 1) +
@@ -509,7 +642,11 @@ export function calculateV2CommercialConsequence(
   const entCapTerm = posScale(ke.inflowCapabilityAmplitude * Math.tanh(relativeCapability.enterprise / ke.inflowCapabilityScale), fc.enterprise);
   const entInflowMkt = ke.baseInflow * (effEntDemand - 1);
   const entInflowCap = ke.baseInflow * effEntDemand * entCapTerm;
-  const entInflowDep = ke.baseInflow * effEntDemand * (scalePositive(entCapTerm, csScale) - entCapTerm);
+  const entInflowCsDep = ke.baseInflow * effEntDemand * (scalePositive(entCapTerm, csScale) - entCapTerm);
+  const entInflowBase = ke.baseInflow + entInflowMkt + entInflowCap + entInflowCsDep;
+  // Batch 4: credential demand from the Credential Network (enterprises buy accredited programmes)
+  const entInflowNetwork = entInflowBase * KC.spill.enterpriseInflow * dCN;
+  const entInflowDep = entInflowCsDep + entInflowNetwork;
   const entResolution = -ke.resolutionRate * opening.enterprisePipeline;
   const entInflowTotal = ke.baseInflow + entInflowMkt + entInflowCap + entInflowDep;
   const enterprisePipeline = finish({
@@ -527,6 +664,7 @@ export function calculateV2CommercialConsequence(
       { label: 'relative Enterprise capability', value: relativeCapability.enterprise },
       { label: 'capability inflow term (tanh)', value: entCapTerm },
       { label: 'Customer Success scalability scale', value: csScale },
+      { label: 'Credential Network demand', value: entInflowNetwork },
       { label: 'new qualified pipeline', value: entInflowTotal },
       { label: 'pipeline resolved (won/lost/expired)', value: -entResolution },
     ],
@@ -542,7 +680,9 @@ export function calculateV2CommercialConsequence(
     ke.winPerProductQuality * (pq - 70) +
     ke.winPerTrust * (trust - 70) +
     ke.winPerCustomerSuccess * (caps.customerSuccess - 30) +
-    ke.winPerExecution * (caps.execution - 60);
+    ke.winPerExecution * (caps.execution - 60) +
+    KP.winRate * dPV +
+    KC.spill.enterpriseWinRate * dCN;
   const winMkt =
     ke.winMktDemand * (market.enterpriseDemand - 1) +
     ke.winMktAIDemand * (market.enterpriseAIDemand - 1) * aiEffect -
@@ -602,7 +742,11 @@ export function calculateV2CommercialConsequence(
   const uniCapTerm = posScale(ku.inflowCapabilityAmplitude * Math.tanh(relativeCapability.credential / ku.inflowCapabilityScale), fc.university);
   const uniInflowMkt = ku.baseInflow * (effUniDemand - 1);
   const uniInflowCap = ku.baseInflow * effUniDemand * uniCapTerm;
-  const uniInflowDep = ku.baseInflow * effUniDemand * (scalePositive(uniCapTerm, trustSupport) - uniCapTerm);
+  const uniInflowTrustDep = ku.baseInflow * effUniDemand * (scalePositive(uniCapTerm, trustSupport) - uniCapTerm);
+  const uniInflowBase = ku.baseInflow + uniInflowMkt + uniInflowCap + uniInflowTrustDep;
+  // Batch 4: institutional network effect (partners refer partners); the segment still converts slowly
+  const uniInflowNetwork = uniInflowBase * KC.spill.universityInflow * dCN;
+  const uniInflowDep = uniInflowTrustDep + uniInflowNetwork;
   const uniResolution = -ku.resolutionRate * opening.universityPipeline;
   const uniInflowTotal = ku.baseInflow + uniInflowMkt + uniInflowCap + uniInflowDep;
   const universityPipeline = finish({
@@ -641,8 +785,10 @@ export function calculateV2CommercialConsequence(
   // ---- Pricing Power (slow composite) ----
   const kp = K.pricing;
   const ppCap = posScale(kp.aiDifferentiation * aiEffect + kp.perRelCapability * ((relativeCapability.consumer + relativeCapability.enterprise) / 2), fc.premium);
-  const ppDep = posScale(kp.perProductQuality * (pq - 70) + kp.perTrust * (trust - 70), fc.premium);
-  const ppMkt = -kp.mktCommoditization * market.consumerCommoditization - kp.mktMacro * market.macroPressure;
+  const ppPremium = KP.pricing * dPV;
+  const ppNetwork = KC.spill.pricing * dCN;
+  const ppDep = posScale(kp.perProductQuality * (pq - 70) + kp.perTrust * (trust - 70), fc.premium) + ppPremium + ppNetwork;
+  const ppMkt = -kp.mktCommoditization * market.consumerCommoditization * Math.max(0.1, 1 - pvShield - cnShield) - kp.mktMacro * market.macroPressure;
   const pricingPower = levelIndicator(
     'pricingPower', opening.pricingPower, V2_COMMERCIAL_START.pricingPower, kp.speed,
     kp.bounds, ppMkt, ppCap, ppDep,
@@ -651,7 +797,33 @@ export function calculateV2CommercialConsequence(
       { label: 'relative capability (avg Consumer/Enterprise)', value: (relativeCapability.consumer + relativeCapability.enterprise) / 2 },
       { label: 'Product Quality term', value: kp.perProductQuality * (pq - 70) },
       { label: 'Trust term', value: kp.perTrust * (trust - 70) },
+      { label: 'Premium Value (willingness to pay)', value: ppPremium },
+      { label: 'Credential Network (pricing resilience)', value: ppNetwork },
     ]
+  );
+
+  // ---- Batch 4: Premium Value (calculated) ----
+  const premiumValueIndicator = finish({
+    indicator: 'premiumValue',
+    kind: 'calculated',
+    opening: opening.premiumValue,
+    baseInflow: 0,
+    marketContribution: 0,
+    capabilityContribution: pv.value - opening.premiumValue,
+    dependencyContribution: 0,
+    decayOrAttrition: 0,
+    bounds: [0, 100],
+    target: pv.value,
+    drivers: pv.drivers.map(d => ({ label: `${d.driver} (score ${d.score.toFixed(2)}, weight ${d.weight})`, value: d.value })),
+  });
+
+  // ---- Batch 4: Credential Network Value (level, slow) ----
+  const adoption = institutionalAdoption(opening.universityPipeline, opening.universityRenewalRate);
+  const cnTarget = credentialNetworkTarget(company, adoption);
+  const credentialNetwork = levelIndicator(
+    'credentialNetwork', opening.credentialNetwork, opening.credentialNetwork, KC.speed, KC.bounds,
+    0, cnTarget.value - opening.credentialNetwork, 0,
+    [...cnTarget.drivers.map(d => ({ label: `${d.driver} (score ${d.score.toFixed(2)}, weight ${d.weight})`, value: d.value })), { label: 'target', value: cnTarget.value }]
   );
 
   const indicators = [
@@ -664,6 +836,8 @@ export function calculateV2CommercialConsequence(
     universityPipeline,
     universityRenewalRate,
     pricingPower,
+    premiumValueIndicator,
+    credentialNetwork,
   ];
 
   return {
@@ -683,6 +857,8 @@ export function calculateV2CommercialConsequence(
       universityPipeline: universityPipeline.closing,
       universityRenewalRate: universityRenewalRate.closing,
       pricingPower: pricingPower.closing,
+      premiumValue: premiumValueIndicator.closing,
+      credentialNetwork: credentialNetwork.closing,
       competitorBenchmarks,
     },
   };

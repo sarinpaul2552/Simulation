@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ARC_STRATEGIES, runArc, liquidityPolicy, V2ArcRun } from '../testlab/utils/v2ScenarioArc';
 import { finalOptions, acquisitionPrice, saleOffer, V2FinalOptionId, V2_FINAL_CALIBRATION, focusSegment } from './engineV2Final';
-import { calculateV2QuarterConsequence, finalView, V2_INTEGRATED_MODE, V2TeamState } from './engineV2';
+import { calculateV2QuarterConsequence, finalView, getV2Baseline, V2_INTEGRATED_MODE, V2TeamState } from './engineV2';
 import { getScenarioMarket, getScenarioQuarter } from './engineV2Scenario';
 import finalSource from './engineV2Final.ts?raw';
 
@@ -9,6 +9,10 @@ const strat = (id: string) => ARC_STRATEGIES.find(s => s.id === id)!;
 const withFinal = (id: string, option: V2FinalOptionId, extra: object = {}): V2ArcRun =>
   runArc(strat(id), 8, { ...extra, policy: { ...((extra as any).policy ?? {}), final: () => option } });
 const q8 = (r: V2ArcRun) => r.quarters[7];
+/** Batch 4: a genuinely cash-thin company ($30M opening cash, People100 policy) for insolvency mechanics. People100 itself
+ *  is no longer unproductive (People builds Product Quality), so it no longer runs out of cash by Q8 on its own. */
+const thinPeople = () => ({ ...ARC_STRATEGIES.find(s => s.id === 'people100')!, id: 'people100-thin-cash', opening: () => ({ ...getV2Baseline(), cash: 30 }) });
+
 const availableAt = (id: string, extra: object = {}) => q8(runArc(strat(id), 8, extra)).finalOptions!.filter(o => o.available).map(o => o.id);
 const Q8 = (state: V2TeamState, extra: object) => calculateV2QuarterConsequence(state, {
   quarter: 8, allocation: { consumer: 10, enterprise: 10, aiProduct: 10, people: 0, universityCredentials: 0, cashReserve: 0 },
@@ -33,7 +37,7 @@ describe('Batch 3 · Q8: options emerge from the company built', () => {
   });
 
   it('a distressed/insolvent company can stabilize but cannot scale, acquire or raise growth capital', () => {
-    const av = availableAt('people100', { policy: { liquidity: liquidityPolicy('refuse') } });
+    const av = q8(runArc(thinPeople(), 8, { policy: { liquidity: liquidityPolicy('refuse') } })).finalOptions!.filter(o => o.available).map(o => o.id);
     expect(av).toContain('stabilize-restructure');
     for (const id of ['scale-independently', 'acquire-consolidate', 'raise-growth-capital'] as const) expect(av).not.toContain(id);
   });
@@ -86,7 +90,7 @@ describe('Batch 3 · Q8: options emerge from the company built', () => {
   });
 
   it('stabilize/restructure: caps investment, cuts structural cost, relieves the interest rate', () => {
-    const base = runArc(strat('people100'), 7, { policy: { liquidity: liquidityPolicy('debt-first') } }).finalState;
+    const base = runArc(thinPeople(), 7, { policy: { liquidity: liquidityPolicy('debt-first') } }).finalState;
     const withDebt: V2TeamState = { ...base, solvency: { ...base.solvency, distressed: true } };
     expect(() => Q8(withDebt, { decisions: { finalOption: 'stabilize-restructure' } })).toThrow(/caps/);
     const c = Q8(withDebt, { allocation: { consumer: 0, enterprise: 0, aiProduct: 0, people: 10, universityCredentials: 0, cashReserve: 20 }, decisions: { finalOption: 'stabilize-restructure' } });

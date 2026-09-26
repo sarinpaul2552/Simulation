@@ -233,6 +233,8 @@ export function companyView(state: V2TeamState, last?: V2Consequence): V2SignalC
       aiAdoptionIndex: state.commercial.aiAdoptionIndex,
       universityRenewalRate: state.commercial.universityRenewalRate,
       pricingPower: state.commercial.pricingPower,
+      premiumValue: state.commercial.premiumValue,
+      credentialNetwork: state.commercial.credentialNetwork,
     },
     organizationalCapacity: state.organizationalCapacity,
     transformationLoad: state.transformationLoad,
@@ -255,11 +257,44 @@ export interface V2ArcOptions {
 
 export const DESTINATION_COMMIT_QUARTER = 4;
 
-export function alignedAllocation(id: V2DestinationId): V2Allocation {
+/** Primary capability each bucket builds (for saturation checks). */
+const BUCKET_PRIMARY: Record<string, (s: V2TeamState) => number> = {
+  consumer: s => s.capabilities.consumer,
+  enterprise: s => s.capabilities.enterprise,
+  aiProduct: s => s.capabilities.ai,
+  people: s => s.capabilities.talent,
+  universityCredentials: s => s.capabilities.credential,
+};
+/** Supporting buckets a destination funds once its aligned capability is saturated (Batch 4, Test Lab policy). */
+const SUPPORT_BUCKETS: Record<V2DestinationId, (keyof V2Allocation)[]> = {
+  'consumer-ai': ['people'],
+  'enterprise-ai': ['people'],
+  'premium-human-ai': ['universityCredentials'],
+  'university-infrastructure': ['enterprise', 'people'],
+  'balanced-marketplace': [],
+};
+
+/**
+ * Destination-aligned post-Q4 spending: $30M split across aligned buckets. Batch 4: an aligned bucket whose capability is
+ * within 2 points of its ceiling gets $5M maintenance and the remainder funds the destination's supporting buckets
+ * (spending past a ceiling is pure waste; the Batch 3 matrix poured $30M/qtr into a saturated Credential bucket).
+ */
+export function alignedAllocation(id: V2DestinationId, state?: V2TeamState): V2Allocation {
   const buckets = V2_DESTINATIONS[id].alignedBuckets;
   if (buckets.length === 0) return a({ consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 5, cashReserve: 5 });
+  const out = a({});
+  let freed = 0;
   const each = ENVELOPE / buckets.length;
-  return a(Object.fromEntries(buckets.map(b => [b, each])) as Partial<V2Allocation>);
+  for (const b of buckets) {
+    const ceiling = state?.destination ? 100 + 20 * Math.min(1, state.destination.readinessAtCommit + 0.25 * (state.quarter + 1 - state.destination.committedQuarter)) : 100;
+    const saturated = state !== undefined && BUCKET_PRIMARY[b](state) >= ceiling - 2;
+    out[b] = saturated ? Math.min(5, each) : each;
+    freed += each - out[b];
+  }
+  const support = SUPPORT_BUCKETS[id].filter(b => !(buckets as string[]).includes(b));
+  if (freed > 0 && support.length > 0) for (const b of support) out[b] += freed / support.length;
+  else out.cashReserve += freed;
+  return out;
 }
 
 export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter(), options: V2ArcOptions = {}): V2ArcRun {
@@ -272,7 +307,7 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
     const committed = state.destination?.id ?? null;
     const allocation =
       q > DESTINATION_COMMIT_QUARTER && options.postQ4Allocation === 'aligned' && committed
-        ? alignedAllocation(committed)
+        ? alignedAllocation(committed, state)
         : strategy.allocate(ctx);
     const destination =
       q === DESTINATION_COMMIT_QUARTER ? (options.destination ?? (strategy.destination?.(ctx) as V2DestinationId | undefined)) : undefined;
@@ -344,6 +379,13 @@ const withCaps = (p: Partial<V2TeamState['capabilities']>, extra: Partial<V2Team
 const constant = (x: V2Allocation) => () => x;
 const BALANCED = a({ consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 5, cashReserve: 5 });
 
+/** Credential builder: build the credential stock, then shift to the capabilities that monetize the network. */
+function credentialBuilder(ctx: V2ArcContext): V2Allocation {
+  return ctx.state.capabilities.credential < 95
+    ? a({ universityCredentials: 20, enterprise: 5, people: 5 })
+    : a({ universityCredentials: 8, enterprise: 12, people: 10 });
+}
+
 export const ARC_STRATEGIES: V2ArcStrategy[] = [
   { id: 'consumer100', name: 'Consumer100', description: '$30M Consumer every quarter', allocate: constant(a({ consumer: 30 })), destination: () => 'consumer-ai' },
   { id: 'enterprise100', name: 'Enterprise100', description: '$30M Enterprise every quarter', allocate: constant(a({ enterprise: 30 })), destination: () => 'enterprise-ai' },
@@ -379,6 +421,29 @@ export const ARC_STRATEGIES: V2ArcStrategy[] = [
   { id: 'low-trust', name: 'Balanced, low Trust (40)', description: 'Balanced with Trust injected at 40', opening: withCaps({}, { trust: 40 }), allocate: constant(BALANCED), destination: () => 'balanced-marketplace' },
   { id: 'low-cs', name: 'Enterprise + AI, low CS (10)', description: 'Enterprise + AI with Customer Success injected at 10', opening: withCaps({ customerSuccess: 10 }), allocate: constant(a({ enterprise: 15, aiProduct: 15 })), destination: () => 'enterprise-ai' },
   { id: 'low-talent', name: 'AI100, low Talent (30)', description: 'AI100 with Talent injected at 30', opening: withCaps({ talent: 30 }), allocate: constant(a({ aiProduct: 30 })), destination: () => 'consumer-ai' },
+  // ---- Batch 4: destination-thesis builders and weak-dependency variants ----
+  {
+    id: 'premium-builder', name: 'Premium builder (People + AI + Trust)',
+    description: '$12M People, $12M AI/Product, $6M University/Credentials (Trust) every quarter; commits to Premium Human + AI.',
+    allocate: constant(a({ people: 12, aiProduct: 12, universityCredentials: 6 })), destination: () => 'premium-human-ai',
+  },
+  {
+    id: 'premium-weak-trust', name: 'Premium builder, weak Trust (45)', description: 'Premium builder with Trust injected at 45',
+    opening: withCaps({}, { trust: 45 }), allocate: constant(a({ people: 12, aiProduct: 12, universityCredentials: 6 })), destination: () => 'premium-human-ai',
+  },
+  {
+    id: 'premium-weak-execution', name: 'Premium builder, weak Execution (35)', description: 'Premium builder with Execution injected at 35',
+    opening: withCaps({ execution: 35 }), allocate: constant(a({ people: 12, aiProduct: 12, universityCredentials: 6 })), destination: () => 'premium-human-ai',
+  },
+  {
+    id: 'credential-builder', name: 'Credential builder (University → monetize the network)',
+    description: '$20M University/Credentials + $5M Enterprise + $5M People until Credential nears its ceiling, then $8M University, $12M Enterprise, $10M People to monetize the network; commits to University/Credential Infrastructure.',
+    allocate: credentialBuilder, destination: () => 'university-infrastructure',
+  },
+  {
+    id: 'credential-weak-trust', name: 'Credential builder, weak Trust (45)', description: 'Credential builder with Trust injected at 45',
+    opening: withCaps({}, { trust: 45 }), allocate: credentialBuilder, destination: () => 'university-infrastructure',
+  },
   {
     id: 'aggressive', name: 'Aggressive spender',
     description: 'Invests the full $30M every quarter across Consumer, Enterprise and AI; accepts the Q5 contract; keeps investing through the recession; remediates the crisis; funds gaps with equity; raises growth capital or acquires at Q8.',
@@ -413,7 +478,7 @@ export function runAllArcStrategies(quarters = lastAuthoredQuarter()): V2ArcRun[
 
 // ============ Q4 DESTINATION MATRIX ============
 
-export const MATRIX_HISTORIES = ['consumer100', 'enterprise100', 'ai100', 'people100', 'university100', 'cash100', 'balanced', 'consumer-ai', 'enterprise-ai', 'evidence-responsive', 'wrong-way'];
+export const MATRIX_HISTORIES = ['consumer100', 'enterprise100', 'ai100', 'people100', 'university100', 'cash100', 'balanced', 'consumer-ai', 'enterprise-ai', 'evidence-responsive', 'wrong-way', 'premium-builder', 'credential-builder'];
 
 export interface V2DestinationMatrixCell {
   historyId: string;

@@ -12,6 +12,10 @@ import financingSource from './engineV2Financing.ts?raw';
 
 const strat = (id: string) => ARC_STRATEGIES.find(s => s.id === id)!;
 const K = V2_FINANCING_CALIBRATION;
+/** Batch 4: a genuinely cash-thin company ($30M opening cash, People100 policy) for insolvency mechanics. People100 itself
+ *  is no longer unproductive (People builds Product Quality), so it no longer runs out of cash by Q8 on its own. */
+const thinPeople = () => ({ ...ARC_STRATEGIES.find(s => s.id === 'people100')!, id: 'people100-thin-cash', opening: () => ({ ...getV2Baseline(), cash: 30 }) });
+
 const REFUSE = { liquidity: liquidityPolicy('refuse') };
 
 /** State after Q5 (default policy, no financing) and its planned allocation. */
@@ -123,7 +127,7 @@ describe('Batch 3: liquidity triggers, insolvency and distress (no floor, no hid
   });
 
   it('refusing to resolve a liquidity gap → explicit insolvency; no cash appears from nowhere', () => {
-    const r = runArc(strat('people100'), 10, { policy: REFUSE });
+    const r = runArc(thinPeople(), 10, { policy: REFUSE });
     for (const h of r.quarters) {
       expect(h.record.consequence.ledger.financing).toBe(0);
       expect(h.record.consequence.ledger.financingItems).toEqual([]);
@@ -138,7 +142,7 @@ describe('Batch 3: liquidity triggers, insolvency and distress (no floor, no hid
   });
 
   it('while insolvent: distress damages Trust/Talent/Culture and commercial indicators and costs cash', () => {
-    const r = runArc(strat('people100'), 10, { policy: REFUSE });
+    const r = runArc(thinPeople(), 10, { policy: REFUSE });
     const first = r.finalState.solvency.firstInsolventQuarter!;
     const next = r.quarters[first].record.consequence;
     expect(next.appliedShocks.filter(x => x.source === 'insolvency distress').map(x => x.target).sort()).toEqual(['culture', 'talent', 'trust']);
@@ -150,7 +154,7 @@ describe('Batch 3: liquidity triggers, insolvency and distress (no floor, no hid
 
   it('resolving explicitly (debt / equity / partner / restructuring) keeps the company solvent, each at its own price', () => {
     const outcomes = (['debt-first', 'equity-first', 'partner-first', 'restructure-first'] as const).map(pref => {
-      const r = runArc(strat('people100'), 10, { policy: { liquidity: liquidityPolicy(pref) } });
+      const r = runArc(thinPeople(), 10, { policy: { liquidity: liquidityPolicy(pref) } });
       return { pref, s: r.finalState, r };
     });
     for (const o of outcomes) {
@@ -169,7 +173,7 @@ describe('Batch 3: liquidity triggers, insolvency and distress (no floor, no hid
   });
 
   it('liquidity events are recorded from the counterfactual of taking no action', () => {
-    const r = runArc(strat('people100'), 10, { policy: { liquidity: liquidityPolicy('debt-first') } });
+    const r = runArc(thinPeople(), 10, { policy: { liquidity: liquidityPolicy('debt-first') } });
     const ev = r.finalState.solvency.history.filter(h => h.liquidityEvent);
     expect(ev.length).toBeGreaterThan(0);
     for (const h of ev) {

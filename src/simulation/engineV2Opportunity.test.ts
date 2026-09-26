@@ -7,9 +7,9 @@ import { destinationStrength } from './engineV2Destination';
 import opportunitySource from './engineV2Opportunity.ts?raw';
 
 const strat = (id: string) => ARC_STRATEGIES.find(s => s.id === id)!;
-// Recession response and financing held fixed (none) in both arms so comparisons isolate the contract decision.
+// Recession response, financing and the Q8 decision held fixed in both arms so comparisons isolate the contract decision.
 const run = (id: string, accept: boolean, quarters = 10): V2ArcRun =>
-  runArc(strat(id), quarters, { suppressCrisis: true, policy: { opportunity: () => accept, recession: () => ({ actions: {} }), liquidity: liquidityPolicy('refuse') } });
+  runArc(strat(id), quarters, { suppressCrisis: true, policy: { opportunity: () => accept, recession: () => ({ actions: {} }), liquidity: liquidityPolicy('refuse'), final: () => 'continue' } });
 const q = (r: V2ArcRun, n: number) => r.quarters[n - 1].record;
 const OFFER = 'q5-global-enterprise';
 

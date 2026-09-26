@@ -684,6 +684,8 @@ export interface V2SignalCompanyView {
     aiAdoptionIndex: number;
     universityRenewalRate: number;
     pricingPower: number;
+    premiumValue?: number;
+    credentialNetwork?: number;
   };
   organizationalCapacity: number;
   transformationLoad: number;
@@ -725,6 +727,8 @@ export function buildPlayerSignals(quarter: number, company: V2SignalCompanyView
     k('ai-revenue', 'Product', 'ai-native', 'AI-native revenue', company.segmentRevenue.aiNative, '$M'),
     k('university-renewal', 'CEO', 'university', 'University renewal rate', c.universityRenewalRate, '%'),
     k('pricing-power', 'CEO', 'consumer', 'Pricing power', c.pricingPower, 'index'),
+    ...(c.premiumValue !== undefined ? [k('premium-value', 'People', 'organization', 'Premium value proposition (Talent × Quality × Trust × Execution × AI)', c.premiumValue, 'index')] : []),
+    ...(c.credentialNetwork !== undefined ? [k('credential-network', 'CEO', 'university', 'Credential network value', c.credentialNetwork, 'index')] : []),
     k('org-capacity', 'People', 'organization', 'Organizational capacity', company.organizationalCapacity, 'index'),
     k('transformation-load', 'People', 'organization', 'Transformation load (last quarter)', company.transformationLoad, 'index'),
     k('culture', 'People', 'organization', 'Culture', company.culture, 'index'),

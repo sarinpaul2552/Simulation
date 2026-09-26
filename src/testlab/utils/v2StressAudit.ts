@@ -72,6 +72,9 @@ export const STRATEGIES: Record<string, V2Allocation> = {
   broad6x5: a({ consumer: 6, enterprise: 6, aiProduct: 6, people: 6, universityCredentials: 6 }),
   consumerAi: a({ consumer: 15, aiProduct: 15 }),
   enterpriseAi: a({ enterprise: 15, aiProduct: 15 }),
+  // Batch 4: destination-thesis builders (Premium Value and Credential Network stability)
+  premiumBuilder: a({ people: 12, aiProduct: 12, universityCredentials: 6 }),
+  credentialBuilder: a({ universityCredentials: 20, enterprise: 5, people: 5 }),
 };
 
 export const V2_STRESS_CASES: V2StressCase[] = [
@@ -102,7 +105,11 @@ export const V2_STRESS_CASES: V2StressCase[] = [
     id: `extreme40-${id}`, name: `40-quarter extreme stability: ${id} (competitive)`, quarters: 40, market: 'competitive' as const,
     opening: getV2Baseline, allocation: constant(STRATEGIES[id]),
   })),
-  ...(['consumer100', 'ai100', 'consumerAi', 'cash100'] as const).map(id => ({
+  {
+    id: 'extreme40-people100-thin-cash', name: '40-quarter: People100 from $15M opening cash (spending into insolvency)', quarters: 40,
+    market: 'competitive' as const, opening: withCaps({}, { cash: 15 }), allocation: constant(STRATEGIES.people100),
+  },
+  ...(['consumer100', 'ai100', 'consumerAi', 'cash100', 'premiumBuilder', 'credentialBuilder'] as const).map(id => ({
     id: `extreme40-static-${id}`, name: `40-quarter extreme stability: ${id} (static neutral)`, quarters: 40, market: 'static-neutral' as const,
     opening: getV2Baseline, allocation: constant(STRATEGIES[id]),
   })),

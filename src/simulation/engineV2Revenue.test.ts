@@ -282,12 +282,11 @@ describe('Strategy behaviour (competitive market)', () => {
     }
   });
 
-  it('People100 gets no artificial direct revenue: Q1 ≈ Cash100, Q8 within 5% of Cash100 and below every market-facing focus', () => {
-    expect(Math.abs(total('people100', 1) - total('cash100', 1))).toBeLessThan(0.2);
-    expect(total('people100', 8)).toBeLessThan(total('cash100', 8) * 1.05);
-    for (const id of ['consumer100', 'ai100', 'enterprise100', 'balanced', 'consumer-ai']) {
-      expect(total('people100', 8)).toBeLessThan(total(id, 8));
-    }
+  it('People100 gets no artificial direct revenue: Q1 ≈ Cash100; later gains come only through commercial indicators', () => {
+    // Batch 4: People builds Product Quality → retention / CAC / pricing / premium value → revenue (no direct term).
+    expect(Math.abs(total('people100', 1) - total('cash100', 1))).toBeLessThan(0.5);
+    expect(total('people100', 8)).toBeGreaterThan(total('cash100', 8));
+    for (const id of ['ai100', 'balanced', 'consumer-ai']) expect(total('people100', 8)).toBeLessThan(total(id, 8));
   });
 
   it('complementarity emerges without a synergy multiplier: Consumer+AI > Consumer100 and > AI100 at Q8', () => {

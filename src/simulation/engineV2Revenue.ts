@@ -59,6 +59,11 @@ export const V2_REVENUE_CALIBRATION = {
     renewalBounds: [0.7, 0.97] as const,
     /** Expansion on the exposed base, scaled by Customer Success strength. */
     expansionRate: 0.1,
+    /**
+     * Batch 4: willingness to pay. New bookings' ACV × (1 + acvPerPricingPoint × (Pricing Power − 50)), floored at 0.5.
+     * Exactly 1 at the starting Pricing Power (50); symmetric for every company.
+     */
+    acvPerPricingPoint: 0.004,
     expansionCsRamp: [30, 80] as const,
   },
   university: {
@@ -166,6 +171,8 @@ export interface V2EnterpriseRevenueDiagnostic {
   winRate: number;
   /** Market headroom multiplier applied to bookings and expansion. */
   headroom: number;
+  /** Batch 4: willingness-to-pay factor on new bookings from Pricing Power (1 at 50). */
+  priceRealization: number;
   bookingsACV: number;
   newRunRateBooked: number;
   renewalRate: number;
@@ -414,7 +421,8 @@ export function calculateV2RevenueConsequence(
   const resolvedPipeline = -entPipe.decayOrAttrition;
   const winRate = cc.enterpriseWinRate / 100;
   const eHeadroom = headroomMultiplier(E0, market.segmentCapacity.enterprise, K.start.enterprise);
-  const bookingsACV = resolvedPipeline * winRate * eHeadroom;
+  const priceRealization = Math.max(0.5, 1 + ke.acvPerPricingPoint * (cc.pricingPower - 50));
+  const bookingsACV = resolvedPipeline * winRate * eHeadroom * priceRealization;
   const newRunRate = bookingsACV * ke.acvToQuarterlyRunRate;
   const eRenewal = enterpriseRenewalRate(company, market);
   const eExposed = E0 * ke.renewalExposure;
@@ -491,7 +499,7 @@ export function calculateV2RevenueConsequence(
       pricingPowerChange: ppChange, priceMix: cPrice, closing: C1,
     },
     enterprise: {
-      opening: E0raw, eventLoss: eLoss, contractBookingsRunRate, backlogCancelled, acquired: eAcquired, openingPipeline: entPipe.opening, resolvedPipeline, winRate, headroom: eHeadroom, bookingsACV,
+      opening: E0raw, eventLoss: eLoss, contractBookingsRunRate, backlogCancelled, acquired: eAcquired, openingPipeline: entPipe.opening, resolvedPipeline, winRate, headroom: eHeadroom, priceRealization, bookingsACV,
       newRunRateBooked: newRunRate, renewalRate: eRenewal, exposedBase: eExposed, churn: eChurn,
       expansion: eExpansion, liveFromCurrentBookings: entRelease.liveCurrent, liveFromEarlierBookings: entRelease.liveEarlier,
       closing: E1, backlogRunRate: entBacklogRunRate, backlogACV: entBacklogRunRate / ke.acvToQuarterlyRunRate,

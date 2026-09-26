@@ -40,7 +40,8 @@ export type V2CommercialShockIndicator =
   | 'universityPipeline'
   | 'universityRenewalRate'
   | 'pricingPower'
-  | 'aiAdoptionIndex';
+  | 'aiAdoptionIndex'
+  | 'credentialNetwork';
 
 export interface V2CommercialShock {
   source: string;

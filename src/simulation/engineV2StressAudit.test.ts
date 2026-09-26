@@ -24,11 +24,18 @@ describe('Phase 3C: economic stress audit', () => {
     expect(hits).toEqual([]);
   });
 
-  it('revenue-scale flags (> 2× baseline) occur only in 40-quarter broad/balanced runs, and stay < 2.1×', () => {
+  it('revenue-scale flags (> 2× baseline) occur only in 40-quarter broad/balanced runs and saturation; growth decelerates (no runaway)', () => {
+    // Batch 4: the 2.1× guard became 2.3× — maximum broad investment for 40 quarters now also compounds Premium Value and
+    // the Credential Network, but growth decelerates to < 0.5%/qtr and stays below total structural capacity.
     for (const r of results) {
       const scale = r.anomalies.filter(a => a.detector === 'revenue-scale');
-      if (scale.length > 0) expect(['extreme40-balanced', 'extreme40-broad6x5']).toContain(r.stress.id);
-      expect(r.summary.final.revenue).toBeLessThan(2.1 * 200);
+      if (scale.length > 0) expect(r.stress.id === 'saturation' || r.stress.quarters === 40, r.stress.id).toBe(true);
+      if (r.stress.id !== 'saturation') expect(r.summary.final.revenue).toBeLessThan(2.3 * 200);
+      const q = r.quarters;
+      if (q.length >= 40) {
+        const growth = (q[39].consequence.ledger.revenue / q[35].consequence.ledger.revenue) ** 0.25 - 1;
+        expect(growth, r.stress.id).toBeLessThan(0.005);
+      }
     }
   });
 
@@ -39,10 +46,12 @@ describe('Phase 3C: economic stress audit', () => {
     }
   });
 
-  it('spending into insolvency is possible and observable (People100), never floored', () => {
-    const p = results.find(r => r.stress.id === 'extreme40-people100')!;
+  it('spending into insolvency is possible and observable, never floored (People100 from thin cash)', () => {
+    // Batch 4: People now builds Product Quality and Premium Value, so People100 from $60M no longer exhausts its cash;
+    // the insolvency path is demonstrated from a $15M opening balance with the same allocation.
+    const p = results.find(r => r.stress.id === 'extreme40-people100-thin-cash')!;
     expect(p.firstNegativeCashQuarter).not.toBeNull();
-    expect(p.summary.final.cash).toBeLessThan(-100);
+    expect(p.summary.final.cash).toBeLessThan(0);
   });
 
   it('static-neutral Cash100 is an exact 40-quarter fixed point', () => {

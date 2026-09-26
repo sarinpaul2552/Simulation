@@ -326,6 +326,8 @@ export function crisisEffects(
       e.commercialShocks.push(
         cs(src, 'universityRenewalRate', -(4 + 14 * s) * m),
         cs(src, 'universityPipeline', -company.universityPipeline * (0.15 + 0.45 * s) * m),
+        // Batch 4: an accreditation challenge damages the credential network itself
+        cs(src, 'credentialNetwork', -(5 + 20 * s) * m),
       );
       e.stateShocks.push(ss(src, 'trust', -(2 + 8 * s) * m - (response === 'absorb' ? 2 : 0)), ss(src, 'credential', -(2 + 6 * s) * m));
       if (response === 'remediate') { e.extraLoad.push({ source: src, load: 6 }); e.stateShocks.push(ss(src, 'credential', 2)); }

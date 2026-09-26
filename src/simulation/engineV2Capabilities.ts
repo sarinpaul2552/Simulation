@@ -226,7 +226,11 @@ export const V2_BUCKET_CURVES: Record<V2CapabilityBucket, V2BucketCurve> = {
   },
   aiProduct: {
     bucket: 'aiProduct',
-    gains: [{ target: 'ai', points: [0, 7, 13, 21, 27] }],
+    gains: [
+      { target: 'ai', points: [0, 7, 13, 21, 27] },
+      // Batch 4 calibration: the AI/Product bucket also builds Product Quality (it previously built none).
+      { target: 'productQuality', points: [0, 0.5, 1, 1.6, 2] },
+    ],
     load: [0, 7, 13, 23, 32],
     maturationSchedule: [0.2, 0.4, 0.4],
   },
@@ -235,7 +239,8 @@ export const V2_BUCKET_CURVES: Record<V2CapabilityBucket, V2BucketCurve> = {
     gains: [
       { target: 'talent', points: [0, 4, 7, 11, 13] },
       { target: 'organizationalCapacity', points: [0, 3, 6, 10, 12] },
-      { target: 'productQuality', points: [0, 0.5, 1.0, 1.8, 2.2] },
+      // Batch 4 calibration: 0/0.5/1.0/1.8/2.2 → 0/1/1.8/3.2/4 (People barely moved Product Quality).
+      { target: 'productQuality', points: [0, 1, 1.8, 3.2, 4] },
     ],
     load: [0, 3, 6, 11, 16],
     maturationSchedule: [0.5, 0.35, 0.15],

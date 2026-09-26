@@ -227,15 +227,16 @@ describe('Indicator memory', () => {
     expect(b.enterprisePipeline).toBeGreaterThan(a.enterprisePipeline);
   });
 
-  it('one quarter of any real strategy moves Pricing Power by < 1 point; even an all-100 company moves < 5', () => {
+  it('one quarter of any real strategy moves Pricing Power by < 1.5 points; even an all-100 company moves < 5', () => {
+    // Batch 4: < 1 → < 1.5 — a weak-Trust company now also loses Premium and Credential Network value (−1.05 in Q1).
     for (const r of runAllV2CommercialScenarios()) {
       const opening = r.quarters[0].opening.commercial.pricingPower;
-      expect(Math.abs(r.quarters[0].ending.commercial.pricingPower - opening), r.scenario.id).toBeLessThan(1);
+      expect(Math.abs(r.quarters[0].ending.commercial.pricingPower - opening), r.scenario.id).toBeLessThan(1.5);
     }
     const strong = company({ consumer: 100, enterprise: 100, ai: 100, talent: 100, execution: 100 }, { productQuality: 100, trust: 100 });
     const pp = one(strong).closing.pricingPower;
     expect(pp - 50).toBeGreaterThan(0);
-    expect(pp - 50).toBeLessThan(5);
+    expect(pp - 50).toBeLessThan(10); // Batch 4: 5 → 10 (a perfect company also carries maximum Premium Value)
   });
 });
 
@@ -299,10 +300,13 @@ describe('Synergies', () => {
     expect(withAi.consumerRetention - withoutAi.consumerRetention).toBeGreaterThan(1.5);
   });
 
-  it('AI alone does not fix Consumer economics (AI100 vs Cash100 retention gap < 1 point)', () => {
+  it('AI alone does not fix Consumer economics (AI100 retention < 3 points above Cash100 and well below Consumer-focused play)', () => {
+    // Batch 4: the AI/Product bucket now builds some Product Quality, so AI100 retains slightly better than Cash100 —
+    // but without Consumer capability it stays far below a Consumer strategy.
     const gap = at('ai100', 8).commercial.consumerRetention - at('cash100', 8).commercial.consumerRetention;
     expect(gap).toBeGreaterThanOrEqual(0);
-    expect(gap).toBeLessThan(1);
+    expect(gap).toBeLessThan(3);
+    expect(at('ai100', 8).commercial.consumerRetention).toBeLessThan(at('consumer100', 8).commercial.consumerRetention - 4);
   });
 
   it('Enterprise + AI improves Win Rate vs Enterprise alone with the same Enterprise spend', () => {
