@@ -13,6 +13,7 @@ import {
   V2PlayerSignal,
   V2SignalCompanyView,
 } from '../../simulation/engineV2Scenario';
+import type { V2MarketConditions } from '../../simulation/engineV2Commercial';
 import { V2QuarterDecisions, V2ManagementActions, V2FinancingAction, V2QuarterInput, assessLiquidity, crisisView, finalView } from '../../simulation/engineV2';
 import { V2FinalOptionAvailability, V2FinalOptionId, finalOptions, maxEnvelope, V2_FINAL_CALIBRATION } from '../../simulation/engineV2Final';
 import { V2CrisisAssessment, V2CrisisResponseId, assessCrisis } from '../../simulation/engineV2Crisis';
@@ -248,6 +249,8 @@ export interface V2ArcOptions {
   policy?: Partial<V2ArcPolicy>;
   /** Counterfactual analysis only: suppress the Q7 crisis. */
   suppressCrisis?: boolean;
+  /** Audit only: alternative market truth (e.g. conditions favourable to one strategy). Signals are unchanged. */
+  marketOverride?: (quarter: number, market: V2MarketConditions) => V2MarketConditions;
 }
 
 export const DESTINATION_COMMIT_QUARTER = 4;
@@ -303,8 +306,9 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
       finalAllocationBase = fa.allocation;
       envelope = fa.envelope;
     }
+    const market = options.marketOverride ? options.marketOverride(q, getScenarioMarket(q)) : getScenarioMarket(q);
     const inputFor = (alloc: V2Allocation, dec: V2QuarterDecisions): V2QuarterInput => ({
-      quarter: q, allocation: alloc, strategicEnvelope: envelope, market: getScenarioMarket(q),
+      quarter: q, allocation: alloc, strategicEnvelope: envelope, market,
       revenueSource: V2_INTEGRATED_MODE.revenueSource, costSource: V2_INTEGRATED_MODE.costSource, destination, decisions: dec,
       crisis: crisisFires,
       finalDecision: sq?.events?.finalDecision === true,
@@ -316,7 +320,7 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
     const liq = policy.liquidity(ctx, forecast, finalAllocation);
     if (liq.allocation) finalAllocation = liq.allocation;
     if (liq.actions.length > 0) decisions.financing = liq.actions;
-    const record = runV2Quarter(state, q, finalAllocation, envelope, undefined, undefined, getScenarioMarket(q), {
+    const record = runV2Quarter(state, q, finalAllocation, envelope, undefined, undefined, market, {
       revenueSource: V2_INTEGRATED_MODE.revenueSource,
       costSource: V2_INTEGRATED_MODE.costSource,
       destination,
@@ -375,6 +379,31 @@ export const ARC_STRATEGIES: V2ArcStrategy[] = [
   { id: 'low-trust', name: 'Balanced, low Trust (40)', description: 'Balanced with Trust injected at 40', opening: withCaps({}, { trust: 40 }), allocate: constant(BALANCED), destination: () => 'balanced-marketplace' },
   { id: 'low-cs', name: 'Enterprise + AI, low CS (10)', description: 'Enterprise + AI with Customer Success injected at 10', opening: withCaps({ customerSuccess: 10 }), allocate: constant(a({ enterprise: 15, aiProduct: 15 })), destination: () => 'enterprise-ai' },
   { id: 'low-talent', name: 'AI100, low Talent (30)', description: 'AI100 with Talent injected at 30', opening: withCaps({ talent: 30 }), allocate: constant(a({ aiProduct: 30 })), destination: () => 'consumer-ai' },
+  {
+    id: 'aggressive', name: 'Aggressive spender',
+    description: 'Invests the full $30M every quarter across Consumer, Enterprise and AI; accepts the Q5 contract; keeps investing through the recession; remediates the crisis; funds gaps with equity; raises growth capital or acquires at Q8.',
+    allocate: constant(a({ consumer: 10, enterprise: 10, aiProduct: 10 })),
+    destination: () => 'consumer-ai',
+    policy: {
+      opportunity: () => true,
+      recession: () => ({ actions: {} }),
+      liquidity: liquidityPolicy('equity-first', 0),
+      crisis: () => 'remediate',
+      final: (_ctx, o) => avail(o, 'raise-growth-capital') ? 'raise-growth-capital' : avail(o, 'acquire-consolidate') ? 'acquire-consolidate' : avail(o, 'scale-independently') ? 'scale-independently' : 'continue',
+    },
+  },
+  {
+    id: 'conservative', name: 'Conservative spender',
+    description: 'Invests only $10M a quarter (no People), holds $20M in reserve; declines the contract; cuts costs and freezes hiring in the recession; contains the crisis; continues at Q8.',
+    allocate: constant(a({ consumer: 2.5, enterprise: 2.5, aiProduct: 2.5, universityCredentials: 2.5, cashReserve: 20 })),
+    destination: () => 'balanced-marketplace',
+    policy: {
+      opportunity: () => false,
+      recession: () => ({ actions: { workforceReduction: { depth: 'targeted' }, marketingLevel: 0.8, hiringFreeze: true } }),
+      crisis: () => 'contain',
+      final: (ctx, o) => ctx.state.solvency.distressed && avail(o, 'stabilize-restructure') ? 'stabilize-restructure' : 'continue',
+    },
+  },
 ];
 
 export function runAllArcStrategies(quarters = lastAuthoredQuarter()): V2ArcRun[] {

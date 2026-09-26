@@ -91,6 +91,16 @@ financing items (ledger). Culture now modulates effective capacity (×(1 + 0.006
   Low-Execution 62.8, Consumer100 61.0, Low-CS 59.8, University100 53.6, Cash100 51.8, Low-Talent 50.0 (collapse gate),
   Enterprise100 49.7, People100 41.9; People100 refusing financing 30.0 (insolvency gate).
 
+## Full Q1–Q8 Calibration Audit (PASS with two structural findings)
+
+- `src/testlab/utils/v2FullAudit.ts` + Mode 5 section I; report in `ECONOMICS_V2_BATCH3_AUDIT.md`. 17 strategies (incl.
+  aggressive, conservative) + 11 histories × 5 destinations; all hard gates hold everywhere.
+- Scoring calibration: market position = ½ revenue-weighted + ½ in the chosen commercial focus.
+- Consumer AI best for 7/11 histories by ≤ 4.2 points (was 11/11); Enterprise AI best for Enterprise100; Balanced edges
+  University100 and Enterprise+AI. Top: Consumer+AI 79.5, Evidence-responsive 77.1, Aggressive 76.8, Enterprise+AI 72.8,
+  Balanced 72.6. Bottom: People100 41.7, Low-Talent 50.0 (gate), Cash100 51.8, Enterprise100 51.8.
+- Structural "no": University (segment scale/lag) and Premium (no premium price-realization channel) — design decisions.
+
 ---
 
 ## Batch 2 status (approved at 9af2aac) — Q1–Q4 Strategic Arc

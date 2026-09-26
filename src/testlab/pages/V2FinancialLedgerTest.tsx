@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { allocationStrategies } from '../utils/testPresets';
 import { runV2StressAudit, V2StressResult } from '../utils/v2StressAudit';
 import { runAllArcStrategies, V2ArcRun } from '../utils/v2ScenarioArc';
+import { runFullAudit, runAuditMatrix, bestDestinationByHistory, V2AuditRow } from '../utils/v2FullAudit';
 import { V2_SCENARIO_ARC, lastAuthoredQuarter } from '../../simulation/engineV2Scenario';
 import {
   runAllV2Scenarios,
@@ -569,6 +570,15 @@ export const V2FinancialLedgerTest: React.FC = () => {
   const [stress, setStress] = useState<V2StressResult[] | null>(null);
   const [arc, setArc] = useState<V2ArcRun[] | null>(null);
   const [arcSignalsFor, setArcSignalsFor] = useState<string>('evidence-responsive');
+  const [audit, setAudit] = useState<{ rows: V2AuditRow[]; matrix: V2AuditRow[] } | null>(null);
+  const runAudit = () => {
+    try {
+      setError(null);
+      setAudit({ rows: runFullAudit(), matrix: runAuditMatrix() });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
   const runArcStrategies = () => {
     try {
       setError(null);
@@ -643,7 +653,7 @@ export const V2FinancialLedgerTest: React.FC = () => {
 
   return (
     <div className="testlab-form">
-      <h2>Mode 5: V2 Engine: Ledger (2A) · Capabilities (2B) · Commercial (2C) · Revenue (2D) · Costs (3A) · Integrated (3B) · Stress audit (3C) · Scenario arc (Batch 2)</h2>
+      <h2>Mode 5: V2 Engine: Ledger (2A) · Capabilities (2B) · Commercial (2C) · Revenue (2D) · Costs (3A) · Integrated (3B) · Stress audit (3C) · Scenario arc (Batch 2) · Q1–Q8 audit (Batch 3)</h2>
       <p>
         V2 accounting core, running in parallel to the frozen V1 engine. Every quarter exposes its full ledger and
         re-checks the identity:
@@ -872,6 +882,60 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
       <div className="button-group">
         <button className="btn btn-primary" onClick={runStress}>Run stress audit</button>
       </div>
+      <h3 style={{ marginTop: '30px' }}>I. Full Q1–Q8 audit (Batch 3): opportunity, recession, financing, crisis, final decision, terminal score</h3>
+      <div className="testlab-warning">
+        Complete eight-quarter games with explicit Q5–Q8 decisions. Terminal score = 0.40 Financial + 0.35 Strategic + 0.25 Organizational
+        − weakest-link penalty, capped by viability gates (insolvency, organizational collapse). Scoring never feeds back into the economy.
+      </div>
+      <div className="button-group">
+        <button className="btn btn-primary" onClick={runAudit}>Run full Q1–Q8 audit</button>
+      </div>
+      {audit && (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="testlab-table" style={{ fontSize: '12px' }}>
+            <thead>
+              <tr>
+                <th>Strategy</th><th>Destination</th><th>Revenue</th><th>C / E / U / AI</th><th>OP (margin)</th><th>Cash</th><th>Debt</th>
+                <th>Financing</th><th>Culture / Trust / Exec</th><th>Q5</th><th>Q6</th><th>Q7 crisis</th><th>Q8</th><th>F / S / O</th><th>Overall</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audit.rows.map(r => (
+                <tr key={r.id}>
+                  <td>{r.label}</td><td>{r.destination}</td><td>{money(r.revenue)}</td>
+                  <td>{`${r.segments.consumer.toFixed(0)} / ${r.segments.enterprise.toFixed(0)} / ${r.segments.university.toFixed(0)} / ${r.segments.aiNative.toFixed(0)}`}</td>
+                  <td style={cashStyle(r.operatingProfit)}>{`${money(r.operatingProfit)} (${(r.margin * 100).toFixed(0)}%)`}</td>
+                  <td style={cashStyle(r.cash)}>{money(r.cash)}</td><td>{money(r.debt)}</td>
+                  <td>{`eq ${r.financing.equity.toFixed(0)} · debt ${r.financing.debtDrawn.toFixed(0)} · own ${(r.financing.ownership * 100).toFixed(1)}%`}</td>
+                  <td>{`${r.culture.toFixed(0)} / ${r.trust.toFixed(0)} / ${r.execution.toFixed(0)}`}</td>
+                  <td>{r.q5Accepted ? 'accept' : 'decline'}</td><td>{r.q6Actions}</td>
+                  <td>{r.crisis ? `${r.crisis.type} ${r.crisis.severity.toFixed(2)} ${r.crisis.response}` : '—'}</td>
+                  <td>{r.q8Choice}</td>
+                  <td>{`${r.score.financial.toFixed(0)} / ${r.score.strategic.toFixed(0)} / ${r.score.organizational.toFixed(0)}`}</td>
+                  <td><strong>{r.score.overall.toFixed(1)}</strong> {r.score.band}{r.score.gates.some(g => g.triggered) ? ' ⚠' : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <h4>Histories × destinations (overall score)</h4>
+          <table className="testlab-table" style={{ fontSize: '12px' }}>
+            <thead><tr><th>History</th><th>Consumer AI</th><th>Enterprise AI</th><th>Premium</th><th>University</th><th>Balanced</th><th>Best</th></tr></thead>
+            <tbody>
+              {[...new Set(audit.matrix.map(r => r.history))].map(h => {
+                const rs = audit.matrix.filter(r => r.history === h);
+                const best = bestDestinationByHistory(audit.matrix)[h];
+                return (
+                  <tr key={h}>
+                    <td>{h}</td>
+                    {rs.map(r => <td key={r.id} style={r.destination === best.destination ? { fontWeight: 'bold' } : undefined}>{`${r.score.overall.toFixed(1)} ($${r.revenue.toFixed(0)}M)`}</td>)}
+                    <td>{`${best.destination} (+${best.margin.toFixed(1)})`}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
       <h3 style={{ marginTop: '30px' }}>H. Scenario arc Q1–Q{lastAuthoredQuarter()} (Batch 2)</h3>
       <div className="testlab-warning">
         Scenario → market inputs → commercial indicators → segment revenue → costs/profit/cash. Scenarios never touch revenue.

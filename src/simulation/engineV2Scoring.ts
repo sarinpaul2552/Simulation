@@ -133,10 +133,23 @@ export function scoreV2Company(s: V2TeamState): V2TerminalScore {
   const readinessNow = dest ? destinationReadiness(dest.id, s).readiness : 0;
   const coherence = dest ? 0.5 * ds + 0.5 * readinessNow : 0;
   const bm = s.commercial.competitorBenchmarks;
-  const pos = total > 0
-    ? (seg.consumer * ramp(s.capabilities.consumer - bm.consumer, -20, 40) + seg.enterprise * ramp(s.capabilities.enterprise - bm.enterprise, -20, 40) +
-      seg.university * ramp(s.capabilities.credential - bm.credential, -20, 40) + seg.aiNative * ramp(s.commercial.aiCommercialReadiness, 20, 80)) / total
+  const posConsumer = ramp(s.capabilities.consumer - bm.consumer, -20, 40);
+  const posEnterprise = ramp(s.capabilities.enterprise - bm.enterprise, -20, 40);
+  const posCredential = ramp(s.capabilities.credential - bm.credential, -20, 40);
+  const posAi = ramp(s.commercial.aiCommercialReadiness, 20, 80);
+  const posPremium = ramp(s.commercial.pricingPower, 40, 80);
+  const revenueWeighted = total > 0
+    ? (seg.consumer * posConsumer + seg.enterprise * posEnterprise + seg.university * posCredential + seg.aiNative * posAi) / total
     : 0;
+  // Calibration (audit): revenue weighting alone made "position" a Consumer-capability measure (every company is ~65%
+  // Consumer). Half of the component now measures position where the company chose to compete: the commercial focus
+  // it committed to (Consumer / Enterprise / University / Premium = pricing power); with no focus, revenue-weighted.
+  const focusGroups = def ? def.commercialization : [];
+  const focusPos = focusGroups.length === 0
+    ? revenueWeighted
+    : focusGroups.map(g => (g === 'consumer' ? posConsumer : g === 'enterprise' ? posEnterprise : g === 'university' ? posCredential : posPremium))
+      .reduce((t, x) => t + x, 0) / focusGroups.length;
+  const pos = 0.5 * revenueWeighted + 0.5 * focusPos;
   const crisis = s.crisis.record;
   const crisisHandling = crisis
     ? 0.5 * (1 - crisis.assessment.severity) + 0.5 * (crisis.response === 'remediate' ? 1 : crisis.response === 'contain' ? 0.6 : 0.2)
@@ -155,7 +168,7 @@ export function scoreV2Company(s: V2TeamState): V2TerminalScore {
   const strategic = [
     comp('capability', 'Capability strength where it competes (top-3 relevant)', capStrength, capStrength, 0.2),
     comp('coherence', 'Destination coherence (strength achieved, readiness now)', coherence, coherence, 0.15),
-    comp('position', 'Market position vs competitor benchmarks (revenue-weighted)', pos, pos, 0.2),
+    comp('position', 'Market position (½ revenue-weighted, ½ in the chosen competitive focus)', pos, pos, 0.2),
     comp('adaptability', 'Adaptability (AI readiness + crisis handling)', adaptability, adaptability, 0.1),
     comp('optionality', 'Options earned at Q8', earned, optionality, 0.15),
     comp('risk', 'Concentration risk (segment, client)', largestSegment, risk, 0.1),
