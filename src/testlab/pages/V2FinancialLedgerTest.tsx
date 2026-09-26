@@ -7,6 +7,7 @@ import {
   runAllV2CommercialScenarios,
   V2CommercialScenarioResult,
   runAllV2RevenueScenarios,
+  runAllV2IntegratedScenarios,
   V2RevenueRunResult,
   V2RevenueMarketCase,
   runV2Strategy,
@@ -439,6 +440,54 @@ const RevenuePanel: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }) =
   );
 };
 
+// ============ PHASE 3A: OPERATING COST ============
+
+const CostPanel: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }) => (
+  <div style={{ marginTop: '12px' }}>
+    <h4 style={{ marginBottom: 0 }}>Operating cost (Phase 3A): {quarters[0]?.consequence.costSource === 'modelled' ? 'modelled' : 'NOT in ledger (hold mode)'}</h4>
+    <div style={{ overflowX: 'auto' }}>
+      <table className="comparison-table">
+        <thead>
+          <tr>
+            <th>Q</th><th>Opening fixed</th><th>Fixed/semi-fixed</th><th>Consumer servicing</th><th>Consumer acquisition</th>
+            <th>Ent. servicing</th><th>Ent. onboarding</th><th>Univ. servicing</th><th>AI serving</th><th>Variable total</th>
+            <th>People commit.</th><th>Ent. commit.</th><th>AI commit.</th><th>Financing</th><th>Event (placeholder)</th>
+            <th>Total op. cost</th><th>Revenue</th><th>Op. profit</th><th>Margin</th><th>Cost checks</th>
+          </tr>
+        </thead>
+        <tbody>
+          {quarters.map(rec => {
+            const K = rec.consequence.cost;
+            const L = rec.consequence.ledger;
+            const rev = rec.consequence.revenue.totalRevenue;
+            const op = rev - K.totalOperatingCost;
+            const failed = rec.checks.filter(x => x.id.startsWith('cost_') && !x.passed);
+            return (
+              <tr key={rec.quarter}>
+                <td>Q{rec.quarter}</td>
+                <td>{K.openingFixedSemiFixed.toFixed(2)}</td><td>{K.fixedSemiFixed.toFixed(2)}</td>
+                <td>{K.variable.consumerServicing.toFixed(2)}</td><td>{K.variable.consumerAcquisitionSpend.toFixed(2)}</td>
+                <td>{K.variable.enterpriseServicing.toFixed(2)}</td><td>{K.variable.enterpriseOnboarding.toFixed(2)}</td>
+                <td>{K.variable.universityServicing.toFixed(2)}</td><td>{K.variable.aiNativeServing.toFixed(2)}</td>
+                <td>{K.variable.total.toFixed(2)}</td>
+                <td>{K.commitments.bySource.people.toFixed(2)}</td><td>{K.commitments.bySource.enterprise.toFixed(2)}</td><td>{K.commitments.bySource.aiProduct.toFixed(2)}</td>
+                <td>{K.financingCost.toFixed(2)}</td><td>{K.eventCostPlaceholder.toFixed(2)}</td>
+                <td><strong>{K.totalOperatingCost.toFixed(2)}</strong></td>
+                <td>{rev.toFixed(2)}</td>
+                <td style={cashStyle(op)}>{op.toFixed(2)}</td>
+                <td>{((op / rev) * 100).toFixed(1)}%</td>
+                <td title={failed.map(x => `${x.id}: ${x.details}`).join('\n') + (rec.consequence.costSource === 'modelled' ? '' : `\nledger uses ${L.operatingCost.toFixed(1)}`)}>
+                  {failed.length === 0 ? '✅' : `🚨 ${failed.length}`}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
 export const V2FinancialLedgerTest: React.FC = () => {
   const [scenarioResults, setScenarioResults] = useState<V2ScenarioResult[] | null>(null);
   const [strategyId, setStrategyId] = useState('balanced');
@@ -449,11 +498,12 @@ export const V2FinancialLedgerTest: React.FC = () => {
   const [comResults, setComResults] = useState<V2CommercialScenarioResult[] | null>(null);
   const [revCase, setRevCase] = useState<V2RevenueMarketCase>('competitive');
   const [revResults, setRevResults] = useState<V2RevenueRunResult[] | null>(null);
+  const [costMode, setCostMode] = useState<'hold' | 'modelled'>('modelled');
 
   const runRevenueScenarios = () => {
     try {
       setError(null);
-      setRevResults(runAllV2RevenueScenarios(revCase));
+      setRevResults(costMode === 'modelled' ? runAllV2IntegratedScenarios(revCase) : runAllV2RevenueScenarios(revCase));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -639,11 +689,18 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
         </div>
       ))}
 
-      <h3 style={{ marginTop: '30px' }}>E. Segment revenue (Phase 2D)</h3>
+      <h3 style={{ marginTop: '30px' }}>E. Segment revenue (2D) + operating cost (3A)</h3>
       <div className="testlab-warning">
-        <strong>Revenue mode = segment.</strong> Ledger revenue = Consumer + Enterprise + University + AI-native. *Operating cost is
-        still the $170M placeholder (not calibrated), so operating profit and cash are <strong>diagnostic only</strong>. No
-        market events, cost architecture, financing or scoring.
+        <strong>Revenue mode = segment.</strong> Ledger revenue = Consumer + Enterprise + University + AI-native. Choose the cost
+        model: <em>modelled</em> (Phase 3A: fixed/semi-fixed + segment variable + lagged strategic commitments) or the old
+        <em> $170M placeholder</em>. No market events, financing or scoring. Negative cash is shown, never floored.
+      </div>
+      <div className="form-group">
+        <label>Operating cost</label>
+        <select value={costMode} onChange={e => setCostMode(e.target.value as 'hold' | 'modelled')}>
+          <option value="modelled">Modelled operating cost (Phase 3A)</option>
+          <option value="hold">$170M placeholder (Phase 2D diagnostic)</option>
+        </select>
       </div>
       <div className="form-group">
         <label>Market</label>
@@ -687,6 +744,7 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
           <h4>{r.passed ? '✅' : '🚨'} {r.scenario.name} · {r.marketCase}</h4>
           <p style={{ fontSize: '13px' }}>{r.scenario.description}</p>
           <RevenuePanel quarters={r.quarters} />
+          <CostPanel quarters={r.quarters} />
           <CommercialPanel quarters={r.quarters} />
           <QuarterCheckDetails quarters={r.quarters} />
         </div>

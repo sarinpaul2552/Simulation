@@ -1,4 +1,20 @@
-# CURRENT STATUS — Phase 2D V2 Segment Revenue Engine (awaiting review)
+# CURRENT STATUS — Autonomous Build Batch 1 (Cost & Financial Integration)
+
+**Last Updated:** 2026-09-26
+**Approved/frozen:** 2A e84978b · 2B 330edac · 2C 8f5794b · 2D 5c4f1e5. **V1 restore point:** tag `v1-engine-frozen`.
+
+## Phase 3A — Operating Cost Architecture (PASS)
+
+- New `src/simulation/engineV2Costs.ts` (+ tests). `costSource: 'modelled'` (requires `revenueSource: 'segment'`).
+- Operating Cost = Fixed/semi-fixed (115.45, sticky ratchet +10% of prior revenue above $200M, up 25%/down 10% per qtr,
+  floor 115.45) + Variable (Consumer servicing 25.5% + acquisition spend $6.3M × demand; Enterprise 20% + onboarding
+  0.5 × run-rate going live; University 20%; AI-native 15%) + Commitments (People 0.06/$ lag 1 × 8q; Enterprise 0.04/$ lag 1 × 6q;
+  AI/Product 0.06/$ lag 1 × 6q) + Financing 0. Baseline = exactly $170M.
+- Calibration change: People commitment 0.10 → 0.06 (0.10 gave $21M/qtr payroll by Q8 on People100 — not "modest").
+
+---
+
+## Phase 2D status (approved, frozen at 5c4f1e5)
 
 **Last Updated:** 2026-09-26
 **Approved/frozen:** 2A e84978b · 2B 330edac · 2C 8f5794b. **V1 restore point:** tag `v1-engine-frozen` → ee4a8bc.

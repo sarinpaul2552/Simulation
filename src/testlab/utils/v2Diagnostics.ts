@@ -99,10 +99,12 @@ export function checkV2Quarter(
     details: `envelope ${fmt(L.strategicEnvelope)}, reserve ${fmt(L.cashReserveRetained)}, strategic ${fmt(L.strategicInvestment)}`,
   });
 
-  const expectedOpex = operatingInputs ? operatingInputs.operatingCost : operatingCostOverride ?? opening.operatingCost;
+  const expectedOpex = consequence.costSource === 'modelled'
+    ? consequence.cost.totalOperatingCost
+    : operatingInputs ? operatingInputs.operatingCost : operatingCostOverride ?? opening.operatingCost;
   checks.push({
     id: 'v2_strategic_outside_opex',
-    message: 'Strategic investment is not included in operating cost',
+    message: 'Operating cost is exactly the selected source (held / injected / override / modelled); strategic investment booked separately',
     passed: near(L.operatingCost, expectedOpex),
     details: `operating cost ${fmt(L.operatingCost)} (expected ${fmt(expectedOpex)}); strategic ${fmt(L.strategicInvestment)} booked separately`,
   });
@@ -124,6 +126,70 @@ export function checkV2Quarter(
   checks.push(...checkV2CapabilityQuarter(opening, consequence, ending));
   checks.push(...checkV2CommercialQuarter(opening, consequence, ending));
   checks.push(...checkV2RevenueQuarter(opening, consequence, ending));
+  checks.push(...checkV2CostQuarter(opening, consequence, ending));
+
+  return checks;
+}
+
+/** Phase 3A operating cost invariants. */
+export function checkV2CostQuarter(opening: V2TeamState, consequence: V2Consequence, ending: V2TeamState): V2LedgerCheck[] {
+  const K = consequence.cost;
+  const L = consequence.ledger;
+  const q = consequence.quarter;
+  const tol = 1e-9;
+  const checks: V2LedgerCheck[] = [];
+  const v = K.variable;
+  const varSum = v.consumerServicing + v.consumerAcquisitionSpend + v.enterpriseServicing + v.enterpriseOnboarding + v.universityServicing + v.aiNativeServing;
+
+  checks.push({
+    id: 'cost_total_reconstructs',
+    message: 'Operating cost = fixed/semi-fixed + variable + commitments + financing (0)',
+    passed: near(v.total, varSum, tol) && near(K.totalOperatingCost, K.fixedSemiFixed + v.total + K.commitments.total + K.financingCost, tol) &&
+      K.financingCost === 0 && K.eventCostPlaceholder === 0,
+    details: `${K.fixedSemiFixed.toFixed(3)} + ${v.total.toFixed(3)} + ${K.commitments.total.toFixed(3)} = ${K.totalOperatingCost.toFixed(3)}`,
+  });
+
+  const parts = [K.fixedSemiFixed, ...Object.values(v), K.commitments.total, K.totalOperatingCost];
+  checks.push({
+    id: 'cost_finite_nonnegative',
+    message: 'All cost components finite and ≥ 0',
+    passed: parts.every(x => Number.isFinite(x) && x >= -tol),
+    details: '',
+  });
+
+  checks.push({
+    id: 'cost_ledger_consumes_model',
+    message: "In 'modelled' cost mode the ledger operating cost is exactly the modelled total",
+    passed: consequence.costSource !== 'modelled' ||
+      (near(L.operatingCost, K.totalOperatingCost, tol) && L.operatingCostSource === 'modelled' && near(L.operatingProfit, L.revenue - L.operatingCost, tol)),
+    details: `mode ${consequence.costSource}; ledger ${fmt(L.operatingCost)}, model ${fmt(K.totalOperatingCost)}`,
+  });
+
+  const lo = Math.min(K.openingFixedSemiFixed, K.fixedTarget);
+  const hi = Math.max(K.openingFixedSemiFixed, K.fixedTarget);
+  checks.push({
+    id: 'cost_fixed_sticky',
+    message: 'Fixed/semi-fixed moves only part-way toward its lagged target and never below its floor',
+    passed: K.fixedSemiFixed >= opening.costs.fixedFloor - tol && K.fixedSemiFixed >= lo - tol && K.fixedSemiFixed <= hi + tol,
+    details: `opening ${K.openingFixedSemiFixed.toFixed(3)} → ${K.fixedSemiFixed.toFixed(3)} (target ${K.fixedTarget.toFixed(3)})`,
+  });
+
+  const expensedNow = K.commitments.active.filter(c => c.quarterCreated >= q || c.startQuarter > q || c.endQuarter < q);
+  const createdOk = K.commitments.createdThisQuarter.every(c => c.startQuarter > q);
+  checks.push({
+    id: 'cost_investment_not_double_counted',
+    message: "This quarter's strategic investment is never in this quarter's operating cost (commitments start later, expire)",
+    passed: expensedNow.length === 0 && createdOk,
+    details: expensedNow.map(c => c.id).join(', '),
+  });
+
+  checks.push({
+    id: 'cost_state_links',
+    message: 'Cost state opens at prior state and closes into ending state',
+    passed: near(K.openingFixedSemiFixed, opening.costs.fixedSemiFixed, tol) && near(ending.costs.fixedSemiFixed, K.fixedSemiFixed, tol) &&
+      ending.costs.commitments.length === K.closing.commitments.length,
+    details: '',
+  });
 
   return checks;
 }
@@ -354,7 +420,7 @@ export function runV2Quarter(
   operatingInputs?: V2OperatingInputs,
   eventCosts?: V2EventCost[],
   market?: V2MarketConditions,
-  revenueOptions?: { revenueSource?: 'hold' | 'segment'; operatingCostOverride?: number }
+  revenueOptions?: { revenueSource?: 'hold' | 'segment'; operatingCostOverride?: number; costSource?: 'hold' | 'modelled' }
 ): V2QuarterRecord {
   const consequence = calculateV2QuarterConsequence(opening, {
     quarter,
@@ -365,6 +431,7 @@ export function runV2Quarter(
     market,
     revenueSource: revenueOptions?.revenueSource,
     operatingCostOverride: revenueOptions?.operatingCostOverride,
+    costSource: revenueOptions?.costSource,
   });
   const ending = applyV2(opening, consequence);
   const checks = checkV2Quarter(opening, allocation, consequence, ending, operatingInputs, revenueOptions?.operatingCostOverride);
@@ -784,7 +851,12 @@ export interface V2RevenueRunResult {
  * Run a Phase 2C calibration strategy with Phase 2D segment revenue feeding the ledger.
  * Operating cost stays at the $170M placeholder: profit/cash are diagnostic only.
  */
-export function runV2RevenueScenario(scenario: V2CommercialScenario, marketCase: V2RevenueMarketCase, quarters = 8): V2RevenueRunResult {
+export function runV2RevenueScenario(
+  scenario: V2CommercialScenario,
+  marketCase: V2RevenueMarketCase,
+  quarters = 8,
+  costSource: 'hold' | 'modelled' = 'hold'
+): V2RevenueRunResult {
   let state = scenario.opening();
   const market = scenario.market ?? marketForCase(marketCase);
   const recs: V2QuarterRecord[] = [];
@@ -792,7 +864,7 @@ export function runV2RevenueScenario(scenario: V2CommercialScenario, marketCase:
     if (scenario.pinnedCapabilities) {
       state = { ...state, capabilities: { ...state.capabilities, ...scenario.pinnedCapabilities } };
     }
-    const rec = runV2Quarter(state, q, scenario.allocation, 30, undefined, undefined, market, { revenueSource: 'segment' });
+    const rec = runV2Quarter(state, q, scenario.allocation, 30, undefined, undefined, market, { revenueSource: 'segment', costSource });
     recs.push(rec);
     state = rec.ending;
   }
@@ -801,4 +873,13 @@ export function runV2RevenueScenario(scenario: V2CommercialScenario, marketCase:
 
 export function runAllV2RevenueScenarios(marketCase: V2RevenueMarketCase): V2RevenueRunResult[] {
   return V2_COMMERCIAL_SCENARIOS.map(s => runV2RevenueScenario(s, marketCase));
+}
+
+/** Phase 3A/3B: segment revenue + modelled operating cost (integrated financial model). */
+export function runV2IntegratedScenario(scenario: V2CommercialScenario, marketCase: V2RevenueMarketCase, quarters = 8): V2RevenueRunResult {
+  return runV2RevenueScenario(scenario, marketCase, quarters, 'modelled');
+}
+
+export function runAllV2IntegratedScenarios(marketCase: V2RevenueMarketCase, quarters = 8): V2RevenueRunResult[] {
+  return V2_COMMERCIAL_SCENARIOS.map(s => runV2IntegratedScenario(s, marketCase, quarters));
 }
