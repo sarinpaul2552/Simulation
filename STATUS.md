@@ -79,6 +79,18 @@ financing items (ledger). Culture now modulates effective capacity (×(1 + 0.006
 - Market: recovery (macro 0.15). Default options chosen: scale (Consumer+AI, Balanced, AI100, Cash100…), raise (Enterprise+AI),
   continue (Enterprise100, People100, University100, low-X).
 
+## Terminal Scoring (PASS)
+
+- `engineV2Scoring.ts` (pure; engine never imports it). Financial (growth .2, revenue quality .1, margin .15, net cash .15,
+  leverage .1, ownership .1, shareholder value/realized sale .2); Strategic (capability where it competes .2, destination
+  coherence .15, market position vs benchmarks .2, adaptability .1, Q8 optionality .15, concentration .1, Q8 decision .1);
+  Organizational (Culture .2, Talent .15, Execution .2, Trust .2, Capacity .15, sustainable load .1).
+- Overall = 0.40F + 0.35S + 0.25O − 0.5 × max(0, 40 − weakest). Gates: terminal insolvency ≤ 30 (F ≤ 20); rescued
+  insolvency ≤ 55; organizational collapse (Trust < 40, Culture < 40, Talent < 30) ≤ 50.
+- Default arc: Consumer+AI 78.8, Evidence-responsive 76.4, Balanced 72.6, Enterprise+AI 71.0, Wrong-way 67.5, AI100 64.6,
+  Low-Execution 62.8, Consumer100 61.0, Low-CS 59.8, University100 53.6, Cash100 51.8, Low-Talent 50.0 (collapse gate),
+  Enterprise100 49.7, People100 41.9; People100 refusing financing 30.0 (insolvency gate).
+
 ---
 
 ## Batch 2 status (approved at 9af2aac) — Q1–Q4 Strategic Arc
