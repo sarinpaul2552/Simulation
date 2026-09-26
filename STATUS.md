@@ -1,4 +1,21 @@
-# CURRENT STATUS — Autonomous Build Batch 1 (Cost & Financial Integration)
+# CURRENT STATUS — Autonomous Build Batch 2 (Q1–Q4 Strategic Arc)
+
+**Last Updated:** 2026-09-26 · **Batch 1 approved:** c91802c. **V1 restore point:** tag `v1-engine-frozen`.
+Locked: (A) no generic capability decay — Q4 destinations provide specialization; (B) scenarios change demand and
+market size separately (demand = near-term activity; `segmentCapacity` = structural ceiling).
+
+## Q1 — Capital Allocation Under Uncertainty (PASS)
+
+- New `src/simulation/engineV2Scenario.ts`: scenario quarters with truth (demand, competitor progress, explicit
+  structural capacity changes) separate from player signals (briefing with reliability + role/audience tags; measured
+  KPIs from company state). `getScenarioMarket(q)`; beyond the authored arc: neutral demand, persisting structure.
+- New `src/testlab/utils/v2ScenarioArc.ts`: 15 player policies (incl. evidence-responsive, wrong-way, low X) run through
+  the arc in the integrated economy; Mode 5 section H.
+- Q1 = neutral competitive market exactly. No Q1 winner (baseline strategies within ±0.3% of $200M).
+
+---
+
+## Batch 1 status (approved at c91802c)
 
 **Last Updated:** 2026-09-26
 **Approved/frozen:** 2A e84978b · 2B 330edac · 2C 8f5794b · 2D 5c4f1e5. **V1 restore point:** tag `v1-engine-frozen`.

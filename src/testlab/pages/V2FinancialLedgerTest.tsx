@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { allocationStrategies } from '../utils/testPresets';
 import { runV2StressAudit, V2StressResult } from '../utils/v2StressAudit';
+import { runAllArcStrategies, V2ArcRun } from '../utils/v2ScenarioArc';
+import { V2_SCENARIO_ARC, lastAuthoredQuarter } from '../../simulation/engineV2Scenario';
 import {
   runAllV2Scenarios,
   runAllV2CapabilityScenarios,
@@ -565,6 +567,16 @@ export const V2FinancialLedgerTest: React.FC = () => {
   const [intCase, setIntCase] = useState<V2RevenueMarketCase>('competitive');
   const [intResults, setIntResults] = useState<V2RevenueRunResult[] | null>(null);
   const [stress, setStress] = useState<V2StressResult[] | null>(null);
+  const [arc, setArc] = useState<V2ArcRun[] | null>(null);
+  const [arcSignalsFor, setArcSignalsFor] = useState<string>('evidence-responsive');
+  const runArcStrategies = () => {
+    try {
+      setError(null);
+      setArc(runAllArcStrategies());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
   const runStress = () => {
     try {
       setError(null);
@@ -631,7 +643,7 @@ export const V2FinancialLedgerTest: React.FC = () => {
 
   return (
     <div className="testlab-form">
-      <h2>Mode 5: V2 Engine: Ledger (2A) · Capabilities (2B) · Commercial (2C) · Revenue (2D) · Costs (3A) · Integrated (3B) · Stress audit (3C)</h2>
+      <h2>Mode 5: V2 Engine: Ledger (2A) · Capabilities (2B) · Commercial (2C) · Revenue (2D) · Costs (3A) · Integrated (3B) · Stress audit (3C) · Scenario arc (Batch 2)</h2>
       <p>
         V2 accounting core, running in parallel to the frozen V1 engine. Every quarter exposes its full ledger and
         re-checks the identity:
@@ -860,6 +872,73 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
       <div className="button-group">
         <button className="btn btn-primary" onClick={runStress}>Run stress audit</button>
       </div>
+      <h3 style={{ marginTop: '30px' }}>H. Scenario arc Q1–Q{lastAuthoredQuarter()} (Batch 2)</h3>
+      <div className="testlab-warning">
+        Scenario → market inputs → commercial indicators → segment revenue → costs/profit/cash. Scenarios never touch revenue.
+        Players see signals (briefing + measured KPIs); the engine consumes the underlying market truth.
+      </div>
+      {V2_SCENARIO_ARC.map(sq => (
+        <div key={sq.id} className="audit-section">
+          <h4>{sq.title}</h4>
+          <p style={{ fontSize: '13px' }}>{sq.briefing}</p>
+          <div style={{ fontSize: '12px' }}>
+            Demand: {Object.entries(sq.demand).map(([k, v]) => `${k} ${v}`).join(' · ')}<br />
+            Competitor progress: {Object.entries(sq.competitorProgress).map(([k, v]) => `${k} +${v}/qtr`).join(' · ')}<br />
+            Structural changes: {sq.structuralChanges.length ? sq.structuralChanges.map(c => `${c.field} ${c.from}→${c.to} (${c.rationale})`).join(' · ') : 'none'}
+          </div>
+        </div>
+      ))}
+      <div className="button-group">
+        <button className="btn btn-primary" onClick={runArcStrategies}>Run arc strategies</button>
+      </div>
+      {arc && (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="comparison-table">
+            <thead><tr><th>Strategy</th><th>Q</th><th>Allocation (C/E/AI/P/U/Cash)</th><th>Revenue</th><th>Cons/Ent/Univ/AI</th><th>Op. profit</th><th>Cash</th><th>Destination</th></tr></thead>
+            <tbody>
+              {arc.flatMap(r => r.quarters.map(h => {
+                const L = h.record.consequence.ledger;
+                const sg = h.record.ending.segmentRevenue;
+                const al = h.allocation;
+                const dest = (h.record.ending as any).destination?.id ?? '—';
+                return (
+                  <tr key={`${r.strategy.id}-${h.quarter}`} style={h.quarter === 1 ? { borderTop: '2px solid #667eea' } : undefined}>
+                    <td>{h.quarter === 1 ? `${r.passed ? '✅' : '🚨'} ${r.strategy.name}` : ''}</td>
+                    <td>Q{h.quarter}</td>
+                    <td>{`${al.consumer}/${al.enterprise}/${al.aiProduct}/${al.people}/${al.universityCredentials}/${al.cashReserve}`}</td>
+                    <td>{money(L.revenue)}</td>
+                    <td>{`${sg.consumer.toFixed(1)} / ${sg.enterprise.toFixed(1)} / ${sg.university.toFixed(1)} / ${sg.aiNative.toFixed(1)}`}</td>
+                    <td style={cashStyle(L.operatingProfit)}>{money(L.operatingProfit)}</td>
+                    <td style={cashStyle(L.closingCash)}>{money(L.closingCash)}</td>
+                    <td>{dest}</td>
+                  </tr>
+                );
+              }))}
+            </tbody>
+          </table>
+          <div className="form-group" style={{ marginTop: '12px' }}>
+            <label>Signals shown to players (by quarter) for</label>
+            <select value={arcSignalsFor} onChange={e => setArcSignalsFor(e.target.value)}>
+              {arc.map(r => <option key={r.strategy.id} value={r.strategy.id}>{r.strategy.name}</option>)}
+            </select>
+          </div>
+          {arc.filter(r => r.strategy.id === arcSignalsFor).flatMap(r => r.quarters).map(h => (
+            <div key={h.quarter} className="audit-section">
+              <h4>Entering Q{h.quarter}</h4>
+              <ul style={{ fontSize: '12px' }}>
+                {h.signals.map(sg => (
+                  <li key={sg.id}>
+                    [{sg.audience}] [{sg.reliability}] {sg.label}
+                    {sg.shownValue !== undefined ? `: ${sg.shownValue.toFixed(2)}${sg.unit ? ' ' + sg.unit : ''}` : ''}
+                    {sg.shownRange ? ` (range ${sg.shownRange[0]} to ${sg.shownRange[1]}${sg.unit ? ' ' + sg.unit : ''})` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
       {stress && (
         <div style={{ overflowX: 'auto' }}>
           <table className="comparison-table">
