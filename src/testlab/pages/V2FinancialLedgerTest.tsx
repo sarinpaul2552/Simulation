@@ -488,6 +488,68 @@ const CostPanel: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }) => (
   </div>
 );
 
+// ============ PHASE 3B: INTEGRATED FINANCIALS ============
+
+const runwayText = (r: { status: string; quarters: number | null }) =>
+  r.status === 'self-funding' ? 'self-funding' : r.status === 'cash-negative' ? 'cash-negative' : r.quarters! > 40 ? '>40 qtrs (near break-even)' : `${r.quarters!.toFixed(1)} qtrs`;
+
+const IntegratedTable: React.FC<{ results: V2RevenueRunResult[] }> = ({ results }) => (
+  <div style={{ overflowX: 'auto' }}>
+    <table className="comparison-table">
+      <thead>
+        <tr><th>Strategy</th><th>Q</th><th>Revenue</th><th>Op. cost</th><th>Op. profit</th><th>Margin</th><th>Strategic inv.</th>
+          <th>Net cash flow</th><th>Closing cash</th><th>Runway</th></tr>
+      </thead>
+      <tbody>
+        {results.flatMap(r => [1, 4, 8].map(q => {
+          const F = r.quarters[q - 1].consequence.financials;
+          return (
+            <tr key={`${r.scenario.id}-${q}`} style={q === 1 ? { borderTop: '2px solid #667eea' } : undefined}>
+              <td>{q === 1 ? `${r.passed ? '✅' : '🚨'} ${r.scenario.name}` : ''}</td>
+              <td>Q{q}</td>
+              <td>{money(F.revenue)}</td><td>{money(F.operatingCost)}</td>
+              <td style={cashStyle(F.operatingProfit)}>{money(F.operatingProfit)}</td>
+              <td>{F.operatingMargin === null ? '—' : `${(F.operatingMargin * 100).toFixed(1)}%`}</td>
+              <td>{money(F.strategicInvestment)}</td>
+              <td style={cashStyle(F.netCashFlow)}>{money(F.netCashFlow)}</td>
+              <td style={cashStyle(F.closingCash)}>{money(F.closingCash)}</td>
+              <td>{runwayText(F.runway)}</td>
+            </tr>
+          );
+        }))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const Q8StateTable: React.FC<{ results: V2RevenueRunResult[] }> = ({ results }) => (
+  <div style={{ overflowX: 'auto', marginTop: '12px' }}>
+    <table className="comparison-table">
+      <thead>
+        <tr><th>Strategy (Q8)</th><th>Consumer</th><th>Enterprise</th><th>University</th><th>AI-native</th>
+          <th>Cons. cap</th><th>Ent. cap</th><th>CS</th><th>AI cap</th><th>Org cap</th><th>Retention</th><th>Pipeline</th><th>Win %</th><th>AI adoption</th><th>Renewal</th></tr>
+      </thead>
+      <tbody>
+        {results.map(r => {
+          const e = r.quarters[r.quarters.length - 1].ending;
+          const s = e.segmentRevenue;
+          const c = e.commercial;
+          return (
+            <tr key={r.scenario.id}>
+              <td>{r.scenario.name}</td>
+              <td>{money(s.consumer)}</td><td>{money(s.enterprise)}</td><td>{money(s.university)}</td><td>{money(s.aiNative)}</td>
+              <td>{e.capabilities.consumer.toFixed(0)}</td><td>{e.capabilities.enterprise.toFixed(0)}</td><td>{e.capabilities.customerSuccess.toFixed(0)}</td>
+              <td>{e.capabilities.ai.toFixed(0)}</td><td>{e.organizationalCapacity.toFixed(0)}</td>
+              <td>{c.consumerRetention.toFixed(1)}</td><td>{money(c.enterprisePipeline)}</td><td>{c.enterpriseWinRate.toFixed(1)}</td>
+              <td>{c.aiAdoptionIndex.toFixed(1)}</td><td>{c.universityRenewalRate.toFixed(1)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+);
+
 export const V2FinancialLedgerTest: React.FC = () => {
   const [scenarioResults, setScenarioResults] = useState<V2ScenarioResult[] | null>(null);
   const [strategyId, setStrategyId] = useState('balanced');
@@ -499,6 +561,16 @@ export const V2FinancialLedgerTest: React.FC = () => {
   const [revCase, setRevCase] = useState<V2RevenueMarketCase>('competitive');
   const [revResults, setRevResults] = useState<V2RevenueRunResult[] | null>(null);
   const [costMode, setCostMode] = useState<'hold' | 'modelled'>('modelled');
+  const [intCase, setIntCase] = useState<V2RevenueMarketCase>('competitive');
+  const [intResults, setIntResults] = useState<V2RevenueRunResult[] | null>(null);
+  const runIntegrated = () => {
+    try {
+      setError(null);
+      setIntResults(runAllV2IntegratedScenarios(intCase));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const runRevenueScenarios = () => {
     try {
@@ -549,7 +621,7 @@ export const V2FinancialLedgerTest: React.FC = () => {
 
   return (
     <div className="testlab-form">
-      <h2>Mode 5: V2 Engine: Ledger (2A) + Capabilities (2B) + Commercial (2C) + Segment Revenue (2D)</h2>
+      <h2>Mode 5: V2 Engine: Ledger (2A) · Capabilities (2B) · Commercial (2C) · Revenue (2D) · Costs (3A) · Integrated (3B)</h2>
       <p>
         V2 accounting core, running in parallel to the frozen V1 engine. Every quarter exposes its full ledger and
         re-checks the identity:
@@ -749,6 +821,24 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
           <QuarterCheckDetails quarters={r.quarters} />
         </div>
       ))}
+
+      <h3 style={{ marginTop: '30px' }}>F. Integrated financial model (Phase 3B)</h3>
+      <div className="testlab-warning">
+        Segment revenue → modelled operating cost → operating profit → strategic investment → cash. Financing = $0, event
+        costs = $0, no cash floor. Runway = cash ÷ net cash burn at the current quarter's rate.
+      </div>
+      <div className="form-group">
+        <label>Market</label>
+        <select value={intCase} onChange={e => setIntCase(e.target.value as V2RevenueMarketCase)}>
+          <option value="competitive">Normal competitive market</option>
+          <option value="static-neutral">Static neutral market</option>
+        </select>
+      </div>
+      <div className="button-group">
+        <button className="btn btn-primary" onClick={runIntegrated}>Run integrated model</button>
+      </div>
+      {intResults && <IntegratedTable results={intResults} />}
+      {intResults && <Q8StateTable results={intResults} />}
     </div>
   );
 };

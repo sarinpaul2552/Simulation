@@ -237,6 +237,8 @@ export interface V2Consequence {
   // Operating cost consequence (Phase 3A)
   cost: V2CostConsequence;
   costSource: 'hold' | 'modelled';
+  // Integrated financial summary (Phase 3B) — derived from the ledger only
+  financials: V2FinancialSummary;
 }
 
 export interface V2IdentityCheck {
@@ -249,6 +251,65 @@ export interface V2IdentityCheck {
 }
 
 export const V2_IDENTITY_TOLERANCE = 1e-9;
+
+/**
+ * Phase 3B integrated financial summary, derived purely from the ledger (no new accounting).
+ * Operating cash generation = operating profit (no working-capital model yet).
+ */
+export interface V2FinancialSummary {
+  quarter: number;
+  revenue: number;
+  operatingCost: number;
+  operatingProfit: number;
+  /** operatingProfit / revenue (null when revenue is 0). */
+  operatingMargin: number | null;
+  strategicInvestment: number;
+  eventCosts: number;
+  financing: number;
+  operatingCashGeneration: number;
+  /** operatingCashGeneration − strategicInvestment − eventCosts + financing */
+  netCashFlow: number;
+  openingCash: number;
+  closingCash: number;
+  /**
+   * Simple runway indicator at this quarter's net cash flow:
+   * 'self-funding' (net cash flow ≥ 0), 'burning' (cash > 0, quarters = cash / burn),
+   * 'cash-negative' (cash ≤ 0 while burning; quarters = 0). No floor is applied.
+   */
+  runway: { status: 'self-funding' | 'burning' | 'cash-negative'; quarters: number | null };
+  /** Runway if strategic investment stopped: only operating losses consume cash. */
+  operatingRunway: { status: 'self-funding' | 'burning' | 'cash-negative'; quarters: number | null };
+}
+
+function runwayOf(cash: number, flow: number): V2FinancialSummary['runway'] {
+  if (flow >= 0) return { status: 'self-funding', quarters: null };
+  if (cash <= 0) return { status: 'cash-negative', quarters: 0 };
+  return { status: 'burning', quarters: cash / -flow };
+}
+
+export function summarizeV2Financials(ledger: V2FinancialLedger): V2FinancialSummary {
+  const operatingCashGeneration = ledger.operatingProfit;
+  const netCashFlow = operatingCashGeneration - ledger.strategicInvestment - ledger.eventCosts + ledger.financing;
+  return {
+    quarter: ledger.quarter,
+    revenue: ledger.revenue,
+    operatingCost: ledger.operatingCost,
+    operatingProfit: ledger.operatingProfit,
+    operatingMargin: ledger.revenue !== 0 ? ledger.operatingProfit / ledger.revenue : null,
+    strategicInvestment: ledger.strategicInvestment,
+    eventCosts: ledger.eventCosts,
+    financing: ledger.financing,
+    operatingCashGeneration,
+    netCashFlow,
+    openingCash: ledger.openingCash,
+    closingCash: ledger.closingCash,
+    runway: runwayOf(ledger.closingCash, netCashFlow),
+    operatingRunway: runwayOf(ledger.closingCash, operatingCashGeneration - ledger.eventCosts + ledger.financing),
+  };
+}
+
+/** Phase 3B integrated financial model: segment revenue + modelled operating cost. */
+export const V2_INTEGRATED_MODE = { revenueSource: 'segment', costSource: 'modelled' } as const;
 
 // ============ BASELINE ============
 
@@ -515,7 +576,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
 
   return {
     quarter: input.quarter, ledger, identity, flags, capability, capabilityFlags, commercial, commercialFlags,
-    revenue, revenueSource, cost, costSource,
+    revenue, revenueSource, cost, costSource, financials: summarizeV2Financials(ledger),
   };
 }
 

@@ -127,8 +127,29 @@ export function checkV2Quarter(
   checks.push(...checkV2CommercialQuarter(opening, consequence, ending));
   checks.push(...checkV2RevenueQuarter(opening, consequence, ending));
   checks.push(...checkV2CostQuarter(opening, consequence, ending));
+  checks.push(...checkV2FinancialSummary(consequence));
 
   return checks;
+}
+
+/** Phase 3B: the integrated summary is a pure restatement of the ledger. */
+export function checkV2FinancialSummary(consequence: V2Consequence): V2LedgerCheck[] {
+  const F = consequence.financials;
+  const L = consequence.ledger;
+  const tol = 1e-9;
+  const consistent =
+    near(F.revenue, L.revenue, tol) && near(F.operatingCost, L.operatingCost, tol) && near(F.operatingProfit, L.operatingProfit, tol) &&
+    near(F.operatingCashGeneration, L.operatingProfit, tol) && near(F.netCashFlow, L.netCashFlow, tol) &&
+    near(F.closingCash, F.openingCash + F.netCashFlow, tol) && near(F.closingCash, L.closingCash, tol) &&
+    (F.operatingMargin === null || near(F.operatingMargin, L.operatingProfit / L.revenue, tol));
+  const runwayOk =
+    (F.netCashFlow >= 0 && F.runway.status === 'self-funding') ||
+    (F.netCashFlow < 0 && F.closingCash <= 0 && F.runway.status === 'cash-negative' && F.runway.quarters === 0) ||
+    (F.netCashFlow < 0 && F.closingCash > 0 && F.runway.status === 'burning' && near(F.runway.quarters!, F.closingCash / -F.netCashFlow, tol));
+  return [
+    { id: 'fin_summary_restates_ledger', message: 'Integrated summary restates the ledger exactly (no new accounting)', passed: consistent, details: '' },
+    { id: 'fin_runway_consistent', message: 'Runway indicator consistent with cash and net cash flow (no floor)', passed: runwayOk, details: `${F.runway.status} ${F.runway.quarters ?? ''}` },
+  ];
 }
 
 /** Phase 3A operating cost invariants. */

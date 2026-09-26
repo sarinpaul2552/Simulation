@@ -12,6 +12,14 @@
   AI/Product 0.06/$ lag 1 × 6q) + Financing 0. Baseline = exactly $170M.
 - Calibration change: People commitment 0.10 → 0.06 (0.10 gave $21M/qtr payroll by Q8 on People100 — not "modest").
 
+## Phase 3B — Integrated Financial Model (PASS)
+
+- Segment revenue → modelled operating cost → OP → strategic investment → cash (`V2_INTEGRATED_MODE`).
+- `consequence.financials` (`summarizeV2Financials`): margin, operating cash generation (= OP; no working capital yet),
+  net cash flow, closing cash, runway (self-funding / burning quarters / cash-negative) and operating-only runway.
+  Pure restatement of the ledger; financing 0, events 0, no floor.
+- Test Lab Mode 5 section F: Q1/Q4/Q8 integrated table + Q8 segment/capability/commercial state.
+
 ---
 
 ## Phase 2D status (approved, frozen at 5c4f1e5)
