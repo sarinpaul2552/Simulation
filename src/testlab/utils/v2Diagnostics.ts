@@ -6,12 +6,14 @@ import {
   V2TeamState,
   V2MarketConditions,
   V2DestinationId,
+  V2QuarterDecisions,
   calculateV2QuarterConsequence,
   getV2Baseline,
   getNeutralMarket,
   V2_IDENTITY_TOLERANCE,
 } from '../../simulation/engineV2';
 import {
+  cultureCapacityFactor,
   calculateAbsorptionFactor,
   coordinationLoad,
   readTarget,
@@ -110,11 +112,23 @@ export function checkV2Quarter(
     details: `operating cost ${fmt(L.operatingCost)} (expected ${fmt(expectedOpex)}); strategic ${fmt(L.strategicInvestment)} booked separately`,
   });
 
+  const effFin = consequence.effects.financingItems.reduce((t, f) => t + f.amount, 0);
   checks.push({
-    id: 'v2_financing_explicit_zero',
-    message: 'Financing is an explicit line and 0 (no financing choices yet)',
-    passed: L.financing === 0 && L.financingItems.length === 0,
-    details: `financing ${fmt(L.financing)}`,
+    id: 'v2_financing_explicit_itemised',
+    message: 'Financing is an explicit itemised line equal to the decisions taken (0 without financing decisions); interest never in it',
+    passed: near(L.financing, L.financingItems.reduce((t, f) => t + f.amount, 0)) && near(L.financing, effFin) &&
+      L.financingItems.length === consequence.effects.financingItems.length &&
+      L.financingItems.every(f => !/interest/i.test(f.description)),
+    details: `financing ${fmt(L.financing)} (${L.financingItems.length} items)`,
+  });
+
+  const effEvents = consequence.effects.eventCosts.reduce((t, e) => t + e.amount, 0) + (L.eventCostItems.length - consequence.effects.eventCosts.length > 0
+    ? L.eventCostItems.slice(0, L.eventCostItems.length - consequence.effects.eventCosts.length).reduce((t, e) => t + e.amount, 0) : 0);
+  checks.push({
+    id: 'v2_event_costs_itemised',
+    message: 'Event costs = injected events + decision/event costs, each itemised and ≥ 0',
+    passed: near(L.eventCosts, effEvents) && L.eventCostItems.every(e => e.amount >= 0),
+    details: `events ${fmt(L.eventCosts)} (${L.eventCostItems.length} items)`,
   });
 
   checks.push({
@@ -161,13 +175,13 @@ export function checkV2CostQuarter(opening: V2TeamState, consequence: V2Conseque
   const tol = 1e-9;
   const checks: V2LedgerCheck[] = [];
   const v = K.variable;
-  const varSum = v.consumerServicing + v.consumerAcquisitionSpend + v.enterpriseServicing + v.enterpriseOnboarding + v.universityServicing + v.aiNativeServing;
+  const varSum = v.consumerServicing + v.consumerAcquisitionSpend + v.enterpriseServicing + v.enterpriseOnboarding + v.universityServicing + v.aiNativeServing + v.partnerRevenueShare;
 
   checks.push({
     id: 'cost_total_reconstructs',
-    message: 'Operating cost = fixed/semi-fixed + variable + commitments + financing (0)',
+    message: 'Operating cost = fixed/semi-fixed + variable + commitments + financing cost (interest on opening debt only)',
     passed: near(v.total, varSum, tol) && near(K.totalOperatingCost, K.fixedSemiFixed + v.total + K.commitments.total + K.financingCost, tol) &&
-      K.financingCost === 0 && K.eventCostPlaceholder === 0,
+      near(K.financingCost, consequence.effects.cost.financingCost, tol) && K.eventCostPlaceholder === 0,
     details: `${K.fixedSemiFixed.toFixed(3)} + ${v.total.toFixed(3)} + ${K.commitments.total.toFixed(3)} = ${K.totalOperatingCost.toFixed(3)}`,
   });
 
@@ -187,12 +201,15 @@ export function checkV2CostQuarter(opening: V2TeamState, consequence: V2Conseque
     details: `mode ${consequence.costSource}; ledger ${fmt(L.operatingCost)}, model ${fmt(K.totalOperatingCost)}`,
   });
 
-  const lo = Math.min(K.openingFixedSemiFixed, K.fixedTarget);
-  const hi = Math.max(K.openingFixedSemiFixed, K.fixedTarget);
+  const openPool = K.openingFixedSemiFixed + K.structuralFixedChange;
+  const lo = Math.min(openPool, K.fixedTarget);
+  const hi = Math.max(openPool, K.fixedTarget);
   checks.push({
     id: 'cost_fixed_sticky',
-    message: 'Fixed/semi-fixed moves only part-way toward its lagged target and never below its floor',
-    passed: K.fixedSemiFixed >= opening.costs.fixedFloor - tol && K.fixedSemiFixed >= lo - tol && K.fixedSemiFixed <= hi + tol,
+    message: 'Fixed/semi-fixed moves only part-way toward its lagged target and never below its floor (structural changes explicit)',
+    passed: K.fixedSemiFixed >= K.closing.fixedFloor - tol && K.fixedSemiFixed >= lo - tol && K.fixedSemiFixed <= hi + tol &&
+      near(K.structuralFixedChange, consequence.effects.cost.fixedPoolDelta.reduce((t, d) => t + d.amount, 0), tol) &&
+      (!K.ratchetFrozen || K.fixedSemiFixed <= openPool + tol),
     details: `opening ${K.openingFixedSemiFixed.toFixed(3)} → ${K.fixedSemiFixed.toFixed(3)} (target ${K.fixedTarget.toFixed(3)})`,
   });
 
@@ -246,15 +263,15 @@ export function checkV2RevenueQuarter(
 
   const c = R.consumer, e = R.enterprise, u = R.university, a = R.aiNative;
   const recon = [
-    ['consumer', c.closing, Math.max(0, c.opening - c.churn + c.acquisition + c.priceMix)],
-    ['enterprise', e.closing, Math.max(0, e.opening - e.churn + e.expansion + e.liveFromCurrentBookings + e.liveFromEarlierBookings)],
-    ['university', u.closing, Math.max(0, u.opening - u.churn + u.liveFromEarlierWins)],
-    ['aiNative', a.closing, Math.max(0, a.opening - a.churn + a.newMonetization)],
+    ['consumer', c.closing, Math.max(0, c.opening - c.eventLoss - c.churn + c.acquisition + c.priceMix + c.priceAction + c.acquired)],
+    ['enterprise', e.closing, Math.max(0, e.opening - e.eventLoss - e.churn + e.expansion + e.liveFromCurrentBookings + e.liveFromEarlierBookings + e.acquired)],
+    ['university', u.closing, Math.max(0, u.opening - u.eventLoss - u.churn + u.liveFromEarlierWins + u.acquired)],
+    ['aiNative', a.closing, Math.max(0, a.opening - a.eventLoss - a.churn + a.newMonetization + a.acquired)],
   ] as const;
   const badRecon = recon.filter(([, got, want]) => !near(got, want, tol));
   checks.push({
     id: 'rev_movement_explained',
-    message: 'Each segment: opening − churn + new/live/expansion (+ price/mix) = closing',
+    message: 'Each segment: opening − event loss − churn + new/live/expansion (+ price/mix/price action) + acquired = closing',
     passed: badRecon.length === 0,
     details: badRecon.map(([k]) => k).join(', '),
   });
@@ -329,11 +346,13 @@ export function checkV2CommercialQuarter(
     details: badClip.map(i => i.indicator).join(', '),
   });
 
-  const openingMatches = M.indicators.every(i => near(i.opening, (opening.commercial as any)[i.indicator], tol));
+  const shockOf = (ind: string) => consequence.appliedCommercialShocks.filter(x => x.indicator === ind).reduce((t, x) => t + (x.after - x.before), 0);
+  const openingMatches = M.indicators.every(i => near(i.opening, (opening.commercial as any)[i.indicator] + shockOf(i.indicator), tol)) &&
+    M.indicators.every(i => near(i.opening, (consequence.commercialOpening as any)[i.indicator], tol));
   const closingMatches = M.indicators.every(i => near(i.closing, (ending.commercial as any)[i.indicator], tol));
   checks.push({
     id: 'com_state_links',
-    message: 'Indicators open at prior commercial state and close into ending state',
+    message: 'Indicators open at prior commercial state (+ itemised shocks) and close into ending state',
     passed: openingMatches && closingMatches,
     details: `opening ${openingMatches ? 'ok' : 'mismatch'}, closing ${closingMatches ? 'ok' : 'mismatch'}`,
   });
@@ -369,23 +388,27 @@ export function checkV2CapabilityQuarter(
       C.coordinationLoad <= coordinationLoad(expectedActive.length) + tol &&
       (consequence.destination.destinationId !== null || near(C.coordinationLoad, coordinationLoad(expectedActive.length), tol)) &&
       C.alignedLoadReduction >= -tol && C.alignedLoadReduction <= C.bucketLoad + tol && C.transitionLoad >= -tol &&
-      near(C.transformationLoad, C.bucketLoad - C.alignedLoadReduction + C.coordinationLoad + C.transitionLoad, tol),
-    details: `bucket ${C.bucketLoad.toFixed(3)} − aligned ${C.alignedLoadReduction.toFixed(3)} + coordination ${C.coordinationLoad.toFixed(3)} (${C.activeInitiatives.length} active) + transition ${C.transitionLoad.toFixed(3)} = ${C.transformationLoad.toFixed(3)}`,
+      near(C.eventLoad, consequence.effects.extraLoad.reduce((t, l) => t + l.load, 0), tol) && C.eventLoad >= -tol &&
+      near(C.transformationLoad, C.bucketLoad - C.alignedLoadReduction + C.coordinationLoad + C.transitionLoad + C.eventLoad, tol),
+    details: `bucket ${C.bucketLoad.toFixed(3)} − aligned ${C.alignedLoadReduction.toFixed(3)} + coordination ${C.coordinationLoad.toFixed(3)} (${C.activeInitiatives.length} active) + transition ${C.transitionLoad.toFixed(3)} + event ${C.eventLoad.toFixed(3)} = ${C.transformationLoad.toFixed(3)}`,
   });
 
-  const expectedFactor = calculateAbsorptionFactor(C.transformationLoad / opening.organizationalCapacity);
+  const shockedCapacity = opening.organizationalCapacity + consequence.appliedShocks.filter(x => x.target === 'organizationalCapacity').reduce((t, x) => t + (x.after - x.before), 0);
+  const shockedCulture = opening.culture + consequence.appliedShocks.filter(x => x.target === 'culture').reduce((t, x) => t + (x.after - x.before), 0);
+  const expectedCapacity = shockedCapacity * cultureCapacityFactor(shockedCulture);
+  const expectedFactor = calculateAbsorptionFactor(C.transformationLoad / expectedCapacity);
   checks.push({
     id: 'cap_absorption_factor',
-    message: 'Absorption factor from total Load ÷ opening Org Capacity, within [0.40, 1.00]',
+    message: 'Absorption factor from total Load ÷ effective capacity (opening Org Capacity after itemised shocks × Culture factor), within [0.40, 1.00]',
     passed: near(C.absorptionFactor, expectedFactor, tol) && C.absorptionFactor >= V2_ABSORPTION_FLOOR - tol && C.absorptionFactor <= 1 + tol &&
-      near(C.openingOrganizationalCapacity, opening.organizationalCapacity, tol),
+      near(C.openingOrganizationalCapacity, shockedCapacity, tol) && near(C.effectiveCapacity, expectedCapacity, tol),
     details: `ratio ${(C.loadToCapacityRatio * 100).toFixed(1)}% → factor ${C.absorptionFactor.toFixed(4)}`,
   });
 
-  const badNew = C.newCohorts.flatMap(c => c.gains.filter(g => !near(g.effectiveGain, g.nominalGain * c.absorptionFactor, tol)).map(g => `${c.id}/${g.target}`));
+  const badNew = C.newCohorts.flatMap(c => c.gains.filter(g => !near(g.effectiveGain, g.nominalGain * c.absorptionFactor * (c.gainMultiplier ?? 1), tol)).map(g => `${c.id}/${g.target}`));
   checks.push({
     id: 'cap_effective_equals_nominal_x_factor',
-    message: 'New cohorts: effective gain = nominal gain × absorption factor',
+    message: 'New cohorts: effective gain = nominal gain × absorption factor (× itemised decision gain multiplier)',
     passed: badNew.length === 0,
     details: badNew.join(', '),
   });
@@ -452,6 +475,7 @@ export function runV2Quarter(
     operatingCostOverride?: number;
     costSource?: 'hold' | 'modelled';
     destination?: V2DestinationId;
+    decisions?: V2QuarterDecisions;
   }
 ): V2QuarterRecord {
   const consequence = calculateV2QuarterConsequence(opening, {
@@ -465,6 +489,7 @@ export function runV2Quarter(
     operatingCostOverride: revenueOptions?.operatingCostOverride,
     costSource: revenueOptions?.costSource,
     destination: revenueOptions?.destination,
+    decisions: revenueOptions?.decisions,
   });
   const ending = applyV2(opening, consequence);
   const checks = checkV2Quarter(opening, allocation, consequence, ending, operatingInputs, revenueOptions?.operatingCostOverride);

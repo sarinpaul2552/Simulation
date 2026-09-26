@@ -43,7 +43,7 @@ export interface V2ScenarioBriefingSignal {
   id: string;
   /** 'all' = shared briefing; a role = private to that role (later phases). */
   audience: 'all' | V2Role;
-  topic: 'consumer' | 'enterprise' | 'ai-native' | 'university' | 'macro' | 'competition';
+  topic: 'consumer' | 'enterprise' | 'ai-native' | 'university' | 'macro' | 'competition' | 'finance' | 'organization';
   headline: string;
   /** Value shown to players (e.g. % change), if numeric. */
   shownValue?: number;
@@ -90,6 +90,20 @@ export interface V2ScenarioQuarter {
   signals: V2ScenarioBriefingSignal[];
   /** Designer notes (audit only). */
   designNotes: string[];
+  /**
+   * Batch 3: decision events offered this quarter. The scenario only declares WHICH event exists;
+   * company-specific terms/severity are computed by the decision modules from the company actually built.
+   */
+  events?: {
+    /** Opportunity ids (engineV2Opportunity catalog). */
+    opportunities?: string[];
+    /** Recession response menu is open (engineV2Management). */
+    recessionResponse?: boolean;
+    /** Strategy-dependent crisis fires this quarter (engineV2Crisis). */
+    crisis?: boolean;
+    /** Final strategic decision (engineV2Final). */
+    finalDecision?: boolean;
+  };
 }
 
 // ============ SCENARIO ARC ============
@@ -347,6 +361,67 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
       'Destination economics are implemented in engineV2Destination (focus, ceiling, access, transition) — never revenue.',
     ],
   },
+  {
+    quarter: 5,
+    id: 'q5-growth-opportunity',
+    title: 'Q5 — Major Growth Opportunity',
+    briefing:
+      'A Fortune-100 client invites you to deliver a global AI-enabled learning programme across 40 countries: a $48M ' +
+      'annual contract with strict SLAs, localisation, product customization and a dedicated delivery team. It would be ' +
+      'the largest contract in the company\'s history. Accepting commits cash, people and roadmap for three quarters; ' +
+      'declining preserves capacity and focus. Meanwhile, some leading economic indicators are softening.',
+    demand: {
+      consumerDemand: 0.98,
+      consumerCommoditization: 0.35,
+      consumerCacPressure: 1.08,
+      enterpriseDemand: 1.12,
+      enterpriseAIDemand: 1.45,
+      universityDemand: 1.02,
+      aiNativeDemand: 1.4,
+      macroPressure: 0.1,
+    },
+    competitorProgress: { consumer: 1.0, enterprise: 1.0, credential: 0.5 },
+    structuralChanges: [],
+    events: { opportunities: ['q5-global-enterprise'] },
+    signals: [
+      {
+        id: 'q5-global-contract', audience: 'all', topic: 'enterprise', reliability: 'headline',
+        headline: 'Fortune-100 client offers a $48M-a-year global AI-learning contract; go-live across 40 countries within three quarters.',
+        shownValue: 48, unit: '$M ACV',
+      },
+      {
+        id: 'q5-contract-cfo', audience: 'CFO', topic: 'finance', reliability: 'estimate',
+        headline: 'Finance: upfront implementation and customization $6–11M; dedicated delivery team ≈ $1.5M/qtr; SLA penalties if delivery slips.',
+        shownRange: [6, 11], unit: '$M upfront',
+      },
+      {
+        id: 'q5-contract-product', audience: 'Product', topic: 'ai-native', reliability: 'estimate',
+        headline: 'Engineering: client customization would absorb 20–40% of AI/Product roadmap capacity for three quarters unless it is our core product direction.',
+        shownRange: [20, 40], unit: '% roadmap',
+      },
+      {
+        id: 'q5-contract-people', audience: 'People', topic: 'organization', reliability: 'estimate',
+        headline: 'People team: the delivery programme adds heavy change load for about three quarters; lighter if enterprise delivery is already our focus.',
+        shownRange: [2, 3], unit: 'quarters',
+      },
+      {
+        id: 'q5-macro-early', audience: 'CFO', topic: 'macro', reliability: 'estimate',
+        headline: 'Economists put the probability of a downturn within two quarters at 30–50%; contracted revenue tends to be more resilient than discretionary spend.',
+        shownRange: [30, 50], unit: '% probability',
+        truthReference: { field: 'macroPressure', value: 0.1, note: 'mild softening now; recession arrives in Q6' },
+      },
+      {
+        id: 'q5-consumer', audience: 'Growth', topic: 'consumer', reliability: 'headline',
+        headline: 'Consumer category stabilising; AI features now expected as standard.',
+        truthReference: { field: 'consumerDemand', value: 0.98, note: 'near neutral, commoditization 0.35 persists' },
+      },
+    ],
+    designNotes: [
+      'Settled post-disruption market with mild macro softening (0.1). No structural change.',
+      'The opportunity is company-specific (engineV2Opportunity): fit from Enterprise, CS, AI readiness, PQ, Trust, Execution.',
+      'Contracted revenue flows through the Enterprise backlog; costs, load, roadmap diversion, focus dilution and SLA exposure are explicit.',
+    ],
+  },
 ];
 
 // ============ MARKET CONSTRUCTION ============
@@ -413,7 +488,7 @@ export interface V2PlayerSignal {
   id: string;
   audience: 'all' | V2Role;
   source: 'scenario-briefing' | 'company-kpi';
-  topic: V2ScenarioBriefingSignal['topic'] | 'finance' | 'organization';
+  topic: V2ScenarioBriefingSignal['topic'];
   label: string;
   shownValue?: number;
   shownRange?: [number, number];

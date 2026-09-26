@@ -63,6 +63,25 @@ import {
   destinationEffects,
 } from './engineV2Destination';
 export type { V2DestinationId, V2DestinationState, V2DestinationEffects } from './engineV2Destination';
+import {
+  V2QuarterEffects,
+  V2StateShock,
+  V2CommercialShock,
+  V2ShockTarget,
+  emptyEffects,
+  mergeEffects,
+} from './engineV2Effects';
+export type { V2QuarterEffects } from './engineV2Effects';
+import {
+  V2StrategicContract,
+  V2OpportunityTerms,
+  V2_OPPORTUNITIES,
+  acceptOpportunity,
+  contractEffects,
+  updateContract,
+  opportunityTerms,
+} from './engineV2Opportunity';
+export type { V2StrategicContract, V2OpportunityTerms } from './engineV2Opportunity';
 
 export type { V2BookingCohort, V2RevenueConsequence, V2SegmentRevenue } from './engineV2Revenue';
 export type { V2CostConsequence, V2CostState, V2CostCommitment } from './engineV2Costs';
@@ -188,6 +207,11 @@ export interface V2TeamState {
   /** Batch 2 · Q4 strategic destination (null until committed). */
   destination: V2DestinationState | null;
 
+  /** Batch 3 · Q5 strategic contracts accepted (delivery tracked each quarter). */
+  contracts: V2StrategicContract[];
+  /** Batch 3: every explicit management decision, in order (audit trail; never read by revenue formulas). */
+  decisionLog: V2DecisionLogEntry[];
+
   /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
   /** Every completed quarter's capability consequence, in order. */
@@ -198,6 +222,19 @@ export interface V2TeamState {
   revenueHistory: V2RevenueConsequence[];
   /** Every completed quarter's operating cost consequence, in order. */
   costHistory: V2CostConsequence[];
+}
+
+/** Batch 3: explicit management decisions for a quarter. Each module validates its own availability. */
+export interface V2QuarterDecisions {
+  /** Q5: accept or decline a scenario opportunity. */
+  opportunity?: { offerId: string; accept: boolean };
+}
+
+export interface V2DecisionLogEntry {
+  quarter: number;
+  kind: 'opportunity' | 'management' | 'financing' | 'crisis' | 'final' | 'liquidity';
+  decision: string;
+  detail: string;
 }
 
 export interface V2QuarterInput {
@@ -229,6 +266,8 @@ export interface V2QuarterInput {
    * V2DestinationState (history + transition) but not yet enabled.
    */
   destination?: V2DestinationId;
+  /** Batch 3: explicit management decisions (opportunity, management actions, financing, crisis, final). */
+  decisions?: V2QuarterDecisions;
 }
 
 /**
@@ -259,6 +298,17 @@ export interface V2Consequence {
   // Strategic destination (Batch 2 · Q4) — effects on focus/ceiling/access/transition only
   destination: V2DestinationEffects;
   destinationState: V2DestinationState | null;
+  // Batch 3: decisions/events for this quarter, routed through the canonical channels
+  effects: V2QuarterEffects;
+  /** State shocks as applied (clamped) to the opening state before the pipeline. */
+  appliedShocks: (V2StateShock & { before: number; after: number })[];
+  /** Commercial shocks as applied (clamped) to the opening indicators. */
+  appliedCommercialShocks: (V2CommercialShock & { before: number; after: number })[];
+  /** Opening commercial state actually used by the commercial engine (after shocks). */
+  commercialOpening: V2CommercialState;
+  contracts: V2StrategicContract[];
+  opportunityTerms: V2OpportunityTerms | null;
+  decisionLog: V2DecisionLogEntry[];
 }
 
 export interface V2IdentityCheck {
@@ -372,6 +422,8 @@ export function getV2Baseline(): V2TeamState {
     universityBacklog: revenueBaseline.universityBacklog,
     costs: getV2CostBaseline(),
     destination: null,
+    contracts: [],
+    decisionLog: [],
     ledgerHistory: [],
     capabilityHistory: [],
     commercialHistory: [],
@@ -417,7 +469,9 @@ export function calculateV2Ledger(
   /** Phase 2D: Σ segment revenue; required when input.revenueSource === 'segment'. */
   segmentTotalRevenue?: number,
   /** Phase 3A: modelled operating cost; required when input.costSource === 'modelled'. */
-  modelledOperatingCost?: number
+  modelledOperatingCost?: number,
+  /** Batch 3: decision/event cash lines (itemised event costs and financing items). */
+  extra?: { eventCosts: V2EventCost[]; financingItems: V2FinancingItem[] }
 ): V2FinancialLedger {
   validateV2Allocation(input.allocation, input.strategicEnvelope);
 
@@ -467,7 +521,7 @@ export function calculateV2Ledger(
   const strategicInvestment = sumStrategicInvestment(input.allocation);
 
   // Event costs: explicit and itemised (none by default in Phase 2A)
-  const eventCostItems = (input.eventCosts ?? []).map(e => ({ ...e }));
+  const eventCostItems = [...(input.eventCosts ?? []), ...(extra?.eventCosts ?? [])].map(e => ({ ...e }));
   for (const e of eventCostItems) {
     if (!Number.isFinite(e.amount) || e.amount < 0) {
       throw new Error(`V2 event cost ${e.id} must be a non-negative finite outflow, got ${e.amount}`);
@@ -475,9 +529,13 @@ export function calculateV2Ledger(
   }
   const eventCosts = eventCostItems.reduce((sum, e) => sum + e.amount, 0);
 
-  // Financing: explicit line, fixed at 0 until financing choices are implemented
-  const financingItems: V2FinancingItem[] = [];
-  const financing = 0;
+  // Financing: explicit itemised line (Batch 3: equity, debt principal, partner capital). Interest is NOT here:
+  // it is an operating financing cost in the cost architecture, so it enters the economics exactly once.
+  const financingItems: V2FinancingItem[] = (extra?.financingItems ?? []).map(f => ({ ...f }));
+  for (const f of financingItems) {
+    if (!Number.isFinite(f.amount)) throw new Error(`V2 financing item ${f.id} must be finite, got ${f.amount}`);
+  }
+  const financing = financingItems.reduce((sum, f) => sum + f.amount, 0);
 
   const netCashFlow = operatingProfit - strategicInvestment - eventCosts + financing;
 
@@ -543,6 +601,145 @@ export function checkV2AccountingIdentity(
 
 // ============ QUARTER ============
 
+// ============ BATCH 3: SHOCKS ============
+
+const COMMERCIAL_SHOCK_BOUNDS: Record<V2CommercialShock['indicator'], readonly [number, number]> = {
+  consumerRetention: [60, 95],
+  consumerCacIndex: [50, 200],
+  enterprisePipeline: [0, Number.POSITIVE_INFINITY],
+  enterpriseWinRate: [10, 45],
+  universityPipeline: [0, Number.POSITIVE_INFINITY],
+  universityRenewalRate: [75, 97],
+  pricingPower: [0, 100],
+  aiAdoptionIndex: [0, 100],
+};
+
+function readShockTarget(s: V2TeamState, t: V2ShockTarget): number {
+  switch (t) {
+    case 'culture': return s.culture;
+    case 'execution': return s.capabilities.execution;
+    case 'organizationalCapacity': return s.organizationalCapacity;
+    case 'productQuality': return s.productQuality;
+    case 'trust': return s.trust;
+    default: return s.capabilities[t];
+  }
+}
+
+function writeShockTarget(s: V2TeamState, t: V2ShockTarget, v: number): void {
+  switch (t) {
+    case 'culture': s.culture = v; return;
+    case 'execution': s.capabilities.execution = v; return;
+    case 'organizationalCapacity': s.organizationalCapacity = v; return;
+    case 'productQuality': s.productQuality = v; return;
+    case 'trust': s.trust = v; return;
+    default: s.capabilities[t] = v; return;
+  }
+}
+
+/**
+ * Apply itemised state shocks to a copy of the opening state (never below 0; positive shocks never above the
+ * applicable ceiling; Organizational Capacity kept ≥ 5 so the absorption ratio stays defined).
+ */
+export function applyStateShocks(
+  opening: V2TeamState,
+  shocks: V2StateShock[],
+  ceilings: Partial<Record<V2ShockTarget, number>>
+): { state: V2TeamState; applied: (V2StateShock & { before: number; after: number })[] } {
+  const state: V2TeamState = { ...opening, capabilities: { ...opening.capabilities } };
+  const applied: (V2StateShock & { before: number; after: number })[] = [];
+  for (const sh of shocks) {
+    const before = readShockTarget(state, sh.target);
+    const ceiling = Math.max(before, ceilings[sh.target] ?? 100);
+    const floor = sh.target === 'organizationalCapacity' ? Math.min(before, 5) : 0;
+    const after = Math.min(ceiling, Math.max(floor, before + sh.delta));
+    writeShockTarget(state, sh.target, after);
+    applied.push({ ...sh, before, after });
+  }
+  return { state, applied };
+}
+
+export function applyCommercialShocks(
+  opening: V2CommercialState,
+  shocks: V2CommercialShock[]
+): { state: V2CommercialState; applied: (V2CommercialShock & { before: number; after: number })[] } {
+  const state: V2CommercialState = { ...opening, competitorBenchmarks: { ...opening.competitorBenchmarks } };
+  const applied: (V2CommercialShock & { before: number; after: number })[] = [];
+  for (const sh of shocks) {
+    const [lo, hi] = COMMERCIAL_SHOCK_BOUNDS[sh.indicator];
+    const before = state[sh.indicator];
+    const after = Math.min(hi, Math.max(lo, before + sh.delta));
+    state[sh.indicator] = after;
+    applied.push({ ...sh, before, after });
+  }
+  return { state, applied };
+}
+
+// ============ BATCH 3: DECISIONS ============
+
+interface V2DecisionOutcome {
+  effects: V2QuarterEffects;
+  contracts: V2StrategicContract[];
+  destinationState: V2DestinationState | null;
+  opportunityTerms: V2OpportunityTerms | null;
+  log: V2DecisionLogEntry[];
+  contractOutcomes: Map<string, ReturnType<typeof contractEffects>>;
+}
+
+function opportunityView(s: V2TeamState) {
+  return { capabilities: s.capabilities, productQuality: s.productQuality, trust: s.trust, aiCommercialReadiness: s.commercial.aiCommercialReadiness };
+}
+
+/** Collect this quarter's decision/event effects from the opening state (pure). */
+function collectDecisionEffects(
+  opening: V2TeamState,
+  input: V2QuarterInput,
+  destinationState: V2DestinationState | null
+): V2DecisionOutcome {
+  const parts: V2QuarterEffects[] = [];
+  const log: V2DecisionLogEntry[] = [];
+  let contracts = opening.contracts.map(c => ({ ...c }));
+  let dest = destinationState;
+  let terms: V2OpportunityTerms | null = null;
+  const contractOutcomes = new Map<string, ReturnType<typeof contractEffects>>();
+
+  // Ongoing delivery of previously accepted contracts (judged on opening capabilities)
+  for (const c of contracts) {
+    const out = contractEffects(c, opportunityView(opening), input.quarter);
+    contractOutcomes.set(c.id, out);
+    parts.push(out.effects);
+  }
+
+  // Q5 opportunity decision
+  const opp = input.decisions?.opportunity;
+  if (opp) {
+    const def = V2_OPPORTUNITIES[opp.offerId];
+    if (!def) throw new Error(`Unknown opportunity ${opp.offerId}`);
+    if (def.quarter !== input.quarter) throw new Error(`Opportunity ${opp.offerId} is offered in Q${def.quarter}, not Q${input.quarter}`);
+    if (contracts.some(c => c.offerId === opp.offerId)) throw new Error(`Opportunity ${opp.offerId} already accepted`);
+    terms = opportunityTerms(opp.offerId, opportunityView(opening), dest?.id ?? null);
+    if (opp.accept) {
+      const acc = acceptOpportunity(opp.offerId, opportunityView(opening), dest?.id ?? null, input.quarter);
+      contracts = [...contracts, acc.contract];
+      parts.push(acc.effects);
+      if (dest && acc.terms.focusDilution > 0) {
+        dest = {
+          ...dest,
+          focusDilution: (dest.focusDilution ?? 0) + acc.terms.focusDilution,
+          focusDilutionLog: [...(dest.focusDilutionLog ?? []), { quarter: input.quarter, amount: acc.terms.focusDilution, source: opp.offerId }],
+        };
+      }
+    }
+    log.push({
+      quarter: input.quarter, kind: 'opportunity', decision: opp.accept ? `accept ${opp.offerId}` : `decline ${opp.offerId}`,
+      detail: `fit ${terms.fit.fit.toFixed(2)}; upfront $${terms.upfrontCash.toFixed(1)}M; load ${terms.orgLoadPerQuarter.toFixed(1)}/qtr; ${terms.aligned ? 'on strategy' : 'off strategy'}`,
+    });
+  }
+
+  return { effects: parts.length ? mergeEffects(...parts) : emptyEffects(), contracts, destinationState: dest, opportunityTerms: terms, log, contractOutcomes };
+}
+
+// ============ QUARTER ============
+
 export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2QuarterInput): V2Consequence {
   const market = input.market ?? getNeutralMarket();
 
@@ -555,6 +752,12 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
       throw new Error(`Destination switching (${destinationState.id} → ${input.destination}) is not yet implemented`);
     }
   }
+
+  // Batch 3: decisions/events → effects bundle (from the opening state)
+  const decided = collectDecisionEffects(opening, input, destinationState);
+  destinationState = decided.destinationState;
+  const effects = decided.effects;
+
   const destination = destinationEffects(destinationState, input.quarter);
   const accessibleMarket: V2MarketConditions = {
     ...market,
@@ -566,21 +769,38 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     },
   };
 
+  // State shocks (itemised) → the opening state the pipeline sees
+  const shocked = applyStateShocks(opening, effects.stateShocks, destination.ceilings);
+  const pipelineOpening = shocked.state;
+
   // Capability consequence (Phase 2B) — never touches cash
+  const eventLoad = effects.extraLoad.reduce((t, l) => t + l.load, 0);
+  const hasFocus = destination.destinationId !== null || eventLoad > 0 || Object.keys(effects.bucketGainMultiplier).length > 0;
   const capability = calculateV2CapabilityConsequence(
-    opening,
+    pipelineOpening,
     input.allocation,
     input.quarter,
-    destination.destinationId ? destination : undefined
+    hasFocus
+      ? {
+          alignedBuckets: destination.alignedBuckets,
+          alignedLoadMultiplier: destination.alignedLoadMultiplier,
+          coordinationMergeWeight: destination.coordinationMergeWeight,
+          transitionLoad: destination.transitionLoad,
+          ceilings: destination.ceilings,
+          eventLoad,
+          bucketGainMultiplier: effects.bucketGainMultiplier,
+        }
+      : undefined
   );
   const capabilityFlags: string[] = [];
   if (capability.absorptionFactor < 1) capabilityFlags.push('ABSORPTION_PENALTY');
   if (capability.loadToCapacityRatio > 1) capabilityFlags.push('LOAD_EXCEEDS_CAPACITY');
   if (capability.targets.some(t => t.wastedSaturation > 1e-9)) capabilityFlags.push('CAPABILITY_SATURATION_WASTE');
 
-  // Commercial consequence (Phase 2C) — reads post-maturation capabilities + market; never touches cash
+  // Commercial consequence (Phase 2C) — reads post-maturation capabilities + market; opening indicators after shocks
+  const commercialShocked = applyCommercialShocks(opening.commercial, effects.commercialShocks);
   const commercial = calculateV2CommercialConsequence(
-    opening.commercial,
+    commercialShocked.state,
     capability.closing,
     market,
     input.quarter,
@@ -591,11 +811,12 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   // Segment revenue consequence (Phase 2D) — reads commercial state; investment never enters
   const revenue = calculateV2RevenueConsequence(
     { segments: opening.segmentRevenue, enterpriseBacklog: opening.enterpriseBacklog, universityBacklog: opening.universityBacklog },
-    opening.commercial,
+    commercialShocked.state,
     commercial,
     capability.closing,
     accessibleMarket,
-    input.quarter
+    input.quarter,
+    effects.revenue
   );
   const revenueSource = input.revenueSource ?? 'hold';
 
@@ -606,7 +827,8 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     revenue,
     { people: input.allocation.people, enterprise: input.allocation.enterprise, aiProduct: input.allocation.aiProduct },
     market,
-    input.quarter
+    input.quarter,
+    effects.cost
   );
   const costSource = input.costSource ?? 'hold';
 
@@ -615,9 +837,22 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     opening,
     input,
     revenueSource === 'segment' ? revenue.totalRevenue : undefined,
-    costSource === 'modelled' ? cost.totalOperatingCost : undefined
+    costSource === 'modelled' ? cost.totalOperatingCost : undefined,
+    {
+      eventCosts: effects.eventCosts.map(e => ({ id: e.id, description: `[${e.category}] ${e.description}`, amount: e.amount })),
+      financingItems: effects.financingItems.map(f => ({ id: f.id, description: `[${f.kind}] ${f.description}`, amount: f.amount })),
+    }
   );
   const identity = checkV2AccountingIdentity(ledger);
+
+  // Contract bookkeeping after revenue
+  const contracts = decided.contracts.map(c => {
+    const outcome = decided.contractOutcomes.get(c.id) ?? { health: c.fitAtAcceptance, shortfall: 0, slaPenalty: 0, lostLive: 0, cancelFraction: 0 };
+    const openingCohort = opening.enterpriseBacklog.find(k => k.id === c.cohortId);
+    const cancelled = openingCohort ? openingCohort.remaining * Math.min(1, outcome.cancelFraction) : 0;
+    const closingCohort = revenue.closing.enterpriseBacklog.find(k => k.id === c.cohortId);
+    return updateContract(c, input.quarter, outcome, closingCohort, cancelled);
+  });
 
   const flags: string[] = [];
   if (ledger.operatingProfit < 0) flags.push('OPERATING_LOSS');
@@ -630,6 +865,13 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     quarter: input.quarter, ledger, identity, flags, capability, capabilityFlags, commercial, commercialFlags,
     revenue, revenueSource, cost, costSource, financials: summarizeV2Financials(ledger),
     destination, destinationState,
+    effects,
+    appliedShocks: shocked.applied,
+    appliedCommercialShocks: commercialShocked.applied,
+    commercialOpening: commercialShocked.state,
+    contracts,
+    opportunityTerms: decided.opportunityTerms,
+    decisionLog: decided.log,
   };
 }
 
@@ -661,6 +903,8 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     universityBacklog: consequence.revenue.closing.universityBacklog,
     costs: consequence.cost.closing,
     destination: consequence.destinationState,
+    contracts: consequence.contracts,
+    decisionLog: [...state.decisionLog, ...consequence.decisionLog],
     ledgerHistory: [...state.ledgerHistory, ledger],
     capabilityHistory: [...state.capabilityHistory, capability],
     commercialHistory: [...state.commercialHistory, consequence.commercial],

@@ -1,4 +1,32 @@
-# CURRENT STATUS — Autonomous Build Batch 2 (Q1–Q4 Strategic Arc)
+# CURRENT STATUS — Autonomous Build Batch 3 (Q5–Q8, Financing, Solvency & Terminal Outcome)
+
+**Last Updated:** 2026-09-26 · **Batch 2 approved:** 9af2aac. Consumer AI / University / destination economics NOT rebalanced
+before the full Q1–Q8 run (instruction). V1 and production gameplay untouched.
+
+## Batch 3 architecture — one effects bundle, canonical channels only
+
+`engineV2Effects.ts`: every Q5–Q8 decision module returns a `V2QuarterEffects` bundle that `engineV2.ts` routes through
+existing channels: itemised state shocks (before the pipeline), commercial shocks (opening indicators), extra
+transformation load / cohort gain multipliers (2B), itemised revenue lines inside segment stocks (2D: contracted bookings
+via backlog, explicit losses, price action, marketing volume, acquired run-rate), cost adjustments (3A: structural
+fixed-pool changes, commitments, marketing spend, interest as financing cost, partner revenue share), event costs and
+financing items (ledger). Culture now modulates effective capacity (×(1 + 0.006·(Culture − 72)), exactly 1 at start).
+
+## Q5 — Major Growth Opportunity (PASS)
+
+- `engineV2Opportunity.ts`: $48M-ACV global contract. Fit = Enterprise 30–75 (.25), CS 30–65 (.25), AI readiness 20–60 (.15),
+  PQ 65–85 (.15), Trust 65–85 (.1), Execution 50–75 (.1). Accepting: backlog booking (go-live 25/50/25 Q6–Q8), upfront
+  $6M + $5M×(1 − product readiness), delivery team $1.5M/qtr × 6 (commitment), load 14×(1 − 0.5·fit) (×0.6 on strategy)
+  Q5–Q7, roadmap diversion 30% of AI/Product gains Q5–Q7 off strategy, focus dilution −0.25 strength off strategy,
+  SLA penalty 0.5 × live × shortfall (health < 0.6), Trust −3 × shortfall, termination up to 40%/qtr (health < 0.45),
+  delivery learning (Enterprise +1.5h, CS +2h per qtr).
+- Market: consumer 0.98 / commoditization 0.35 / CAC 1.08; enterprise 1.12 / AI 1.45; AI-native 1.4; macro 0.1.
+- Accept vs decline by Q10: Enterprise+AI +$11.8M rev, +$13.6M cash; Enterprise100 +$11.9M, +$12.5M; Consumer+AI −$17M cash,
+  AI −16; Consumer100 −$8.5M rev, −$34M cash; University100 −$14M cash; Balanced +$5.7M rev, −$2.5M cash (mixed).
+
+---
+
+## Batch 2 status (approved at 9af2aac) — Q1–Q4 Strategic Arc
 
 **Last Updated:** 2026-09-26 · **Batch 1 approved:** c91802c. **V1 restore point:** tag `v1-engine-frozen`.
 Locked: (A) no generic capability decay — Q4 destinations provide specialization; (B) scenarios change demand and

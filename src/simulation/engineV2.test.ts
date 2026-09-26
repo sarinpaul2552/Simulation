@@ -138,8 +138,13 @@ describe('V1 frozen baseline is unchanged', () => {
 describe('V2 baseline is self-contained (no dependency on V1 engine)', () => {
   it('engineV2.ts imports only V2 modules, never the V1 engine', () => {
     const froms = [...engineV2Source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
-    expect(froms.every(f => ['./engineV2Capabilities', './engineV2Commercial', './engineV2Revenue', './engineV2Costs', './engineV2Destination'].includes(f))).toBe(true);
+    expect(froms.every(f => [
+      './engineV2Capabilities', './engineV2Commercial', './engineV2Revenue', './engineV2Costs', './engineV2Destination',
+      './engineV2Effects', './engineV2Opportunity', './engineV2Management', './engineV2Financing', './engineV2Crisis', './engineV2Final',
+    ].includes(f))).toBe(true);
     expect(froms).not.toContain('./engine');
+    // Hard gate: terminal scoring never feeds back into economic state
+    expect(froms).not.toContain('./engineV2Scoring');
   });
 
   it('engineV2Capabilities.ts has no imports at all', () => {

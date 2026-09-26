@@ -7,11 +7,14 @@ import {
 } from '../../simulation/engineV2';
 import {
   getScenarioMarket,
+  getScenarioQuarter,
   lastAuthoredQuarter,
   buildPlayerSignals,
   V2PlayerSignal,
   V2SignalCompanyView,
 } from '../../simulation/engineV2Scenario';
+import { V2QuarterDecisions } from '../../simulation/engineV2';
+import { V2OpportunityTerms, opportunityTerms } from '../../simulation/engineV2Opportunity';
 import { V2QuarterRecord, runV2Quarter } from './v2Diagnostics';
 import { V2DestinationId, V2_DESTINATIONS, V2_DESTINATION_IDS } from '../../simulation/engineV2Destination';
 
@@ -39,6 +42,27 @@ export interface V2ArcStrategy {
   allocate: (ctx: V2ArcContext) => V2Allocation;
   /** Q4 destination choice (used once destinations exist). */
   destination?: (ctx: V2ArcContext) => string;
+  /** Batch 3 management policy (Q5–Q8). Missing hooks fall back to the destination-rational default policy. */
+  policy?: Partial<V2ArcPolicy>;
+}
+
+/** Batch 3: how a player responds to Q5–Q8 decisions. Every hook sees only signals, terms and its own state. */
+export interface V2ArcPolicy {
+  /** Q5: accept the offered opportunity? */
+  opportunity: (ctx: V2ArcContext, terms: V2OpportunityTerms) => boolean;
+}
+
+/**
+ * Default "rational" policy: accepts the contract when it is on strategy and deliverable, or when delivery fit is
+ * strong enough to carry it off strategy. Consumer, University and Premium companies therefore normally decline.
+ */
+export const DEFAULT_POLICY: V2ArcPolicy = {
+  opportunity: (ctx, t) => (t.aligned && t.fit.fit >= 0.3) || t.fit.fit >= 0.55 ||
+    (ctx.state.destination?.id === 'balanced-marketplace' && t.fit.fit >= 0.45),
+};
+
+function policyOf(strategy: V2ArcStrategy): V2ArcPolicy {
+  return { ...DEFAULT_POLICY, ...(strategy.policy ?? {}) };
 }
 
 export interface V2ArcQuarter {
@@ -46,6 +70,8 @@ export interface V2ArcQuarter {
   signals: V2PlayerSignal[];
   allocation: V2Allocation;
   record: V2QuarterRecord;
+  decisions?: V2QuarterDecisions;
+  opportunityTerms?: V2OpportunityTerms;
 }
 
 export interface V2ArcRun {
@@ -88,6 +114,8 @@ export interface V2ArcOptions {
   destination?: V2DestinationId;
   /** Allocation policy after Q4: 'same' continues the strategy; 'aligned' splits $30M across destination-aligned buckets. */
   postQ4Allocation?: 'same' | 'aligned';
+  /** Override policy hooks (e.g. force accept/decline for comparisons). */
+  policy?: Partial<V2ArcPolicy>;
 }
 
 export const DESTINATION_COMMIT_QUARTER = 4;
@@ -113,12 +141,21 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
         : strategy.allocate(ctx);
     const destination =
       q === DESTINATION_COMMIT_QUARTER ? (options.destination ?? (strategy.destination?.(ctx) as V2DestinationId | undefined)) : undefined;
+    const policy = { ...policyOf(strategy), ...(options.policy ?? {}) };
+    const sq = getScenarioQuarter(q);
+    const decisions: V2QuarterDecisions = {};
+    let terms: V2OpportunityTerms | undefined;
+    for (const offerId of sq?.events?.opportunities ?? []) {
+      terms = opportunityTerms(offerId, { capabilities: state.capabilities, productQuality: state.productQuality, trust: state.trust, aiCommercialReadiness: state.commercial.aiCommercialReadiness }, state.destination?.id ?? null);
+      decisions.opportunity = { offerId, accept: policy.opportunity(ctx, terms) };
+    }
     const record = runV2Quarter(state, q, allocation, ENVELOPE, undefined, undefined, getScenarioMarket(q), {
       revenueSource: V2_INTEGRATED_MODE.revenueSource,
       costSource: V2_INTEGRATED_MODE.costSource,
       destination,
+      decisions,
     });
-    history.push({ quarter: q, signals, allocation, record });
+    history.push({ quarter: q, signals, allocation, record, decisions, opportunityTerms: terms });
     state = record.ending;
     last = record.consequence;
   }

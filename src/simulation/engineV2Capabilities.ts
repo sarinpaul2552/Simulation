@@ -75,7 +75,7 @@ export interface V2CohortGain {
   target: V2CapabilityTarget;
   /** Uncapped gain from the calibration curve. */
   nominalGain: number;
-  /** nominalGain × absorptionFactor (still uncapped). */
+  /** nominalGain × absorptionFactor × gainMultiplier (still uncapped). */
   effectiveGain: number;
   /** Portion of effectiveGain scheduled to mature in the most recent quarter processed. */
   maturedThisQuarter: number;
@@ -92,6 +92,8 @@ export interface V2InvestmentCohort {
   /** This bucket's own calibrated load (excludes quarter-level coordination load). */
   transformationLoad: number;
   absorptionFactor: number;
+  /** Batch 3: decision/event multiplier on this cohort's gains (1 = none; e.g. roadmap diverted to a client). */
+  gainMultiplier?: number;
   maturationSchedule: number[];
   gains: V2CohortGain[];
 }
@@ -180,8 +182,13 @@ export interface V2CapabilityConsequence {
   transitionLoad: number;
   /** Capability ceiling applied per target this quarter (100 unless a destination raises it). */
   ceilings: Record<V2CapabilityTarget, number>;
-  /** Total Transformation Load = bucketLoad − alignedLoadReduction + coordinationLoad + transitionLoad. */
+  /** Batch 3: extra load from decisions/events this quarter (0 without events). */
+  eventLoad: number;
+  /** Total Transformation Load = bucketLoad − alignedLoadReduction + coordinationLoad + transitionLoad + eventLoad. */
   transformationLoad: number;
+  /** Batch 3: Culture factor on capacity and the resulting effective capacity (= opening capacity at Culture 72). */
+  cultureCapacityFactor: number;
+  effectiveCapacity: number;
   loadToCapacityRatio: number;
   absorptionFactor: number;
   newCohorts: V2InvestmentCohort[];
@@ -414,6 +421,21 @@ export interface V2CapabilityFocus {
   transitionLoad: number;
   /** Per-target capability ceiling (default V2_CAPABILITY_MAX). */
   ceilings: Partial<Record<V2CapabilityTarget, number>>;
+  /** Batch 3: extra transformation load from decisions/events (contract delivery, integration, remediation). */
+  eventLoad?: number;
+  /** Batch 3: multiplier on new cohorts' effective gains by bucket (e.g. roadmap diverted to a client). */
+  bucketGainMultiplier?: Partial<Record<V2CapabilityBucket, number>>;
+}
+
+/**
+ * Batch 3: Culture modulates how much change the organization can absorb.
+ * Effective capacity = Org Capacity × (1 + 0.006 × (Culture − 72)), bounded [0.7, 1.15].
+ * Exactly 1 at the starting culture (72), so Q1–Q4 behaviour is unchanged until events move Culture.
+ */
+export const V2_CULTURE_NEUTRAL = 72;
+export const V2_CULTURE_CAPACITY_SLOPE = 0.006;
+export function cultureCapacityFactor(culture: number): number {
+  return Math.min(1.15, Math.max(0.7, 1 + V2_CULTURE_CAPACITY_SLOPE * (culture - V2_CULTURE_NEUTRAL)));
 }
 
 export function calculateV2CapabilityConsequence(
@@ -446,12 +468,15 @@ export function calculateV2CapabilityConsequence(
   const w = focus?.coordinationMergeWeight ?? 0;
   const coordination = (1 - w) * fullCoordination + w * coordinationLoad(mergedCount);
   const transitionLoad = focus?.transitionLoad ?? 0;
-  const transformationLoad = bucketLoad - alignedLoadReduction + coordination + transitionLoad;
+  const eventLoad = focus?.eventLoad ?? 0;
+  const transformationLoad = bucketLoad - alignedLoadReduction + coordination + transitionLoad + eventLoad;
   const openingOrganizationalCapacity = opening.organizationalCapacity;
   if (!(openingOrganizationalCapacity > 0)) {
     throw new Error(`Organizational Capacity must be positive, got ${openingOrganizationalCapacity}`);
   }
-  const loadToCapacityRatio = transformationLoad / openingOrganizationalCapacity;
+  const cultureFactor = cultureCapacityFactor(opening.culture);
+  const effectiveCapacity = openingOrganizationalCapacity * cultureFactor;
+  const loadToCapacityRatio = transformationLoad / effectiveCapacity;
   const absorptionFactor = calculateAbsorptionFactor(loadToCapacityRatio);
 
   // 4. New cohorts
@@ -464,9 +489,10 @@ export function calculateV2CapabilityConsequence(
       amount: b.amount,
       transformationLoad: b.transformationLoad,
       absorptionFactor,
+      gainMultiplier: focus?.bucketGainMultiplier?.[b.bucket] ?? 1,
       maturationSchedule: [...V2_BUCKET_CURVES[b.bucket].maturationSchedule],
       gains: b.nominalGains.map(g => {
-        const effectiveGain = g.nominalGain * absorptionFactor;
+        const effectiveGain = g.nominalGain * absorptionFactor * (focus?.bucketGainMultiplier?.[b.bucket] ?? 1);
         return {
           target: g.target,
           nominalGain: g.nominalGain,
@@ -575,8 +601,11 @@ export function calculateV2CapabilityConsequence(
     coordinationLoad: coordination,
     alignedLoadReduction,
     transitionLoad,
+    eventLoad,
     ceilings,
     transformationLoad,
+    cultureCapacityFactor: cultureFactor,
+    effectiveCapacity,
     loadToCapacityRatio,
     absorptionFactor,
     // New cohorts as they stand after this quarter's first tranche

@@ -59,7 +59,7 @@ const total = (id: string, q: number, mc: V2RevenueMarketCase = 'competitive') =
 describe('Architecture', () => {
   it('revenue module imports only V2 types and never reads AI Capability or investment', () => {
     const froms = [...engineV2RevenueSource.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
-    expect(froms.sort()).toEqual(['./engineV2Capabilities', './engineV2Commercial']);
+    expect(froms.sort()).toEqual(['./engineV2Capabilities', './engineV2Commercial', './engineV2Effects']);
     expect(engineV2RevenueSource).not.toMatch(/capabilities\.ai\b/);
     expect(engineV2RevenueSource).not.toMatch(/allocation|strategicInvestment/);
   });

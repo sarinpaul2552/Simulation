@@ -160,6 +160,12 @@ export interface V2DestinationState {
   };
   /** Full commitment history (supports future switching). */
   history: { id: V2DestinationId; fromQuarter: number; toQuarter: number | null }[];
+  /**
+   * Batch 3: specialization strength lost to off-strategy commitments (e.g. a large contract outside the
+   * destination). Subtracted from strength; never negative strength. 0 = undiluted focus.
+   */
+  focusDilution?: number;
+  focusDilutionLog?: { quarter: number; amount: number; source: string }[];
 }
 
 export interface V2DestinationCompanyView {
@@ -215,6 +221,8 @@ export function commitDestination(id: V2DestinationId, company: V2DestinationCom
       cashCost: 0,
     },
     history: [{ id, fromQuarter: quarter, toQuarter: null }],
+    focusDilution: 0,
+    focusDilutionLog: [],
   };
 }
 
@@ -253,7 +261,8 @@ export const NO_DESTINATION_EFFECTS: V2DestinationEffects = {
 
 export function destinationStrength(state: V2DestinationState, quarter: number): number {
   if (quarter < state.committedQuarter) return 0;
-  return Math.min(1, state.readinessAtCommit + V2_DESTINATION_CALIBRATION.strengthRampPerQuarter * (quarter - state.committedQuarter));
+  const ramped = Math.min(1, state.readinessAtCommit + V2_DESTINATION_CALIBRATION.strengthRampPerQuarter * (quarter - state.committedQuarter));
+  return Math.max(0, ramped - (state.focusDilution ?? 0));
 }
 
 export function destinationEffects(state: V2DestinationState | null, quarter: number): V2DestinationEffects {

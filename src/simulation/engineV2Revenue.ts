@@ -20,6 +20,7 @@
 
 import type { V2CommercialConsequence, V2CommercialState, V2MarketConditions } from './engineV2Commercial';
 import type { V2Capabilities } from './engineV2Capabilities';
+import type { V2RevenueAdjustments } from './engineV2Effects';
 
 // ============ CALIBRATION (Draft 1, tunable) ============
 
@@ -81,6 +82,11 @@ export const V2_REVENUE_CALIBRATION = {
     qualityPerPQ: 0.01,
     qualityPerExecution: 0.01,
     qualityBounds: [0.5, 1.5] as const,
+    /**
+     * Batch 3 (Q6): AI-native new monetization is exposed to buyer funding/procurement pressure:
+     * × (1 − macroMonetization × macroPressure). 0 macro pressure = unchanged (Q1–Q4 unaffected).
+     */
+    macroMonetization: 0.25,
   },
 } as const;
 
@@ -119,6 +125,14 @@ export interface V2RevenueState {
 
 export interface V2ConsumerRevenueDiagnostic {
   opening: number;
+  /** Batch 3: explicit event loss removed from the opening base (closed offerings, crisis losses). */
+  eventLoss: number;
+  /** Batch 3: marketing-level multiplier applied to acquisition volume (1 = normal). */
+  acquisitionMultiplier: number;
+  /** Batch 3: price-level action on the retained base ($M). */
+  priceAction: number;
+  /** Batch 3: run-rate added by an acquisition. */
+  acquired: number;
   exposedBase: number;
   retention: number;
   retained: number;
@@ -135,6 +149,13 @@ export interface V2ConsumerRevenueDiagnostic {
 
 export interface V2EnterpriseRevenueDiagnostic {
   opening: number;
+  /** Batch 3: explicit contract/customer loss removed from the opening base. */
+  eventLoss: number;
+  /** Batch 3: contracted strategic bookings added to backlog this quarter (run-rate). */
+  contractBookingsRunRate: number;
+  /** Batch 3: not-yet-live backlog run-rate cancelled this quarter. */
+  backlogCancelled: number;
+  acquired: number;
   openingPipeline: number;
   resolvedPipeline: number;
   winRate: number;
@@ -156,6 +177,8 @@ export interface V2EnterpriseRevenueDiagnostic {
 
 export interface V2UniversityRevenueDiagnostic {
   opening: number;
+  eventLoss: number;
+  acquired: number;
   renewalRate: number;
   exposedBase: number;
   churn: number;
@@ -173,6 +196,10 @@ export interface V2UniversityRevenueDiagnostic {
 
 export interface V2AINativeRevenueDiagnostic {
   opening: number;
+  eventLoss: number;
+  /** Batch 3: funding/procurement pressure factor on new monetization. */
+  macroFactor: number;
+  acquired: number;
   readiness: number;
   adoption: number;
   aiNativeDemand: number;
@@ -344,27 +371,40 @@ export function calculateV2RevenueConsequence(
   commercial: V2CommercialConsequence,
   company: V2RevenueCompanyInput,
   market: V2MarketConditions,
-  quarter: number
+  quarter: number,
+  adjustments?: V2RevenueAdjustments
 ): V2RevenueConsequence {
   const K = V2_REVENUE_CALIBRATION;
   const cc = commercial.closing;
+  const adj = adjustments;
+  const lossOf = (seg: 'consumer' | 'enterprise' | 'university' | 'aiNative', base: number) =>
+    Math.min(base, (adj?.lostRunRate ?? []).filter(l => l.segment === seg).reduce((t, l) => t + l.amount, 0));
+  const acquiredOf = (seg: 'consumer' | 'enterprise' | 'university' | 'aiNative') =>
+    (adj?.acquiredRunRate ?? []).filter(l => l.segment === seg).reduce((t, l) => t + l.amount, 0);
 
   // ---- Consumer: retained base + acquisition + price/mix ----
   const kc = K.consumer;
   const C0 = opening.segments.consumer;
-  const cExposed = C0 * kc.renewalExposure;
+  const cLoss = lossOf('consumer', C0);
+  const C0n = C0 - cLoss;
+  const cExposed = C0n * kc.renewalExposure;
   const retention = cc.consumerRetention / 100;
   const cChurn = cExposed * (1 - retention);
-  const cRetained = C0 - cChurn;
-  const cHeadroom = headroomMultiplier(C0, market.segmentCapacity.consumer, K.start.consumer);
-  const cAcq = kc.baseAcquisition * Math.max(0, market.consumerDemand) * Math.pow(100 / cc.consumerCacIndex, kc.cacElasticity) * cHeadroom;
+  const cRetained = C0n - cChurn;
+  const cHeadroom = headroomMultiplier(C0n, market.segmentCapacity.consumer, K.start.consumer);
+  const cAcqMult = Math.max(0, adj?.consumerAcquisitionMultiplier ?? 1);
+  const cAcq = kc.baseAcquisition * Math.max(0, market.consumerDemand) * Math.pow(100 / cc.consumerCacIndex, kc.cacElasticity) * cHeadroom * cAcqMult;
   const ppChange = cc.pricingPower - commercialOpening.pricingPower;
   const cPrice = cRetained * kc.pricePerPricingPoint * ppChange;
-  const C1 = Math.max(0, cRetained + cAcq + cPrice);
+  const cPriceAction = cRetained * (adj?.consumerPriceChange ?? []).reduce((t, p) => t + p.fraction, 0);
+  const cAcquired = acquiredOf('consumer');
+  const C1 = Math.max(0, cRetained + cAcq + cPrice + cPriceAction + cAcquired);
 
   // ---- Enterprise: renewals + expansion + bookings recognized from backlog ----
   const ke = K.enterprise;
-  const E0 = opening.segments.enterprise;
+  const E0raw = opening.segments.enterprise;
+  const eLoss = lossOf('enterprise', E0raw);
+  const E0 = E0raw - eLoss;
   const entPipe = commercial.indicators.find(i => i.indicator === 'enterprisePipeline')!;
   const resolvedPipeline = -entPipe.decayOrAttrition;
   const winRate = cc.enterpriseWinRate / 100;
@@ -379,13 +419,29 @@ export function calculateV2RevenueConsequence(
     id: `E-Q${quarter}`, quarterBooked: quarter, bookingsACV, runRate: newRunRate,
     liveThisQuarter: 0, liveToDate: 0, remaining: newRunRate,
   };
-  const entRelease = releaseBacklog([...opening.enterpriseBacklog, ...(newRunRate > 0 ? [entNewCohort] : [])], ke.recognition, quarter);
-  const E1 = Math.max(0, E0 - eChurn + eExpansion + entRelease.liveCurrent + entRelease.liveEarlier);
+  // Batch 3: backlog cancellation (contract terminated before go-live) reduces booked AND remaining run-rate
+  let backlogCancelled = 0;
+  const cancelled = opening.enterpriseBacklog.map(c0 => {
+    const f = Math.min(1, (adj?.backlogCancellation ?? []).filter(x => x.cohortId === c0.id).reduce((t, x) => t + x.fraction, 0));
+    if (f <= 0) return c0;
+    const cut = c0.remaining * f;
+    backlogCancelled += cut;
+    return { ...c0, runRate: c0.runRate - cut, remaining: c0.remaining - cut };
+  });
+  const contractCohorts: V2BookingCohort[] = (adj?.enterpriseBookings ?? []).map(b => ({
+    id: b.id, quarterBooked: quarter, bookingsACV: b.acv, runRate: b.runRate, liveThisQuarter: 0, liveToDate: 0, remaining: b.runRate,
+  }));
+  const contractBookingsRunRate = contractCohorts.reduce((t, c) => t + c.runRate, 0);
+  const eAcquired = acquiredOf('enterprise');
+  const entRelease = releaseBacklog([...cancelled, ...(newRunRate > 0 ? [entNewCohort] : []), ...contractCohorts], ke.recognition, quarter);
+  const E1 = Math.max(0, E0 - eChurn + eExpansion + entRelease.liveCurrent + entRelease.liveEarlier + eAcquired);
   const entBacklogRunRate = entRelease.cohorts.reduce((s, c) => s + c.remaining, 0);
 
   // ---- University: renewals + institutional wins recognized slowly ----
   const ku = K.university;
-  const U0 = opening.segments.university;
+  const U0raw = opening.segments.university;
+  const uLoss = lossOf('university', U0raw);
+  const U0 = U0raw - uLoss;
   const uRenewal = cc.universityRenewalRate / 100;
   const uExposed = U0 * ku.renewalExposure;
   const uChurn = uExposed * (1 - uRenewal);
@@ -400,12 +456,15 @@ export function calculateV2RevenueConsequence(
     liveThisQuarter: 0, liveToDate: 0, remaining: uNewRunRate,
   };
   const uniRelease = releaseBacklog([...opening.universityBacklog, ...(uNewRunRate > 0 ? [uniNewCohort] : [])], ku.recognition, quarter);
-  const U1 = Math.max(0, U0 - uChurn + uniRelease.liveCurrent + uniRelease.liveEarlier);
+  const uAcquired = acquiredOf('university');
+  const U1 = Math.max(0, U0 - uChurn + uniRelease.liveCurrent + uniRelease.liveEarlier + uAcquired);
   const uniBacklogRunRate = uniRelease.cohorts.reduce((s, c) => s + c.remaining, 0);
 
   // ---- AI-native: retained base + adoption-driven monetization ----
   const ka = K.aiNative;
-  const A0 = opening.segments.aiNative;
+  const A0raw = opening.segments.aiNative;
+  const aLoss = lossOf('aiNative', A0raw);
+  const A0 = A0raw - aLoss;
   const readiness = cc.aiCommercialReadiness;
   const adoption = cc.aiAdoptionIndex;
   const aiRetention = ka.retentionBase + ka.retentionReadinessUplift * ramp(readiness, ka.retentionReadinessRamp[0], ka.retentionReadinessRamp[1]);
@@ -413,31 +472,33 @@ export function calculateV2RevenueConsequence(
   const aChurn = aExposed * (1 - aiRetention);
   const qe = aiQualityExecutionFactor(company.productQuality, company.capabilities.execution);
   const aHeadroom = headroomMultiplier(A0, market.segmentCapacity.aiNative, K.start.aiNative);
-  const aNew = aiNewMonetization(adoption, market.aiNativeDemand, qe) * aHeadroom;
-  const A1 = Math.max(0, A0 - aChurn + aNew);
+  const aMacro = Math.max(0, 1 - ka.macroMonetization * market.macroPressure);
+  const aNew = aiNewMonetization(adoption, market.aiNativeDemand, qe) * aHeadroom * aMacro;
+  const aAcquired = acquiredOf('aiNative');
+  const A1 = Math.max(0, A0 - aChurn + aNew + aAcquired);
 
   const segments = { consumer: C1, enterprise: E1, university: U1, aiNative: A1 };
   return {
     quarter,
     consumer: {
-      opening: C0, exposedBase: cExposed, retention, retained: cRetained, churn: cChurn,
+      opening: C0, eventLoss: cLoss, acquisitionMultiplier: cAcqMult, priceAction: cPriceAction, acquired: cAcquired, exposedBase: cExposed, retention, retained: cRetained, churn: cChurn,
       demand: market.consumerDemand, cacIndex: cc.consumerCacIndex, acquisition: cAcq, headroom: cHeadroom,
       pricingPowerChange: ppChange, priceMix: cPrice, closing: C1,
     },
     enterprise: {
-      opening: E0, openingPipeline: entPipe.opening, resolvedPipeline, winRate, headroom: eHeadroom, bookingsACV,
+      opening: E0raw, eventLoss: eLoss, contractBookingsRunRate, backlogCancelled, acquired: eAcquired, openingPipeline: entPipe.opening, resolvedPipeline, winRate, headroom: eHeadroom, bookingsACV,
       newRunRateBooked: newRunRate, renewalRate: eRenewal, exposedBase: eExposed, churn: eChurn,
       expansion: eExpansion, liveFromCurrentBookings: entRelease.liveCurrent, liveFromEarlierBookings: entRelease.liveEarlier,
       closing: E1, backlogRunRate: entBacklogRunRate, backlogACV: entBacklogRunRate / ke.acvToQuarterlyRunRate,
     },
     university: {
-      opening: U0, renewalRate: uRenewal, exposedBase: uExposed, churn: uChurn, openingPipeline: uniPipe.opening,
+      opening: U0raw, eventLoss: uLoss, acquired: uAcquired, renewalRate: uRenewal, exposedBase: uExposed, churn: uChurn, openingPipeline: uniPipe.opening,
       resolvedPipeline: uResolved, institutionalWinRate: uWinRate, headroom: uHeadroom, winsACV, newRunRateWon: uNewRunRate,
       liveFromEarlierWins: uniRelease.liveEarlier + uniRelease.liveCurrent, closing: U1,
       backlogRunRate: uniBacklogRunRate, backlogACV: uniBacklogRunRate / ku.acvToQuarterlyRunRate,
     },
     aiNative: {
-      opening: A0, readiness, adoption, aiNativeDemand: market.aiNativeDemand, qualityExecutionFactor: qe, headroom: aHeadroom,
+      opening: A0raw, eventLoss: aLoss, macroFactor: aMacro, acquired: aAcquired, readiness, adoption, aiNativeDemand: market.aiNativeDemand, qualityExecutionFactor: qe, headroom: aHeadroom,
       retentionRate: aiRetention, exposedBase: aExposed, churn: aChurn, retainedBase: A0 - aChurn,
       newMonetization: aNew, closing: A1,
     },
