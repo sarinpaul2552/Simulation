@@ -22,7 +22,7 @@
 
 import type { V2SegmentRevenue, V2RevenueConsequence } from './engineV2Revenue';
 import type { V2MarketConditions } from './engineV2Commercial';
-import type { V2CostAdjustments } from './engineV2Effects';
+import { type V2CostAdjustments, V2_MINIMUM_FIXED_POOL } from './engineV2Effects';
 
 // ============ CALIBRATION ============
 
@@ -175,7 +175,8 @@ export function calculateV2CostConsequence(
   // both the pool and its floor, before this quarter's ratchet.
   const structuralFixedChange = (adj?.fixedPoolDelta ?? []).reduce((t, d) => t + d.amount, 0);
   const openPool = opening.fixedSemiFixed + structuralFixedChange;
-  const floor = Math.max(0, opening.fixedFloor + structuralFixedChange);
+  // The floor never falls below the structural minimum (or below where it already is, for injected test states).
+  const floor = Math.max(Math.min(opening.fixedFloor, V2_MINIMUM_FIXED_POOL), opening.fixedFloor + structuralFixedChange);
   const ratchetFrozen = adj?.ratchetFrozen ?? false;
 
   // Fixed/semi-fixed: lagged, partial, sticky ratchet

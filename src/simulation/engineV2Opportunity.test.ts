@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ARC_STRATEGIES, runArc, DEFAULT_POLICY, V2ArcRun } from '../testlab/utils/v2ScenarioArc';
+import { ARC_STRATEGIES, runArc, DEFAULT_POLICY, V2ArcRun, liquidityPolicy } from '../testlab/utils/v2ScenarioArc';
 import { V2_OPPORTUNITIES, opportunityFit, opportunityTerms } from './engineV2Opportunity';
 import { getV2Baseline, calculateV2QuarterConsequence, V2_INTEGRATED_MODE } from './engineV2';
 import { getScenarioMarket } from './engineV2Scenario';
@@ -7,9 +7,9 @@ import { destinationStrength } from './engineV2Destination';
 import opportunitySource from './engineV2Opportunity.ts?raw';
 
 const strat = (id: string) => ARC_STRATEGIES.find(s => s.id === id)!;
-// Recession response held fixed (none) in both arms so comparisons isolate the contract decision.
+// Recession response and financing held fixed (none) in both arms so comparisons isolate the contract decision.
 const run = (id: string, accept: boolean, quarters = 10): V2ArcRun =>
-  runArc(strat(id), quarters, { policy: { opportunity: () => accept, recession: () => ({ actions: {} }) } });
+  runArc(strat(id), quarters, { policy: { opportunity: () => accept, recession: () => ({ actions: {} }), liquidity: liquidityPolicy('refuse') } });
 const q = (r: V2ArcRun, n: number) => r.quarters[n - 1].record;
 const OFFER = 'q5-global-enterprise';
 

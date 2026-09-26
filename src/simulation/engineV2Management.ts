@@ -21,7 +21,7 @@
  * Imports only V2 modules; never the frozen V1 engine.
  */
 
-import { V2QuarterEffects, V2StateShock, emptyEffects } from './engineV2Effects';
+import { V2QuarterEffects, V2StateShock, emptyEffects, availableCut } from './engineV2Effects';
 
 export const V2_MANAGEMENT_CALIBRATION = {
   workforce: {
@@ -121,13 +121,15 @@ export function managementEffects(
   for (const s of state.scheduledShocks.filter(x => x.quarter === quarter)) e.stateShocks.push({ source: s.source, target: s.target, delta: s.delta });
 
   const a = actions ?? {};
-  const pool = view.fixedSemiFixed;
+  let pool = view.fixedSemiFixed;
+  /** Apply a structural cut, never below the structural minimum pool. */
+  const takeCut = (requested: number) => { const c = availableCut(pool, requested); pool -= c; return c; };
 
   if (a.workforceReduction) {
     const d = a.workforceReduction.depth;
     const cfg = K.workforce[d];
     const protect = a.workforceReduction.protectRnD === true;
-    const cut = pool * cfg.poolCut * (protect ? K.workforce.protectRnDSavings : 1);
+    const cut = takeCut(view.fixedSemiFixed * cfg.poolCut * (protect ? K.workforce.protectRnDSavings : 1));
     savings += cut;
     const severance = K.workforce.severanceMultiple * cut;
     oneOff += severance;
@@ -159,7 +161,7 @@ export function managementEffects(
 
   if (a.hiringFreeze) {
     if (view.peopleInvestment > 0) throw new Error('A hiring freeze cannot be combined with People investment in the same quarter');
-    const cut = pool * K.hiringFreeze.poolCut;
+    const cut = takeCut(view.fixedSemiFixed * K.hiringFreeze.poolCut);
     savings += cut;
     e.cost.ratchetFrozen = true;
     e.cost.fixedPoolDelta.push({ source: 'hiring freeze (attrition not backfilled)', amount: -cut });
@@ -180,7 +182,7 @@ export function managementEffects(
   if (a.closeWeakOfferings) {
     const c = K.closeWeakOfferings;
     const lost = view.consumerRevenue * c.consumerRevenueShare;
-    const cut = pool * c.poolCut;
+    const cut = takeCut(view.fixedSemiFixed * c.poolCut);
     savings += cut;
     oneOff += c.windDownCost;
     e.revenue.lostRunRate.push({ source: 'closed weak consumer offerings', segment: 'consumer', amount: lost });

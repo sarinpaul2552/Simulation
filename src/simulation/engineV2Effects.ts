@@ -176,4 +176,15 @@ export function isEmptyEffects(e: V2QuarterEffects): boolean {
   );
 }
 
+/**
+ * Structural minimum of the fixed/semi-fixed pool ($M/qtr): 60% of the starting pool (115.45). Cuts (workforce,
+ * restructuring, freeze, closures) cannot take the pool below it — a learning company cannot operate on zero overhead.
+ */
+export const V2_MINIMUM_FIXED_POOL = 69.27;
+
+/** Largest structural cut still available from a pool. */
+export function availableCut(pool: number, requested: number): number {
+  return Math.max(0, Math.min(requested, pool - V2_MINIMUM_FIXED_POOL));
+}
+
 export const sumAmounts = (xs: { amount: number }[]) => xs.reduce((s, x) => s + x.amount, 0);

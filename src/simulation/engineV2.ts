@@ -84,6 +84,22 @@ import {
 export type { V2StrategicContract, V2OpportunityTerms } from './engineV2Opportunity';
 import { V2ManagementActions, V2ManagementState, getManagementBaseline, managementEffects } from './engineV2Management';
 export type { V2ManagementActions, V2ManagementState } from './engineV2Management';
+import {
+  V2FinancingAction,
+  V2FinancingState,
+  V2SolvencyState,
+  V2FinancingOptions,
+  V2FinancingView,
+  V2_FINANCING_CALIBRATION,
+  getFinancingBaseline,
+  getSolvencyBaseline,
+  financingEffects,
+  financingOptions,
+  assessSolvency,
+  strategicValue,
+} from './engineV2Financing';
+export type { V2FinancingAction, V2FinancingState, V2SolvencyState, V2FinancingOptions } from './engineV2Financing';
+import { destinationStrength } from './engineV2Destination';
 
 export type { V2BookingCohort, V2RevenueConsequence, V2SegmentRevenue } from './engineV2Revenue';
 export type { V2CostConsequence, V2CostState, V2CostCommitment } from './engineV2Costs';
@@ -215,6 +231,10 @@ export interface V2TeamState {
   decisionLog: V2DecisionLogEntry[];
   /** Batch 3 · Q6: persistent management settings (marketing level) and committed aftershocks. */
   management: V2ManagementState;
+  /** Batch 3: debt, dilution/ownership, partner agreement, financing rounds. `debt` above mirrors financing.debt. */
+  financing: V2FinancingState;
+  /** Batch 3: liquidity/solvency status and history (explicit insolvency/distress state). */
+  solvency: V2SolvencyState;
 
   /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
@@ -234,6 +254,8 @@ export interface V2QuarterDecisions {
   opportunity?: { offerId: string; accept: boolean };
   /** Q6+: management actions (workforce, marketing, hiring freeze, pricing, closing weak offerings). */
   management?: V2ManagementActions;
+  /** Any quarter: financing / liquidity resolution (equity, debt, repayment, partner, cost restructuring). */
+  financing?: V2FinancingAction[];
 }
 
 export interface V2DecisionLogEntry {
@@ -317,6 +339,10 @@ export interface V2Consequence {
   decisionLog: V2DecisionLogEntry[];
   management: V2ManagementState;
   managementSummary: { savingsPerQuarter: number; oneOffCost: number };
+  financing: V2FinancingState;
+  solvency: V2SolvencyState;
+  /** Financing terms available at the start of the quarter (what the CFO could choose from). */
+  financingOptions: V2FinancingOptions;
 }
 
 export interface V2IdentityCheck {
@@ -433,6 +459,8 @@ export function getV2Baseline(): V2TeamState {
     contracts: [],
     decisionLog: [],
     management: getManagementBaseline(),
+    financing: getFinancingBaseline(),
+    solvency: getSolvencyBaseline(),
     ledgerHistory: [],
     capabilityHistory: [],
     commercialHistory: [],
@@ -694,6 +722,31 @@ interface V2DecisionOutcome {
   contractOutcomes: Map<string, ReturnType<typeof contractEffects>>;
   management: V2ManagementState;
   managementSummary: { savingsPerQuarter: number; oneOffCost: number };
+  financing: V2FinancingState;
+  financingOptions: V2FinancingOptions;
+}
+
+/** Revenue four quarters before the last completed quarter (starting $200M before that exists). */
+function revenueYearAgo(s: V2TeamState): number {
+  const h = s.ledgerHistory;
+  return h.length >= 5 ? h[h.length - 5].revenue : 200;
+}
+
+export function financingView(s: V2TeamState, quarter: number, dest: V2DestinationState | null = s.destination): V2FinancingView {
+  const ds = dest ? destinationStrength(dest, quarter) : 0;
+  return {
+    revenue: s.revenue,
+    operatingProfit: s.operatingProfit,
+    cash: s.cash,
+    revenueYearAgo: revenueYearAgo(s),
+    aiCommercialReadiness: s.commercial.aiCommercialReadiness,
+    destinationStrength: ds,
+    debt: s.financing.debt,
+    status: s.solvency.status,
+    distressed: s.solvency.distressed,
+    fixedSemiFixed: s.costs.fixedSemiFixed,
+    strategicValue: strategicValue(s.capabilities, ds),
+  };
 }
 
 function opportunityView(s: V2TeamState) {
@@ -761,9 +814,20 @@ function collectDecisionEffects(
     });
   }
 
+  // Financing: interest on opening debt, partner revenue share, distress while insolvent, explicit actions
+  const mgmtCut = -mgmt.effects.cost.fixedPoolDelta.reduce((t, d) => t + d.amount, 0);
+  const fview = { ...financingView(opening, input.quarter, dest), fixedSemiFixed: opening.costs.fixedSemiFixed - mgmtCut };
+  const finOpts = financingOptions(fview, opening.financing);
+  const fin = financingEffects(opening.financing, opening.solvency, fview, input.decisions?.financing, input.quarter);
+  parts.push(fin.effects);
+  for (const a of input.decisions?.financing ?? []) {
+    log.push({ quarter: input.quarter, kind: 'financing', decision: a.kind, detail: JSON.stringify(a) });
+  }
+
   return {
     effects: parts.length ? mergeEffects(...parts) : emptyEffects(), contracts, destinationState: dest, opportunityTerms: terms, log, contractOutcomes,
     management: mgmt.state, managementSummary: { savingsPerQuarter: mgmt.savingsPerQuarter, oneOffCost: mgmt.oneOffCost },
+    financing: fin.state, financingOptions: finOpts,
   };
 }
 
@@ -883,7 +947,23 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     return updateContract(c, input.quarter, outcome, closingCohort, cancelled);
   });
 
+  // Solvency: compare with the counterfactual of taking no financing/restructuring action this quarter
+  const finActions = input.decisions?.financing ?? [];
+  const projectedWithoutResolution = finActions.length > 0
+    ? calculateV2QuarterConsequence(opening, { ...input, decisions: { ...input.decisions, financing: [] } }).ledger.closingCash
+    : ledger.closingCash;
+  const resolving = finActions.some(a => a.kind !== 'repay');
+  const solvency = assessSolvency(
+    opening.solvency, input.quarter, ledger.closingCash, projectedWithoutResolution, ledger.netCashFlow, resolving,
+    decided.financing.debt, ledger.operatingProfit
+  );
+  const rec = solvency.history[solvency.history.length - 1];
+
   const flags: string[] = [];
+  if (rec.liquidityEvent) flags.push('LIQUIDITY_EVENT');
+  if (rec.unresolved) flags.push('LIQUIDITY_UNRESOLVED');
+  if (rec.status === 'insolvent') flags.push('INSOLVENT');
+  if (rec.covenantBreach) flags.push('COVENANT_BREACH');
   if (ledger.operatingProfit < 0) flags.push('OPERATING_LOSS');
   if (ledger.closingCash < 0) flags.push('NEGATIVE_CASH');
   if (ledger.openingCash >= 0 && ledger.closingCash < 0) flags.push('CASH_CROSSED_BELOW_ZERO');
@@ -903,6 +983,9 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     decisionLog: decided.log,
     management: decided.management,
     managementSummary: decided.managementSummary,
+    financing: decided.financing,
+    solvency,
+    financingOptions: decided.financingOptions,
   };
 }
 
@@ -937,10 +1020,35 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     contracts: consequence.contracts,
     decisionLog: [...state.decisionLog, ...consequence.decisionLog],
     management: consequence.management,
+    financing: consequence.financing,
+    solvency: consequence.solvency,
+    debt: consequence.financing.debt,
     ledgerHistory: [...state.ledgerHistory, ledger],
     capabilityHistory: [...state.capabilityHistory, capability],
     commercialHistory: [...state.commercialHistory, consequence.commercial],
     revenueHistory: [...state.revenueHistory, consequence.revenue],
     costHistory: [...state.costHistory, consequence.cost],
+  };
+}
+
+/**
+ * CFO forecast: the quarter as planned WITHOUT any financing/restructuring action, plus the financing terms on offer.
+ * Pure. Used by players (Test Lab policies) to decide how to resolve a liquidity gap before committing the quarter.
+ */
+export function assessLiquidity(opening: V2TeamState, input: V2QuarterInput): {
+  projectedClosingCash: number;
+  minimumOperatingCash: number;
+  gap: number;
+  options: V2FinancingOptions;
+  consequence: V2Consequence;
+} {
+  const consequence = calculateV2QuarterConsequence(opening, { ...input, decisions: { ...input.decisions, financing: [] } });
+  const min = V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash;
+  return {
+    projectedClosingCash: consequence.ledger.closingCash,
+    minimumOperatingCash: min,
+    gap: Math.max(0, min - consequence.ledger.closingCash),
+    options: consequence.financingOptions,
+    consequence,
   };
 }

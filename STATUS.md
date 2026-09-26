@@ -38,6 +38,21 @@ financing items (ledger). Culture now modulates effective capacity (×(1 + 0.006
   (pricing-power-scaled volume response), close weak offerings (−6% consumer, −5.5% pool, $3M wind-down, +capacity).
   Slow/protect/continue investing via allocation. Deep cut by Q12: +$43–49M cash, −6–7% revenue, Talent −19, Culture −20.
 
+## Financing & Solvency (PASS)
+
+- `engineV2Financing.ts`. Liquidity triggers: minimum operating cash $15M (warning below; insolvent below 0), comfortable
+  ≥ $40M and ≥ 4 qtrs runway (else watch); covenant: debt > 4× annualized OP. Liquidity event = no-action counterfactual
+  closing < $15M (engine recomputes it); unresolved/insufficient → INSOLVENT (stored: status, everInsolvent,
+  insolventQuarters, history). While insolvent: Trust −5, Talent −4, Culture −6, retention −3, win rate −3, $2M distress
+  cost per quarter; debt capacity 0; equity at 0.4× valuation.
+- Equity: financing line; dilution = amount/(pre-money + amount); pre-money = 4×revenue × clamp(1 + 5g + 3m + 0.8·AI + 0.5·dest,
+  0.5, 4) + cash − debt (× 0.7 distressed / 0.4 insolvent); ≤ 50% of pre-money per raise. Baseline pre-money $1,220M.
+- Debt: capacity min(2.5× annualized OP, 0.4× annual revenue) − debt; rate 2%/qtr + 0.25%/turn above 1× + 1.5% distressed;
+  interest = opening debt × rate as the cost architecture's financing cost (only place); repay = negative financing.
+- Partner: $30M + $40M × strategic value (≥ 0.35), 6% stake, 6% revenue share on Enterprise + AI-native (variable cost),
+  right of first refusal. Restructuring: moderate/deep 8%/16% of pool, 2× event cost, Culture/Execution/Capacity/Talent damage.
+- Structural minimum fixed pool $69.3M (60% of start). No cash floor; no hidden rescue (financing = Σ explicit actions).
+
 ---
 
 ## Batch 2 status (approved at 9af2aac) — Q1–Q4 Strategic Arc

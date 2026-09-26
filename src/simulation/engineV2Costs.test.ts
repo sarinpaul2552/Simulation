@@ -64,6 +64,7 @@ describe('Phase 3A: baseline economics', () => {
   it('module imports only V2 types', () => {
     const froms = [...engineV2CostsSource.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
     expect(froms.sort()).toEqual(['./engineV2Commercial', './engineV2Effects', './engineV2Revenue']);
+    expect(engineV2CostsSource).not.toMatch(/from '\.\/engine'/);
   });
 });
 

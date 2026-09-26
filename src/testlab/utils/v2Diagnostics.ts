@@ -581,8 +581,8 @@ export const V2_SCENARIOS: V2Scenario[] = [
   {
     id: 'cash-below-zero',
     name: 'Cash crossing below zero',
-    description: 'Injected revenue $160M vs opex $170M, full $30M invested every quarter: −$40M/quarter. 60 → 20 → −20 → −60 → −100. No floor, no financing.',
-    steps: [20, -20, -60, -100].map((expected, i) => ({
+    description: 'Injected revenue $160M vs opex $170M, full $30M invested every quarter: −$40M/quarter. 60 → 20 → −20 → −62 → −104. No floor, no financing. Batch 3: once insolvent (Q2) and unresolved, each later quarter carries a $2M itemised distress cost and the INSOLVENT/LIQUIDITY flags.',
+    steps: [20, -20, -62, -104].map((expected, i) => ({
       allocation: alloc({ consumer: 6, enterprise: 6, aiProduct: 6, people: 6, universityCredentials: 6 }),
       strategicEnvelope: 30,
       operatingInputs: { revenue: 160, operatingCost: 170 },
@@ -590,8 +590,8 @@ export const V2_SCENARIOS: V2Scenario[] = [
       expectedStrategicInvestment: 30,
       expectedClosingCash: expected,
       expectedFlags: i === 1
-        ? ['OPERATING_LOSS', 'NEGATIVE_CASH', 'CASH_CROSSED_BELOW_ZERO']
-        : i > 1 ? ['OPERATING_LOSS', 'NEGATIVE_CASH'] : ['OPERATING_LOSS'],
+        ? ['OPERATING_LOSS', 'NEGATIVE_CASH', 'CASH_CROSSED_BELOW_ZERO', 'LIQUIDITY_EVENT', 'LIQUIDITY_UNRESOLVED', 'INSOLVENT']
+        : i > 1 ? ['OPERATING_LOSS', 'NEGATIVE_CASH', 'LIQUIDITY_EVENT', 'LIQUIDITY_UNRESOLVED', 'INSOLVENT'] : ['OPERATING_LOSS'],
     })),
   },
   {

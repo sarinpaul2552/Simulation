@@ -13,7 +13,7 @@ import {
   V2PlayerSignal,
   V2SignalCompanyView,
 } from '../../simulation/engineV2Scenario';
-import { V2QuarterDecisions, V2ManagementActions } from '../../simulation/engineV2';
+import { V2QuarterDecisions, V2ManagementActions, V2FinancingAction, V2QuarterInput, assessLiquidity } from '../../simulation/engineV2';
 import { V2OpportunityTerms, opportunityTerms } from '../../simulation/engineV2Opportunity';
 import { V2QuarterRecord, runV2Quarter } from './v2Diagnostics';
 import { V2DestinationId, V2_DESTINATIONS, V2_DESTINATION_IDS } from '../../simulation/engineV2Destination';
@@ -52,6 +52,56 @@ export interface V2ArcPolicy {
   opportunity: (ctx: V2ArcContext, terms: V2OpportunityTerms) => boolean;
   /** Q6: recession response — management actions plus (optionally) a revised allocation (slow / protect / continue). */
   recession: (ctx: V2ArcContext, planned: V2Allocation) => { actions: V2ManagementActions; allocation?: V2Allocation };
+  /**
+   * Every quarter: the CFO forecast (quarter as planned, no financing action) and the terms on offer. Return explicit
+   * financing/restructuring actions and optionally a deferred allocation. Returning nothing = management refuses.
+   */
+  liquidity: (ctx: V2ArcContext, forecast: V2LiquidityForecast, planned: V2Allocation) => { actions: V2FinancingAction[]; allocation?: V2Allocation };
+}
+
+export type V2LiquidityForecast = ReturnType<typeof assessLiquidity> & { reforecast: (allocation: V2Allocation) => number };
+
+/** Target closing cash a prudent CFO defends (minimum operating cash + $10M buffer). */
+export const LIQUIDITY_TARGET = 25;
+
+export type V2FinancingPreference = 'debt-first' | 'equity-first' | 'restructure-first' | 'partner-first' | 'refuse';
+
+/**
+ * Liquidity policy factory. When the forecast falls below the target: defer up to half of non-protected investment,
+ * then use the preferred instrument(s) up to what is available. Repays debt from surplus cash above $90M.
+ */
+export function liquidityPolicy(pref: V2FinancingPreference, deferShare = 0.5): V2ArcPolicy['liquidity'] {
+  return (ctx, fc, planned) => {
+    if (pref === 'refuse') return { actions: [] };
+    const actions: V2FinancingAction[] = [];
+    let allocation: V2Allocation | undefined;
+    let projected = fc.projectedClosingCash;
+    const debt = ctx.state.financing.debt;
+    if (projected >= LIQUIDITY_TARGET) {
+      if (debt > 0 && projected > 90) actions.push({ kind: 'repay', amount: Math.min(debt, projected - 90) });
+      return { actions };
+    }
+    const protect = (ctx.state.destination ? alignedBucketsOf(ctx.state.destination.id) : []) as (keyof V2Allocation)[];
+    const invested = planned.consumer + planned.enterprise + planned.aiProduct + planned.people + planned.universityCredentials;
+    if (deferShare > 0 && invested > 0) {
+      allocation = slowInvestment(planned, Math.min(LIQUIDITY_TARGET - projected, invested * deferShare), protect);
+      projected = fc.reforecast(allocation);
+    }
+    const o = fc.options;
+    const order: ('debt' | 'equity' | 'restructure' | 'partner')[] =
+      pref === 'equity-first' ? ['equity', 'debt', 'partner'] :
+      pref === 'restructure-first' ? ['restructure', 'debt', 'equity', 'partner'] :
+      pref === 'partner-first' ? ['partner', 'debt', 'equity'] : ['debt', 'equity', 'partner'];
+    for (const inst of order) {
+      const need = LIQUIDITY_TARGET - projected;
+      if (need <= 0) break;
+      if (inst === 'debt' && o.debtCapacity > 1) { const x = Math.min(need, o.debtCapacity); actions.push({ kind: 'debt', amount: x }); projected += x; }
+      if (inst === 'equity' && o.maxEquity > 1) { const x = Math.min(need, o.maxEquity); actions.push({ kind: 'equity', amount: x }); projected += x; }
+      if (inst === 'partner' && o.partner.available) { actions.push({ kind: 'partner' }); projected += o.partner.cash; }
+      if (inst === 'restructure') { const sv = o.restructuringSavings.moderate; actions.push({ kind: 'restructure', depth: 'moderate' }); projected += sv - 2 * sv; }
+    }
+    return { actions, allocation };
+  };
 }
 
 /** Move `amount` of the planned investment into Cash Reserve, cutting non-protected buckets pro rata. */
@@ -85,6 +135,7 @@ export const DEFAULT_POLICY: V2ArcPolicy = {
     const protect = (ctx.state.destination ? alignedBucketsOf(ctx.state.destination.id) : []) as (keyof V2Allocation)[];
     return { actions, allocation: thin ? slowInvestment(planned, 10, protect) : undefined };
   },
+  liquidity: liquidityPolicy('debt-first'),
 };
 
 function alignedBucketsOf(id: V2DestinationId): string[] {
@@ -185,6 +236,16 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
       decisions.management = r.actions;
       if (r.allocation) finalAllocation = r.allocation;
     }
+    const inputFor = (alloc: V2Allocation, dec: V2QuarterDecisions): V2QuarterInput => ({
+      quarter: q, allocation: alloc, strategicEnvelope: ENVELOPE, market: getScenarioMarket(q),
+      revenueSource: V2_INTEGRATED_MODE.revenueSource, costSource: V2_INTEGRATED_MODE.costSource, destination, decisions: dec,
+    });
+    // CFO forecast and explicit liquidity resolution
+    const base = assessLiquidity(state, inputFor(finalAllocation, decisions));
+    const forecast: V2LiquidityForecast = { ...base, reforecast: alloc => assessLiquidity(state, inputFor(alloc, decisions)).projectedClosingCash };
+    const liq = policy.liquidity(ctx, forecast, finalAllocation);
+    if (liq.allocation) finalAllocation = liq.allocation;
+    if (liq.actions.length > 0) decisions.financing = liq.actions;
     const record = runV2Quarter(state, q, finalAllocation, ENVELOPE, undefined, undefined, getScenarioMarket(q), {
       revenueSource: V2_INTEGRATED_MODE.revenueSource,
       costSource: V2_INTEGRATED_MODE.costSource,

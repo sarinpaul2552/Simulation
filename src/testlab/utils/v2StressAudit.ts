@@ -187,7 +187,11 @@ export function runV2StressCase(stress: V2StressCase): V2StressResult {
     const margin = L.operatingProfit / L.revenue;
     minMargin = Math.min(minMargin, margin);
     maxMargin = Math.max(maxMargin, margin);
-    if (margin < T.marginBand[0] || margin > T.marginBand[1]) anomalies.push({ detector: 'margin-out-of-band', quarter: q, detail: `${(margin * 100).toFixed(1)}%` });
+    // Batch 3: an insolvent company in an explicit distress spiral is a solvency outcome (reported by the solvency
+    // state and the terminal viability gate), not an economic-model defect.
+    const insolventEntering = C.solvency.history.length > 1 && C.solvency.history[C.solvency.history.length - 2].status === 'insolvent';
+    if ((margin < T.marginBand[0] || margin > T.marginBand[1]) && !insolventEntering) anomalies.push({ detector: 'margin-out-of-band', quarter: q, detail: `${(margin * 100).toFixed(1)}%` });
+    if (insolventEntering && margin < T.marginBand[0]) anomalies.push({ detector: 'insolvent-distress-spiral', quarter: q, detail: `${(margin * 100).toFixed(1)}%` });
 
     // 6. Cost disappearing when revenue falls: measured from the revenue peak so segment mix shifts
     //    (e.g. Consumer down, AI-native up) are not mistaken for costs vanishing.
