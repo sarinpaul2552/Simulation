@@ -150,6 +150,77 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
       'No segment is favoured; Q1 should establish hypotheses, not reveal the answer.',
     ],
   },
+  {
+    quarter: 2,
+    id: 'q2-generative-ai-disruption',
+    title: 'Q2 — Generative AI Disruption',
+    briefing:
+      'Consumer-grade generative AI reaches mass adoption within weeks. Free AI tutors undercut paid consumer learning; ' +
+      'acquisition gets more expensive and differentiation erodes. Enterprises urgently ask how AI changes workforce ' +
+      'learning. AI-native learning products see a surge of interest. Universities are cautious but stable.',
+    demand: {
+      consumerDemand: 0.93,
+      consumerCommoditization: 0.35,
+      consumerCacPressure: 1.15,
+      enterpriseDemand: 1.05,
+      enterpriseAIDemand: 1.35,
+      universityDemand: 1.0,
+      aiNativeDemand: 1.7,
+      macroPressure: 0,
+    },
+    competitorProgress: { consumer: 1.5, enterprise: 1.0, credential: 0.5 },
+    structuralChanges: [
+      { field: 'aiNative', from: 80, to: 150, rationale: 'Generative AI creates a structurally larger AI-native learning market (new use cases, new buyers).' },
+      { field: 'enterprise', from: 120, to: 135, rationale: 'AI-enabled workforce reskilling widens the addressable enterprise learning budget.' },
+    ],
+    signals: [
+      {
+        id: 'q2-ai-disruption', audience: 'all', topic: 'ai-native', reliability: 'headline',
+        headline: 'Consumer AI assistants pass 100M users; AI tutoring app downloads up ~70% in a quarter.',
+        shownValue: 70, unit: '% downloads',
+        truthReference: { field: 'aiNativeDemand', value: 1.7, note: 'AI-native demand index; paying demand still depends on readiness/adoption' },
+      },
+      {
+        id: 'q2-consumer-conversion', audience: 'all', topic: 'consumer', reliability: 'estimate',
+        headline: 'Consumer trial-to-paid conversion is falling; analysts estimate −4% to −12% category demand.',
+        shownRange: [-12, -4], unit: '% demand',
+        truthReference: { field: 'consumerDemand', value: 0.93, note: '−7%' },
+      },
+      {
+        id: 'q2-consumer-cac', audience: 'Growth', topic: 'consumer', reliability: 'headline',
+        headline: 'Paid acquisition costs up ~15% as AI-native apps bid for the same audiences; price comparison intensifies.',
+        shownValue: 15, unit: '% CAC',
+        truthReference: { field: 'consumerCacPressure', value: 1.15, note: 'plus commoditization 0.35' },
+      },
+      {
+        id: 'q2-enterprise-interest', audience: 'all', topic: 'enterprise', reliability: 'headline',
+        headline: 'Chief learning officers report 30%+ more interest in AI upskilling programmes; budgets not yet reallocated.',
+        shownValue: 30, unit: '% interest',
+        truthReference: { field: 'enterpriseAIDemand', value: 1.35, note: 'enterpriseDemand 1.05; monetization needs Enterprise capability + CS + Trust' },
+      },
+      {
+        id: 'q2-university', audience: 'CEO', topic: 'university', reliability: 'headline',
+        headline: 'University partners are debating AI policy; renewal intentions unchanged.',
+        truthReference: { field: 'universityDemand', value: 1.0, note: 'stable' },
+      },
+      {
+        id: 'q2-competition', audience: 'all', topic: 'competition', reliability: 'headline',
+        headline: 'Well-funded AI-native entrants are launching consumer learning products at speed.',
+        truthReference: { field: 'competitorProgress.consumer', value: 1.5, note: 'consumer benchmark doubles its pace' },
+      },
+      {
+        id: 'q2-product-readiness', audience: 'Product', topic: 'ai-native', reliability: 'estimate',
+        headline: 'Engineering estimate: shipping credible AI features needs sustained AI and product investment for 2–3 quarters.',
+        shownRange: [2, 3], unit: 'quarters',
+      },
+    ],
+    designNotes: [
+      'Temporary (this quarter): consumer demand 0.93, commoditization 0.35, CAC pressure 1.15, enterprise demand 1.05, enterprise AI demand 1.35, AI-native demand 1.7.',
+      'Benchmark acceleration: consumer 0.75 → 1.5 /qtr, enterprise 0.75 → 1.0 /qtr.',
+      'Structural: AI-native capacity 80 → 150, enterprise 120 → 135. Consumer capacity NOT reduced (pressure is demand/commoditization, not ceiling).',
+      'AI-enabled Consumer defense operates through the existing commoditization shield (AI readiness) in retention.',
+    ],
+  },
 ];
 
 // ============ MARKET CONSTRUCTION ============

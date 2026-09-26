@@ -13,6 +13,13 @@ market size separately (demand = near-term activity; `segmentCapacity` = structu
   the arc in the integrated economy; Mode 5 section H.
 - Q1 = neutral competitive market exactly. No Q1 winner (baseline strategies within ±0.3% of $200M).
 
+## Q2 — Generative AI Disruption (PASS)
+
+- Temporary demand: consumer 0.93, commoditization 0.35, CAC pressure 1.15; enterprise 1.05, enterprise AI 1.35;
+  AI-native 1.7; university 1.0. Benchmark acceleration: consumer 1.5/qtr, enterprise 1.0/qtr.
+- Structural (persisting): AI-native capacity 80 → 150; enterprise 120 → 135. Consumer capacity unchanged.
+- Flows only via market inputs; AI readiness shields consumer retention; enterprise AI interest needs capability.
+
 ---
 
 ## Batch 1 status (approved at c91802c)
