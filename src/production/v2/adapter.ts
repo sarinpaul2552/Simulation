@@ -507,7 +507,7 @@ export function explainQuarter(before: V2TeamState, after: V2TeamState, c: V2Con
     .sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
   const moved = segs.filter(x => Math.abs(x.d) >= 0.5).slice(0, 2).map(x => `${SEGMENT_LABEL[x.k]} ${x.d >= 0 ? 'up' : 'down'} ${money(x.d)}`);
   push('revenue', dRev >= 0.5 ? 'positive' : dRev <= -0.5 ? 'negative' : 'neutral',
-    `Revenue ${dRev >= 0.5 ? 'grew' : dRev <= -0.5 ? 'fell' : 'held roughly flat'} to ${money(L.revenue)} this quarter${moved.length ? ` (${moved.join('; ')})` : ''}.`);
+    `Revenue ${dRev >= 0.5 ? 'grew to' : dRev <= -0.5 ? 'fell to' : 'held roughly flat at'} ${money(L.revenue)} this quarter${moved.length ? ` (${moved.join('; ')})` : ''}.`);
 
   // Customer indicators with their main cause
   const ind = (id: string) => c.commercial.indicators.find(i => i.indicator === id);
