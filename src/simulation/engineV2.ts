@@ -55,6 +55,14 @@ import {
 
 export type { V2CommercialState, V2CommercialConsequence, V2MarketConditions } from './engineV2Commercial';
 import { V2CostConsequence, V2CostState, calculateV2CostConsequence, getV2CostBaseline } from './engineV2Costs';
+import {
+  V2DestinationId,
+  V2DestinationState,
+  V2DestinationEffects,
+  commitDestination,
+  destinationEffects,
+} from './engineV2Destination';
+export type { V2DestinationId, V2DestinationState, V2DestinationEffects } from './engineV2Destination';
 
 export type { V2BookingCohort, V2RevenueConsequence, V2SegmentRevenue } from './engineV2Revenue';
 export type { V2CostConsequence, V2CostState, V2CostCommitment } from './engineV2Costs';
@@ -177,6 +185,9 @@ export interface V2TeamState {
   /** Phase 3A operating cost structure (fixed/semi-fixed pool + recurring commitment cohorts). */
   costs: V2CostState;
 
+  /** Batch 2 · Q4 strategic destination (null until committed). */
+  destination: V2DestinationState | null;
+
   /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
   /** Every completed quarter's capability consequence, in order. */
@@ -212,6 +223,12 @@ export interface V2QuarterInput {
    * revenueSource 'segment'): ledger operating cost = fixed/semi-fixed + variable + commitments.
    */
   costSource?: 'hold' | 'modelled';
+  /**
+   * Batch 2 · Q4: commit to a strategic destination this quarter. Allowed once (when no destination
+   * exists); repeating the same destination is a no-op. Switching is architecturally supported by
+   * V2DestinationState (history + transition) but not yet enabled.
+   */
+  destination?: V2DestinationId;
 }
 
 /**
@@ -239,6 +256,9 @@ export interface V2Consequence {
   costSource: 'hold' | 'modelled';
   // Integrated financial summary (Phase 3B) — derived from the ledger only
   financials: V2FinancialSummary;
+  // Strategic destination (Batch 2 · Q4) — effects on focus/ceiling/access/transition only
+  destination: V2DestinationEffects;
+  destinationState: V2DestinationState | null;
 }
 
 export interface V2IdentityCheck {
@@ -351,6 +371,7 @@ export function getV2Baseline(): V2TeamState {
     enterpriseBacklog: revenueBaseline.enterpriseBacklog,
     universityBacklog: revenueBaseline.universityBacklog,
     costs: getV2CostBaseline(),
+    destination: null,
     ledgerHistory: [],
     capabilityHistory: [],
     commercialHistory: [],
@@ -525,15 +546,46 @@ export function checkV2AccountingIdentity(
 export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2QuarterInput): V2Consequence {
   const market = input.market ?? getNeutralMarket();
 
+  // Strategic destination (Batch 2 · Q4): commit once; effects change focus, ceilings, access and transition only
+  let destinationState = opening.destination;
+  if (input.destination !== undefined) {
+    if (destinationState === null) {
+      destinationState = commitDestination(input.destination, opening, input.quarter);
+    } else if (destinationState.id !== input.destination) {
+      throw new Error(`Destination switching (${destinationState.id} → ${input.destination}) is not yet implemented`);
+    }
+  }
+  const destination = destinationEffects(destinationState, input.quarter);
+  const accessibleMarket: V2MarketConditions = {
+    ...market,
+    segmentCapacity: {
+      consumer: market.segmentCapacity.consumer * destination.accessMultiplier.consumer,
+      enterprise: market.segmentCapacity.enterprise * destination.accessMultiplier.enterprise,
+      university: market.segmentCapacity.university * destination.accessMultiplier.university,
+      aiNative: market.segmentCapacity.aiNative * destination.accessMultiplier.aiNative,
+    },
+  };
+
   // Capability consequence (Phase 2B) — never touches cash
-  const capability = calculateV2CapabilityConsequence(opening, input.allocation, input.quarter);
+  const capability = calculateV2CapabilityConsequence(
+    opening,
+    input.allocation,
+    input.quarter,
+    destination.destinationId ? destination : undefined
+  );
   const capabilityFlags: string[] = [];
   if (capability.absorptionFactor < 1) capabilityFlags.push('ABSORPTION_PENALTY');
   if (capability.loadToCapacityRatio > 1) capabilityFlags.push('LOAD_EXCEEDS_CAPACITY');
   if (capability.targets.some(t => t.wastedSaturation > 1e-9)) capabilityFlags.push('CAPABILITY_SATURATION_WASTE');
 
   // Commercial consequence (Phase 2C) — reads post-maturation capabilities + market; never touches cash
-  const commercial = calculateV2CommercialConsequence(opening.commercial, capability.closing, market, input.quarter);
+  const commercial = calculateV2CommercialConsequence(
+    opening.commercial,
+    capability.closing,
+    market,
+    input.quarter,
+    destination.destinationId ? destination.commercialization : undefined
+  );
   const commercialFlags = commercial.indicators.filter(i => i.clipped).map(i => `CLIPPED_${i.indicator}`);
 
   // Segment revenue consequence (Phase 2D) — reads commercial state; investment never enters
@@ -542,7 +594,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     opening.commercial,
     commercial,
     capability.closing,
-    market,
+    accessibleMarket,
     input.quarter
   );
   const revenueSource = input.revenueSource ?? 'hold';
@@ -577,6 +629,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   return {
     quarter: input.quarter, ledger, identity, flags, capability, capabilityFlags, commercial, commercialFlags,
     revenue, revenueSource, cost, costSource, financials: summarizeV2Financials(ledger),
+    destination, destinationState,
   };
 }
 
@@ -607,6 +660,7 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     enterpriseBacklog: consequence.revenue.closing.enterpriseBacklog,
     universityBacklog: consequence.revenue.closing.universityBacklog,
     costs: consequence.cost.closing,
+    destination: consequence.destinationState,
     ledgerHistory: [...state.ledgerHistory, ledger],
     capabilityHistory: [...state.capabilityHistory, capability],
     commercialHistory: [...state.commercialHistory, consequence.commercial],

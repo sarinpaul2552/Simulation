@@ -412,13 +412,31 @@ export interface V2CommercialConsequence {
  * @param company    capability state AFTER this quarter's maturation (Phase 2B closing)
  * @param market     injectable market conditions
  */
+/**
+ * Destination commercialization focus (Batch 2 · Q4). Multipliers (≥ 1) on the POSITIVE,
+ * capability-driven contributions of the destination's focus segment(s): a focused company
+ * converts its aligned capabilities into commercial evidence more effectively. Weaknesses are
+ * never amplified and nothing here touches revenue. Absent = identical to Phase 2C.
+ */
+export interface V2CommercializationFocus {
+  consumer: number;
+  enterprise: number;
+  university: number;
+  /** Premium: Product Quality/Trust support terms and pricing power. */
+  premium: number;
+}
+
+const posScale = (x: number, m: number) => (x > 0 ? x * m : x);
+
 export function calculateV2CommercialConsequence(
   opening: V2CommercialState,
   company: V2CommercialCapabilityInput,
   market: V2MarketConditions,
-  quarter: number
+  quarter: number,
+  focus?: V2CommercializationFocus
 ): V2CommercialConsequence {
   const K = V2_COMMERCIAL_CALIBRATION;
+  const fc = focus ?? { consumer: 1, enterprise: 1, university: 1, premium: 1 };
   const caps = company.capabilities;
   const pq = company.productQuality;
   const trust = company.trust;
@@ -444,9 +462,9 @@ export function calculateV2CommercialConsequence(
   const consumerSupport = kc.supportFloor + (1 - kc.supportFloor) * ramp(Math.min(pq, trust), kc.supportRamp[0], kc.supportRamp[1]);
   const consumerStrength = ramp(caps.consumer, kc.consumerStrengthRamp[0], kc.consumerStrengthRamp[1]);
   const retCapRaw = kc.retentionPerRelCapability * relativeCapability.consumer;
-  const retCap = scalePositive(retCapRaw, consumerSupport);
-  const retAi = kc.retentionAiSynergy * aiEffect * consumerStrength;
-  const retDep = kc.retentionPerTrust * (trust - 70) + kc.retentionPerProductQuality * (pq - 70);
+  const retCap = posScale(scalePositive(retCapRaw, consumerSupport), fc.consumer);
+  const retAi = kc.retentionAiSynergy * aiEffect * consumerStrength * fc.consumer;
+  const retDep = posScale(kc.retentionPerTrust * (trust - 70) + kc.retentionPerProductQuality * (pq - 70), fc.premium);
   const retMkt =
     kc.mktDemand * (market.consumerDemand - 1) -
     kc.mktCommoditization * market.consumerCommoditization * (1 - 0.5 * aiEffect) -
@@ -465,7 +483,7 @@ export function calculateV2CommercialConsequence(
   );
 
   // ---- Consumer CAC Index (higher is worse) ----
-  const cacCap = -scalePositive(kc.cacPerRelCapability * relativeCapability.consumer, consumerSupport);
+  const cacCap = -posScale(scalePositive(kc.cacPerRelCapability * relativeCapability.consumer, consumerSupport), fc.consumer);
   const cacDep = -kc.cacPerProductQuality * (pq - 70);
   const cacMkt =
     kc.cacMktPressure * (market.consumerCacPressure - 1) -
@@ -486,7 +504,7 @@ export function calculateV2CommercialConsequence(
   const ke = K.enterprise;
   const csScale = ke.inflowCsScaleFloor + (1 - ke.inflowCsScaleFloor) * ramp(caps.customerSuccess, ke.csRamp[0], ke.csRamp[1]);
   const effEntDemand = market.enterpriseDemand * (1 - ke.inflowMacro * market.macroPressure);
-  const entCapTerm = ke.inflowCapabilityAmplitude * Math.tanh(relativeCapability.enterprise / ke.inflowCapabilityScale);
+  const entCapTerm = posScale(ke.inflowCapabilityAmplitude * Math.tanh(relativeCapability.enterprise / ke.inflowCapabilityScale), fc.enterprise);
   const entInflowMkt = ke.baseInflow * (effEntDemand - 1);
   const entInflowCap = ke.baseInflow * effEntDemand * entCapTerm;
   const entInflowDep = ke.baseInflow * effEntDemand * (scalePositive(entCapTerm, csScale) - entCapTerm);
@@ -517,7 +535,7 @@ export function calculateV2CommercialConsequence(
   const entStrength = ramp(caps.enterprise, ke.enterpriseStrengthRamp[0], ke.enterpriseStrengthRamp[1]);
   const winCapRaw = ke.winPerRelCapability * relativeCapability.enterprise;
   const winAiRaw = ke.winAiSynergy * aiEffect * entStrength;
-  const winCap = scalePositive(winCapRaw, csLimit) + winAiRaw * csLimit;
+  const winCap = posScale(scalePositive(winCapRaw, csLimit) + winAiRaw * csLimit, fc.enterprise);
   const winDep =
     ke.winPerProductQuality * (pq - 70) +
     ke.winPerTrust * (trust - 70) +
@@ -579,7 +597,7 @@ export function calculateV2CommercialConsequence(
   const ku = K.university;
   const trustSupport = ramp(trust, ku.trustRamp[0], ku.trustRamp[1]);
   const effUniDemand = market.universityDemand * (1 - ku.inflowMacro * market.macroPressure);
-  const uniCapTerm = ku.inflowCapabilityAmplitude * Math.tanh(relativeCapability.credential / ku.inflowCapabilityScale);
+  const uniCapTerm = posScale(ku.inflowCapabilityAmplitude * Math.tanh(relativeCapability.credential / ku.inflowCapabilityScale), fc.university);
   const uniInflowMkt = ku.baseInflow * (effUniDemand - 1);
   const uniInflowCap = ku.baseInflow * effUniDemand * uniCapTerm;
   const uniInflowDep = ku.baseInflow * effUniDemand * (scalePositive(uniCapTerm, trustSupport) - uniCapTerm);
@@ -605,7 +623,7 @@ export function calculateV2CommercialConsequence(
   });
 
   // ---- University Renewal Rate ----
-  const renCap = scalePositive(ku.renewalPerRelCapability * relativeCapability.credential, trustSupport);
+  const renCap = posScale(scalePositive(ku.renewalPerRelCapability * relativeCapability.credential, trustSupport), fc.university);
   const renDep = ku.renewalPerTrust * (trust - 70);
   const renMkt = ku.renewalMktDemand * (market.universityDemand - 1) - ku.renewalMktMacro * market.macroPressure;
   const universityRenewalRate = levelIndicator(
@@ -620,8 +638,8 @@ export function calculateV2CommercialConsequence(
 
   // ---- Pricing Power (slow composite) ----
   const kp = K.pricing;
-  const ppCap = kp.aiDifferentiation * aiEffect + kp.perRelCapability * ((relativeCapability.consumer + relativeCapability.enterprise) / 2);
-  const ppDep = kp.perProductQuality * (pq - 70) + kp.perTrust * (trust - 70);
+  const ppCap = posScale(kp.aiDifferentiation * aiEffect + kp.perRelCapability * ((relativeCapability.consumer + relativeCapability.enterprise) / 2), fc.premium);
+  const ppDep = posScale(kp.perProductQuality * (pq - 70) + kp.perTrust * (trust - 70), fc.premium);
   const ppMkt = -kp.mktCommoditization * market.consumerCommoditization - kp.mktMacro * market.macroPressure;
   const pricingPower = levelIndicator(
     'pricingPower', opening.pricingPower, V2_COMMERCIAL_START.pricingPower, kp.speed,

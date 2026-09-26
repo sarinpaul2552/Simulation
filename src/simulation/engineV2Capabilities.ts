@@ -172,9 +172,15 @@ export interface V2CapabilityConsequence {
   bucketLoad: number;
   /** Buckets (never Cash Reserve) with ≥ V2_ACTIVE_INITIATIVE_THRESHOLD this quarter. */
   activeInitiatives: V2CapabilityBucket[];
-  /** Initiative breadth / coordination load from the active-initiative count. */
+  /** Initiative breadth / coordination load from the active-initiative count (focus may merge aligned initiatives). */
   coordinationLoad: number;
-  /** Total Transformation Load = bucketLoad + coordinationLoad. */
+  /** Destination focus: load removed from aligned buckets (0 without a destination). */
+  alignedLoadReduction: number;
+  /** Destination transition load added this quarter (0 without a destination). */
+  transitionLoad: number;
+  /** Capability ceiling applied per target this quarter (100 unless a destination raises it). */
+  ceilings: Record<V2CapabilityTarget, number>;
+  /** Total Transformation Load = bucketLoad − alignedLoadReduction + coordinationLoad + transitionLoad. */
   transformationLoad: number;
   loadToCapacityRatio: number;
   absorptionFactor: number;
@@ -394,10 +400,27 @@ export interface V2CapabilityInvestment {
  * 5. All cohorts (pending + new) mature their scheduled tranche this quarter.
  * 6. Tranches summed per target, added to stock, capped at 100; excess reported as wasted.
  */
+/**
+ * Optional strategic focus (Batch 2 · Q4 destinations). Absent = no destination: behaviour is
+ * identical to Phase 2B/2C. Supplied by engineV2Destination (structurally compatible).
+ */
+export interface V2CapabilityFocus {
+  alignedBuckets: V2CapabilityBucket[];
+  /** Multiplier on aligned buckets' calibrated load (≤ 1). */
+  alignedLoadMultiplier: number;
+  /** 0 = full coordination count; 1 = aligned active initiatives count as one. */
+  coordinationMergeWeight: number;
+  /** Organizational transition load added this quarter. */
+  transitionLoad: number;
+  /** Per-target capability ceiling (default V2_CAPABILITY_MAX). */
+  ceilings: Partial<Record<V2CapabilityTarget, number>>;
+}
+
 export function calculateV2CapabilityConsequence(
   opening: V2CapabilityState,
   investment: V2CapabilityInvestment,
-  quarter: number
+  quarter: number,
+  focus?: V2CapabilityFocus
 ): V2CapabilityConsequence {
   // 1. Per-bucket nominal gains and load
   const buckets: V2BucketInvestmentDetail[] = V2_CAPABILITY_BUCKETS.map(bucket => {
@@ -413,8 +436,17 @@ export function calculateV2CapabilityConsequence(
   // 2–3. Aggregate load (bucket + coordination) and absorption
   const bucketLoad = buckets.reduce((s, b) => s + b.transformationLoad, 0);
   const activeInitiatives = countActiveInitiatives(investment);
-  const coordination = coordinationLoad(activeInitiatives.length);
-  const transformationLoad = bucketLoad + coordination;
+  const aligned = new Set(focus?.alignedBuckets ?? []);
+  const alignedLoadReduction = buckets
+    .filter(b => aligned.has(b.bucket))
+    .reduce((s, b) => s + b.transformationLoad * (1 - (focus?.alignedLoadMultiplier ?? 1)), 0);
+  const fullCoordination = coordinationLoad(activeInitiatives.length);
+  const alignedActive = activeInitiatives.filter(b => aligned.has(b)).length;
+  const mergedCount = activeInitiatives.length - alignedActive + (alignedActive > 0 ? 1 : 0);
+  const w = focus?.coordinationMergeWeight ?? 0;
+  const coordination = (1 - w) * fullCoordination + w * coordinationLoad(mergedCount);
+  const transitionLoad = focus?.transitionLoad ?? 0;
+  const transformationLoad = bucketLoad - alignedLoadReduction + coordination + transitionLoad;
   const openingOrganizationalCapacity = opening.organizationalCapacity;
   if (!(openingOrganizationalCapacity > 0)) {
     throw new Error(`Organizational Capacity must be positive, got ${openingOrganizationalCapacity}`);
@@ -494,11 +526,15 @@ export function calculateV2CapabilityConsequence(
     technicalDebt: opening.technicalDebt,
   };
 
+  const ceilings = Object.fromEntries(
+    V2_CAPABILITY_TARGETS.map(t => [t, focus?.ceilings[t] ?? V2_CAPABILITY_MAX])
+  ) as Record<V2CapabilityTarget, number>;
+
   const targets: V2TargetSummary[] = V2_CAPABILITY_TARGETS.map(target => {
     const openingValue = readTarget(opening, target);
     const matured = maturedByTarget.get(target) ?? 0;
     const uncapped = openingValue + matured;
-    const closingValue = Math.min(V2_CAPABILITY_MAX, uncapped);
+    const closingValue = Math.min(ceilings[target], uncapped);
     // Stock already above the cap (not reachable from baseline) is left as-is, never reduced.
     const finalValue = Math.max(openingValue, closingValue);
     writeTarget(closing, target, finalValue);
@@ -537,6 +573,9 @@ export function calculateV2CapabilityConsequence(
     bucketLoad,
     activeInitiatives,
     coordinationLoad: coordination,
+    alignedLoadReduction,
+    transitionLoad,
+    ceilings,
     transformationLoad,
     loadToCapacityRatio,
     absorptionFactor,

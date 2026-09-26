@@ -8,25 +8,39 @@ market size separately (demand = near-term activity; `segmentCapacity` = structu
 
 - New `src/simulation/engineV2Scenario.ts`: scenario quarters with truth (demand, competitor progress, explicit
   structural capacity changes) separate from player signals (briefing with reliability + role/audience tags; measured
-  KPIs from company state). `getScenarioMarket(q)`; beyond the authored arc: neutral demand, persisting structure.
+  KPIs from company state). `getScenarioMarket(q)`; beyond the authored arc: 'carry-last' demand/benchmark pace by default (changed at Q4; 'neutral' optional), persisting structure.
 - New `src/testlab/utils/v2ScenarioArc.ts`: 15 player policies (incl. evidence-responsive, wrong-way, low X) run through
   the arc in the integrated economy; Mode 5 section H.
 - Q1 = neutral competitive market exactly. No Q1 winner (baseline strategies within ±0.3% of $200M).
 
 ## Q2 — Generative AI Disruption (PASS)
 
-- Temporary demand: consumer 0.90, commoditization 0.45, CAC pressure 1.20 (strengthened at Q3 checkpoint); enterprise 1.05, enterprise AI 1.35;
+- Temporary demand: consumer 0.90, commoditization 0.45, CAC pressure 1.20 (strengthened at Q3 checkpoint); enterprise 1.10, enterprise AI 1.40 (recalibrated at Q4);
   AI-native 1.7; university 1.0. Benchmark acceleration: consumer 1.5/qtr, enterprise 1.0/qtr.
 - Structural (persisting): AI-native capacity 80 → 150; enterprise 120 → 135. Consumer capacity unchanged.
 - Flows only via market inputs; AI readiness shields consumer retention; enterprise AI interest needs capability.
 
 ## Q3 — Conflicting Evidence (PASS)
 
-- Truth: consumer 0.95 / commoditization 0.35 / CAC 1.12; enterprise 1.08, enterprise AI 1.40; AI-native 1.45 (eases from
+- Truth: consumer 0.95 / commoditization 0.35 / CAC 1.12; enterprise 1.15, enterprise AI 1.50 (recalibrated at Q4); AI-native 1.45 (eases from
   1.7); university 1.02; consumer benchmark 1.25/qtr. No structural change.
 - Signals diverge from truth: usage −11% (Growth) vs paid −5% (CFO range −5%…−2%); AI engagement +45% (Product) while paying
   AI demand eases; pilot conversion 5–20% (estimate); enterprise RFPs +25% (genuine). Role-private signals for CEO, CFO,
   Product, People, Growth.
+
+## Q4 — Strategic Commitment (PASS, decision required before Q5)
+
+- New `src/simulation/engineV2Destination.ts`: five destinations stored in `V2TeamState.destination`. No revenue
+  term: destinations change capability conversion (aligned-bucket load × (1 − 0.2s), coordination merged), focus
+  (ceilings 100 → up to 120 on aligned capabilities), accessible market (segmentCapacity × (1 + uplift·s)) and
+  commercialization (+50%·s on positive capability-driven commercial terms of the focus segment). Balanced has none
+  of these — only the transition. s = min(1, readiness + 0.25/qtr).
+- Readiness at commit = weighted capability ramps from Q1–Q3 prep; transition load 15 × (1 − readiness) for 3 qtrs.
+  Switching is architected (state + history) but throws "not yet implemented".
+- Truth: consumer 0.97 / commoditization 0.40 / CAC 1.10; enterprise 1.12 / AI 1.45; AI-native 1.45; market settling.
+- Results: matching destination wins at same spend for Consumer100, Enterprise100, Consumer+AI, Enterprise+AI,
+  People100 (Q12). With aligned post-Q4 spend, Consumer AI leads every history (Consumer ≈ 70% of revenue) —
+  a design decision for Q5–Q8 exposures, not tuned away. University destination weakest within 12 qtrs.
 
 ---
 

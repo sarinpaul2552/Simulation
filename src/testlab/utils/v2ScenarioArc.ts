@@ -13,6 +13,7 @@ import {
   V2SignalCompanyView,
 } from '../../simulation/engineV2Scenario';
 import { V2QuarterRecord, runV2Quarter } from './v2Diagnostics';
+import { V2DestinationId, V2_DESTINATIONS, V2_DESTINATION_IDS } from '../../simulation/engineV2Destination';
 
 /**
  * SCENARIO ARC RUNNER (Test Lab only)
@@ -82,26 +83,40 @@ export function companyView(state: V2TeamState, last?: V2Consequence): V2SignalC
   };
 }
 
-/** Hook for Q4+: returns extra engine input (e.g. destination) for a quarter. Replaced when destinations exist. */
-export type V2ArcInputHook = (strategy: V2ArcStrategy, ctx: V2ArcContext) => Record<string, unknown>;
-let arcInputHook: V2ArcInputHook = () => ({});
-export function setArcInputHook(h: V2ArcInputHook): void {
-  arcInputHook = h;
+export interface V2ArcOptions {
+  /** Override the strategy's Q4 destination choice. */
+  destination?: V2DestinationId;
+  /** Allocation policy after Q4: 'same' continues the strategy; 'aligned' splits $30M across destination-aligned buckets. */
+  postQ4Allocation?: 'same' | 'aligned';
 }
 
-export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()): V2ArcRun {
+export const DESTINATION_COMMIT_QUARTER = 4;
+
+export function alignedAllocation(id: V2DestinationId): V2Allocation {
+  const buckets = V2_DESTINATIONS[id].alignedBuckets;
+  if (buckets.length === 0) return a({ consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 5, cashReserve: 5 });
+  const each = ENVELOPE / buckets.length;
+  return a(Object.fromEntries(buckets.map(b => [b, each])) as Partial<V2Allocation>);
+}
+
+export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter(), options: V2ArcOptions = {}): V2ArcRun {
   let state = strategy.opening ? strategy.opening() : getV2Baseline();
   const history: V2ArcQuarter[] = [];
   let last: V2Consequence | undefined;
   for (let q = 1; q <= quarters; q++) {
     const signals = buildPlayerSignals(q, companyView(state, last));
     const ctx: V2ArcContext = { quarter: q, signals, state, history };
-    const allocation = strategy.allocate(ctx);
-    const extra = arcInputHook(strategy, ctx);
+    const committed = state.destination?.id ?? null;
+    const allocation =
+      q > DESTINATION_COMMIT_QUARTER && options.postQ4Allocation === 'aligned' && committed
+        ? alignedAllocation(committed)
+        : strategy.allocate(ctx);
+    const destination =
+      q === DESTINATION_COMMIT_QUARTER ? (options.destination ?? (strategy.destination?.(ctx) as V2DestinationId | undefined)) : undefined;
     const record = runV2Quarter(state, q, allocation, ENVELOPE, undefined, undefined, getScenarioMarket(q), {
       revenueSource: V2_INTEGRATED_MODE.revenueSource,
       costSource: V2_INTEGRATED_MODE.costSource,
-      ...extra,
+      destination,
     });
     history.push({ quarter: q, signals, allocation, record });
     state = record.ending;
@@ -158,4 +173,32 @@ export const ARC_STRATEGIES: V2ArcStrategy[] = [
 
 export function runAllArcStrategies(quarters = lastAuthoredQuarter()): V2ArcRun[] {
   return ARC_STRATEGIES.map(s => runArc(s, quarters));
+}
+
+
+// ============ Q4 DESTINATION MATRIX ============
+
+export const MATRIX_HISTORIES = ['consumer100', 'enterprise100', 'ai100', 'people100', 'university100', 'cash100', 'balanced', 'consumer-ai', 'enterprise-ai', 'evidence-responsive', 'wrong-way'];
+
+export interface V2DestinationMatrixCell {
+  historyId: string;
+  destination: V2DestinationId;
+  postQ4: 'same' | 'aligned';
+  readiness: number;
+  transitionLoad: number;
+  run: V2ArcRun;
+}
+
+/** Run every history × destination through Q1–Q4 and the Q5–Q8 placeholder continuation. */
+export function runDestinationMatrix(postQ4: 'same' | 'aligned' = 'aligned', quarters = 8, histories = MATRIX_HISTORIES): V2DestinationMatrixCell[] {
+  const cells: V2DestinationMatrixCell[] = [];
+  for (const h of histories) {
+    const strategy = ARC_STRATEGIES.find(s => s.id === h)!;
+    for (const d of V2_DESTINATION_IDS) {
+      const run = runArc(strategy, quarters, { destination: d, postQ4Allocation: postQ4 });
+      const ds = run.quarters[DESTINATION_COMMIT_QUARTER - 1].record.ending.destination!;
+      cells.push({ historyId: h, destination: d, postQ4, readiness: ds.readinessAtCommit, transitionLoad: ds.transition.loadPerQuarter, run });
+    }
+  }
+  return cells;
 }

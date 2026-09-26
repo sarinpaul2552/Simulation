@@ -5,6 +5,7 @@ import {
   V2OperatingInputs,
   V2TeamState,
   V2MarketConditions,
+  V2DestinationId,
   calculateV2QuarterConsequence,
   getV2Baseline,
   getNeutralMarket,
@@ -365,9 +366,11 @@ export function checkV2CapabilityQuarter(
     message: 'Total load = Σ bucket loads + coordination load (Cash Reserve never an initiative)',
     passed: near(C.bucketLoad, bucketSum, tol) &&
       JSON.stringify(C.activeInitiatives) === JSON.stringify(expectedActive) &&
-      near(C.coordinationLoad, coordinationLoad(expectedActive.length), tol) &&
-      near(C.transformationLoad, C.bucketLoad + C.coordinationLoad, tol),
-    details: `bucket ${C.bucketLoad.toFixed(3)} + coordination ${C.coordinationLoad} (${C.activeInitiatives.length} active) = ${C.transformationLoad.toFixed(3)}`,
+      C.coordinationLoad <= coordinationLoad(expectedActive.length) + tol &&
+      (consequence.destination.destinationId !== null || near(C.coordinationLoad, coordinationLoad(expectedActive.length), tol)) &&
+      C.alignedLoadReduction >= -tol && C.alignedLoadReduction <= C.bucketLoad + tol && C.transitionLoad >= -tol &&
+      near(C.transformationLoad, C.bucketLoad - C.alignedLoadReduction + C.coordinationLoad + C.transitionLoad, tol),
+    details: `bucket ${C.bucketLoad.toFixed(3)} − aligned ${C.alignedLoadReduction.toFixed(3)} + coordination ${C.coordinationLoad.toFixed(3)} (${C.activeInitiatives.length} active) + transition ${C.transitionLoad.toFixed(3)} = ${C.transformationLoad.toFixed(3)}`,
   });
 
   const expectedFactor = calculateAbsorptionFactor(C.transformationLoad / opening.organizationalCapacity);
@@ -415,11 +418,13 @@ export function checkV2CapabilityQuarter(
     details: reduced.map(t => `${t.target} ${t.opening.toFixed(2)}→${t.closing.toFixed(2)}`).join(', '),
   });
 
-  const overCap = C.targets.filter(t => t.closing > V2_CAPABILITY_MAX + tol && t.closing > t.opening + tol);
+  const overCap = C.targets.filter(t => t.closing > C.ceilings[t.target] + tol && t.closing > t.opening + tol);
+  const ceilingOk = Object.entries(C.ceilings).every(([t, c]) =>
+    c >= V2_CAPABILITY_MAX - tol && (c <= V2_CAPABILITY_MAX + tol || consequence.destination.ceilings[t as keyof typeof consequence.destination.ceilings] !== undefined) && c <= 120 + tol);
   checks.push({
     id: 'cap_bounded_at_100',
-    message: 'No capability pushed above 100',
-    passed: overCap.length === 0,
+    message: 'No capability pushed above its ceiling (100, or up to 120 for destination-aligned capabilities)',
+    passed: overCap.length === 0 && ceilingOk,
     details: overCap.map(t => `${t.target} ${t.closing.toFixed(2)}`).join(', '),
   });
 
@@ -442,7 +447,12 @@ export function runV2Quarter(
   operatingInputs?: V2OperatingInputs,
   eventCosts?: V2EventCost[],
   market?: V2MarketConditions,
-  revenueOptions?: { revenueSource?: 'hold' | 'segment'; operatingCostOverride?: number; costSource?: 'hold' | 'modelled' }
+  revenueOptions?: {
+    revenueSource?: 'hold' | 'segment';
+    operatingCostOverride?: number;
+    costSource?: 'hold' | 'modelled';
+    destination?: V2DestinationId;
+  }
 ): V2QuarterRecord {
   const consequence = calculateV2QuarterConsequence(opening, {
     quarter,
@@ -454,6 +464,7 @@ export function runV2Quarter(
     revenueSource: revenueOptions?.revenueSource,
     operatingCostOverride: revenueOptions?.operatingCostOverride,
     costSource: revenueOptions?.costSource,
+    destination: revenueOptions?.destination,
   });
   const ending = applyV2(opening, consequence);
   const checks = checkV2Quarter(opening, allocation, consequence, ending, operatingInputs, revenueOptions?.operatingCostOverride);

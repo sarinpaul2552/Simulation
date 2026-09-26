@@ -7,6 +7,8 @@ import {
   buildPlayerSignals,
   lastAuthoredQuarter,
   V2_ROLES,
+  getScenarioContinuation,
+  setScenarioContinuation,
 } from './engineV2Scenario';
 import { getNeutralMarket } from './engineV2Commercial';
 import { getV2Baseline } from './engineV2';
@@ -38,11 +40,19 @@ describe('Scenario framework', () => {
     for (const r of V2_ROLES) expect(audiences.has(r)).toBe(true);
   });
 
-  it('quarters beyond the authored arc continue with neutral demand and persisting structural capacity', () => {
+  it('quarters beyond the authored arc: default carries the last authored conditions; neutral mode available; structure persists', () => {
     const q = lastAuthoredQuarter() + 1;
-    const m = getScenarioMarket(q);
-    expect(m.consumerDemand).toBe(1);
-    expect(m.segmentCapacity).toEqual(scenarioCapacity(lastAuthoredQuarter()));
+    const last = getScenarioQuarter(lastAuthoredQuarter())!;
+    expect(getScenarioContinuation()).toBe('carry-last');
+    expect(getScenarioMarket(q).consumerDemand).toBe(last.demand.consumerDemand);
+    expect(getScenarioMarket(q).segmentCapacity).toEqual(scenarioCapacity(lastAuthoredQuarter()));
+    setScenarioContinuation('neutral');
+    try {
+      expect(getScenarioMarket(q).consumerDemand).toBe(1);
+      expect(getScenarioMarket(q).segmentCapacity).toEqual(scenarioCapacity(lastAuthoredQuarter()));
+    } finally {
+      setScenarioContinuation('carry-last');
+    }
   });
 });
 
@@ -109,8 +119,13 @@ describe('Q2 — Generative AI disruption', () => {
   });
 
   it('structural changes persist after Q2 even when demand returns to neutral', () => {
-    expect(getScenarioMarket(lastAuthoredQuarter() + 3).segmentCapacity.aiNative).toBe(150);
-    expect(getScenarioMarket(lastAuthoredQuarter() + 3).aiNativeDemand).toBe(1);
+    setScenarioContinuation('neutral');
+    try {
+      expect(getScenarioMarket(lastAuthoredQuarter() + 3).segmentCapacity.aiNative).toBe(150);
+      expect(getScenarioMarket(lastAuthoredQuarter() + 3).aiNativeDemand).toBe(1);
+    } finally {
+      setScenarioContinuation('carry-last');
+    }
   });
 
   it('the shock flows through market inputs only: identical state, Q2 vs Q1 market', () => {

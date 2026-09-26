@@ -163,8 +163,9 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
       consumerDemand: 0.9,
       consumerCommoditization: 0.45,
       consumerCacPressure: 1.2,
-      enterpriseDemand: 1.05,
-      enterpriseAIDemand: 1.35,
+      // Calibration (Q4 checkpoint): enterprise 1.05 → 1.10, enterprise AI 1.35 → 1.40 (opportunity was too weak to matter).
+      enterpriseDemand: 1.1,
+      enterpriseAIDemand: 1.4,
       universityDemand: 1.0,
       aiNativeDemand: 1.7,
       macroPressure: 0,
@@ -197,7 +198,7 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
         id: 'q2-enterprise-interest', audience: 'all', topic: 'enterprise', reliability: 'headline',
         headline: 'Chief learning officers report 30%+ more interest in AI upskilling programmes; budgets not yet reallocated.',
         shownValue: 30, unit: '% interest',
-        truthReference: { field: 'enterpriseAIDemand', value: 1.35, note: 'enterpriseDemand 1.05; monetization needs Enterprise capability + CS + Trust' },
+        truthReference: { field: 'enterpriseAIDemand', value: 1.4, note: 'enterpriseDemand 1.10; monetization needs Enterprise capability + CS + Trust' },
       },
       {
         id: 'q2-university', audience: 'CEO', topic: 'university', reliability: 'headline',
@@ -234,8 +235,9 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
       consumerDemand: 0.95,
       consumerCommoditization: 0.35,
       consumerCacPressure: 1.12,
-      enterpriseDemand: 1.08,
-      enterpriseAIDemand: 1.4,
+      // Calibration (Q4 checkpoint): enterprise 1.08 → 1.15, AI 1.40 → 1.50 — the RFP surge is "genuine".
+      enterpriseDemand: 1.15,
+      enterpriseAIDemand: 1.5,
       universityDemand: 1.02,
       aiNativeDemand: 1.45,
       macroPressure: 0,
@@ -259,7 +261,7 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
         id: 'q3-enterprise-rfps', audience: 'all', topic: 'enterprise', reliability: 'headline',
         headline: 'Enterprise RFPs for AI-enabled learning up ~25%; procurement cycles still long.',
         shownValue: 25, unit: '% RFPs',
-        truthReference: { field: 'enterpriseAIDemand', value: 1.4, note: 'enterpriseDemand 1.08 — genuine strengthening' },
+        truthReference: { field: 'enterpriseAIDemand', value: 1.5, note: 'enterpriseDemand 1.15 — genuine strengthening' },
       },
       {
         id: 'q3-ai-engagement', audience: 'Product', topic: 'ai-native', reliability: 'headline',
@@ -296,6 +298,55 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
       'Belief quality is not scored yet.',
     ],
   },
+  {
+    quarter: 4,
+    id: 'q4-strategic-commitment',
+    title: 'Q4 — Strategic Commitment',
+    briefing:
+      'The board asks for a strategic commitment. Choose what company you will become: Consumer AI Learning Platform, ' +
+      'AI-powered Enterprise Learning Company, Premium Human + AI, University/Credential Infrastructure, or Balanced ' +
+      'Learning Marketplace. Commitment focuses the organization and opens specialized opportunity, but it takes time, and ' +
+      'it works best when the capabilities you built in Q1–Q3 support it.',
+    demand: {
+      // Calibration (Q4 checkpoint): commoditization 0.35 → 0.40; enterprise 1.06 → 1.12, AI 1.35 → 1.45.
+      consumerDemand: 0.97,
+      consumerCommoditization: 0.4,
+      consumerCacPressure: 1.1,
+      enterpriseDemand: 1.12,
+      enterpriseAIDemand: 1.45,
+      universityDemand: 1.02,
+      aiNativeDemand: 1.45,
+      macroPressure: 0,
+    },
+    competitorProgress: { consumer: 1.0, enterprise: 1.0, credential: 0.5 },
+    structuralChanges: [],
+    signals: [
+      {
+        id: 'q4-market-settling', audience: 'all', topic: 'competition', reliability: 'headline',
+        headline: 'The market is settling into a new shape: AI is now table stakes; the question is where to win.',
+        truthReference: { field: 'competitorProgress.consumer', value: 1.0, note: 'consumer benchmark pace easing toward normal' },
+      },
+      {
+        id: 'q4-board', audience: 'CEO', topic: 'competition', reliability: 'headline',
+        headline: 'Board: “We will back a clear destination. Half-commitments will not get funded beyond this year.”',
+      },
+      {
+        id: 'q4-readiness', audience: 'Product', topic: 'ai-native', reliability: 'estimate',
+        headline: 'Engineering: repositioning around a destination that our capabilities do not yet support would take 2–4 quarters.',
+        shownRange: [2, 4], unit: 'quarters',
+      },
+      {
+        id: 'q4-org-load', audience: 'People', topic: 'competition', reliability: 'estimate',
+        headline: 'People team: a strategic reorganization adds significant change load for about three quarters.',
+        shownRange: [2, 3], unit: 'quarters',
+      },
+    ],
+    designNotes: [
+      'Moderate, settling market: consumer 0.97 / commoditization 0.35 / CAC 1.10; enterprise 1.06 / AI 1.35; AI-native 1.45; university 1.02.',
+      'Benchmark pace easing: consumer 1.0, enterprise 1.0, credential 0.5. No structural change.',
+      'Destination economics are implemented in engineV2Destination (focus, ceiling, access, transition) — never revenue.',
+    ],
+  },
 ];
 
 // ============ MARKET CONSTRUCTION ============
@@ -318,10 +369,30 @@ export function getScenarioQuarter(quarter: number, arc: V2ScenarioQuarter[] = V
  * continuation is used: neutral demand, neutral competitor progress, and the structural capacity
  * reached by the last authored quarter (structure persists; temporary demand does not).
  */
+/**
+ * How quarters beyond the authored arc are filled (placeholder until Q5–Q8 are authored):
+ *   'carry-last' (default) — the last authored quarter's demand and competitor pace persist
+ *                            (the post-disruption world does not silently revert to neutral);
+ *   'neutral'              — neutral demand and pace.
+ * Structural capacity always persists either way.
+ */
+export type V2ContinuationMode = 'carry-last' | 'neutral';
+let continuationMode: V2ContinuationMode = 'carry-last';
+export function setScenarioContinuation(mode: V2ContinuationMode): void {
+  continuationMode = mode;
+}
+export function getScenarioContinuation(): V2ContinuationMode {
+  return continuationMode;
+}
+
 export function getScenarioMarket(quarter: number, arc: V2ScenarioQuarter[] = V2_SCENARIO_ARC): V2MarketConditions {
   const sq = getScenarioQuarter(quarter, arc);
   const capacity = scenarioCapacity(quarter, arc);
   if (!sq) {
+    if (continuationMode === 'carry-last') {
+      const last = getScenarioQuarter(lastAuthoredQuarter(arc), arc)!;
+      return { ...last.demand, competitorProgress: { ...last.competitorProgress }, segmentCapacity: capacity };
+    }
     return { ...NEUTRAL, competitorProgress: { ...NEUTRAL.competitorProgress }, segmentCapacity: capacity };
   }
   return {
