@@ -82,7 +82,7 @@ export const TestLab: React.FC = () => {
             <h3>🧾 Mode 5</h3>
             <p>V2 Engine</p>
             <p style={{ fontSize: '12px', marginTop: '8px' }}>
-              Ledger (2A) + capability pipeline (2B) + commercial indicators (2C), with checks every quarter (V1 untouched)
+              Ledger (2A) + capabilities (2B) + commercial indicators (2C) + segment revenue (2D), with checks every quarter (V1 untouched)
             </p>
           </div>
         </div>

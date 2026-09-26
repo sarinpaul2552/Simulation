@@ -1,4 +1,35 @@
-# CURRENT STATUS — Phase 2C V2 Commercial & Leading-Indicator Engine (awaiting review)
+# CURRENT STATUS — Phase 2D V2 Segment Revenue Engine (awaiting review)
+
+**Last Updated:** 2026-09-26
+**Approved/frozen:** 2A e84978b · 2B 330edac · 2C 8f5794b. **V1 restore point:** tag `v1-engine-frozen` → ee4a8bc.
+
+## Phase 2D — Segment Revenue (COMPLETE, STOPPED FOR REVIEW)
+
+Market → Capability → Leading Indicators → Segment Economics → Revenue. Investment never enters a revenue formula.
+
+- New: `src/simulation/engineV2Revenue.ts` (four revenue stocks with memory, Enterprise/University booking cohorts,
+  all coefficients in `V2_REVENUE_CALIBRATION`), `src/simulation/engineV2Revenue.test.ts`.
+- Modified: `engineV2.ts` (segmentRevenue, enterpriseBacklog, universityBacklog, revenueHistory; `revenueSource`
+  'hold' (default, Phase 2A–2C behaviour) | 'segment' (ledger revenue = Σ segments); `operatingCostOverride`),
+  `v2Diagnostics.ts` (7 revenue checks per quarter; segment-mode runner, static-neutral vs competitive), Mode 5 section E.
+- Consumer: 30% of base exposed/qtr; churn = exposed × (1 − retention); acquisition = 6.3 × demand × 100/CAC;
+  price/mix = retained × 0.002 × ΔPricing Power.
+- Enterprise: bookings ACV = resolved pipeline (30% of opening) × win rate; run-rate = ACV/4 goes live 0/25/50/25% over
+  Q..Q+3; 25% of base exposed/qtr; renewal 0.85 + CS/Trust/Execution/macro terms (0.70–0.97); expansion 10% × ramp(CS 30→80).
+- University: 25% exposed; renewal = Phase 2C renewal rate; wins = 20% of pipeline × (1/3)(1 + 0.01(Trust−70));
+  live at +2..+5 quarters (10/30/30/30%).
+- AI-native: 50% exposed; retention 0.80 + 0.12 × ramp(readiness 10→70); new = AI demand × Q/E factor ×
+  (0.04 × min(adoption,10) + 0.08 × max(0, adoption−10)).
+- Static neutral market is an exact $200M fixed point. Operating cost remains the $170M placeholder: profit/cash diagnostic only.
+- Calibration notes: Balanced ($223.8M Q8) exceeds every single-bucket strategy but not Consumer+AI ($238.2M), from
+  concave capability curves + indicator complementarity (no diversification term). AI-native would keep compounding
+  beyond Q8 (equilibrium ≫ $100M at AI100) — inspect before extending horizons.
+
+NOT done (by design): cost architecture, payroll, financing, solvency, events, destinations, scoring, stock, Q7/Q8, production.
+
+---
+
+## Phase 2C status (approved, frozen at 8f5794b)
 
 **Last Updated:** 2026-09-26
 **Approved/frozen:** Phase 2A e84978b · Phase 2B 330edac. **V1 restore point:** tag `v1-engine-frozen` → ee4a8bc.

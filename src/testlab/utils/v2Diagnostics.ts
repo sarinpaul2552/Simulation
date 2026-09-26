@@ -7,6 +7,7 @@ import {
   V2MarketConditions,
   calculateV2QuarterConsequence,
   getV2Baseline,
+  getNeutralMarket,
   V2_IDENTITY_TOLERANCE,
 } from '../../simulation/engineV2';
 import {
@@ -56,7 +57,8 @@ export function checkV2Quarter(
   allocation: V2Allocation,
   consequence: V2Consequence,
   ending: V2TeamState,
-  operatingInputs?: V2OperatingInputs
+  operatingInputs?: V2OperatingInputs,
+  operatingCostOverride?: number
 ): V2LedgerCheck[] {
   const L = consequence.ledger;
   const checks: V2LedgerCheck[] = [];
@@ -97,7 +99,7 @@ export function checkV2Quarter(
     details: `envelope ${fmt(L.strategicEnvelope)}, reserve ${fmt(L.cashReserveRetained)}, strategic ${fmt(L.strategicInvestment)}`,
   });
 
-  const expectedOpex = operatingInputs ? operatingInputs.operatingCost : opening.operatingCost;
+  const expectedOpex = operatingInputs ? operatingInputs.operatingCost : operatingCostOverride ?? opening.operatingCost;
   checks.push({
     id: 'v2_strategic_outside_opex',
     message: 'Strategic investment is not included in operating cost',
@@ -121,6 +123,89 @@ export function checkV2Quarter(
 
   checks.push(...checkV2CapabilityQuarter(opening, consequence, ending));
   checks.push(...checkV2CommercialQuarter(opening, consequence, ending));
+  checks.push(...checkV2RevenueQuarter(opening, consequence, ending));
+
+  return checks;
+}
+
+/** Phase 2D segment revenue invariants: every segment's movement is reconstructable. */
+export function checkV2RevenueQuarter(
+  opening: V2TeamState,
+  consequence: V2Consequence,
+  ending: V2TeamState
+): V2LedgerCheck[] {
+  const R = consequence.revenue;
+  const L = consequence.ledger;
+  const tol = 1e-9;
+  const checks: V2LedgerCheck[] = [];
+  const seg = R.closing.segments;
+  const sum = seg.consumer + seg.enterprise + seg.university + seg.aiNative;
+
+  checks.push({
+    id: 'rev_segments_sum_to_total',
+    message: 'Total revenue = Consumer + Enterprise + University + AI-native',
+    passed: near(R.totalRevenue, sum, tol),
+    details: `${sum.toFixed(3)} vs total ${R.totalRevenue.toFixed(3)}`,
+  });
+
+  checks.push({
+    id: 'rev_ledger_consumes_segment_total',
+    message: "In 'segment' mode the ledger revenue is exactly the segment total",
+    passed: consequence.revenueSource !== 'segment' ||
+      (near(L.revenue, R.totalRevenue, tol) && L.operatingInputsSource === 'segment' && near(L.operatingProfit, R.totalRevenue - L.operatingCost, tol)),
+    details: `mode ${consequence.revenueSource}; ledger ${fmt(L.revenue)}, segments ${fmt(R.totalRevenue)}`,
+  });
+
+  const c = R.consumer, e = R.enterprise, u = R.university, a = R.aiNative;
+  const recon = [
+    ['consumer', c.closing, Math.max(0, c.opening - c.churn + c.acquisition + c.priceMix)],
+    ['enterprise', e.closing, Math.max(0, e.opening - e.churn + e.expansion + e.liveFromCurrentBookings + e.liveFromEarlierBookings)],
+    ['university', u.closing, Math.max(0, u.opening - u.churn + u.liveFromEarlierWins)],
+    ['aiNative', a.closing, Math.max(0, a.opening - a.churn + a.newMonetization)],
+  ] as const;
+  const badRecon = recon.filter(([, got, want]) => !near(got, want, tol));
+  checks.push({
+    id: 'rev_movement_explained',
+    message: 'Each segment: opening − churn + new/live/expansion (+ price/mix) = closing',
+    passed: badRecon.length === 0,
+    details: badRecon.map(([k]) => k).join(', '),
+  });
+
+  const values = [...Object.values(seg), e.bookingsACV, e.backlogRunRate, u.winsACV, u.backlogRunRate, a.newMonetization, c.acquisition];
+  checks.push({
+    id: 'rev_finite_nonnegative',
+    message: 'Segment revenue, bookings, backlog and monetization are finite and ≥ 0',
+    passed: values.every(v => Number.isFinite(v) && v >= -tol),
+    details: '',
+  });
+
+  const cohorts = [...R.closing.enterpriseBacklog, ...R.closing.universityBacklog];
+  const badCohorts = cohorts.filter(k => !near(k.liveToDate + k.remaining, k.runRate, 1e-9) || k.remaining < -tol);
+  checks.push({
+    id: 'rev_backlog_conservation',
+    message: 'Every booking cohort: live to date + remaining backlog = booked run-rate',
+    passed: badCohorts.length === 0,
+    details: badCohorts.map(k => k.id).join(', '),
+  });
+
+  checks.push({
+    id: 'rev_pipeline_is_not_revenue',
+    message: 'Enterprise/University revenue enters only via bookings × recognition, never pipeline directly',
+    passed: near(e.bookingsACV, e.resolvedPipeline * e.winRate, tol) && near(e.newRunRateBooked, e.bookingsACV * 0.25, tol) &&
+      near(u.winsACV, u.resolvedPipeline * u.institutionalWinRate, tol) && e.liveFromCurrentBookings === 0,
+    details: `bookings ${e.bookingsACV.toFixed(3)} = resolved ${e.resolvedPipeline.toFixed(3)} × win ${e.winRate.toFixed(4)}`,
+  });
+
+  const openMatch = near(c.opening, opening.segmentRevenue.consumer, tol) && near(e.opening, opening.segmentRevenue.enterprise, tol) &&
+    near(u.opening, opening.segmentRevenue.university, tol) && near(a.opening, opening.segmentRevenue.aiNative, tol);
+  const closeMatch = near(ending.segmentRevenue.consumer, seg.consumer, tol) && near(ending.segmentRevenue.aiNative, seg.aiNative, tol) &&
+    near(ending.segmentRevenue.enterprise, seg.enterprise, tol) && near(ending.segmentRevenue.university, seg.university, tol);
+  checks.push({
+    id: 'rev_state_links',
+    message: 'Segments open at prior state and close into ending state',
+    passed: openMatch && closeMatch,
+    details: `opening ${openMatch ? 'ok' : 'mismatch'}, closing ${closeMatch ? 'ok' : 'mismatch'}`,
+  });
 
   return checks;
 }
@@ -268,7 +353,8 @@ export function runV2Quarter(
   strategicEnvelope: number,
   operatingInputs?: V2OperatingInputs,
   eventCosts?: V2EventCost[],
-  market?: V2MarketConditions
+  market?: V2MarketConditions,
+  revenueOptions?: { revenueSource?: 'hold' | 'segment'; operatingCostOverride?: number }
 ): V2QuarterRecord {
   const consequence = calculateV2QuarterConsequence(opening, {
     quarter,
@@ -277,9 +363,11 @@ export function runV2Quarter(
     operatingInputs,
     eventCosts,
     market,
+    revenueSource: revenueOptions?.revenueSource,
+    operatingCostOverride: revenueOptions?.operatingCostOverride,
   });
   const ending = applyV2(opening, consequence);
-  const checks = checkV2Quarter(opening, allocation, consequence, ending, operatingInputs);
+  const checks = checkV2Quarter(opening, allocation, consequence, ending, operatingInputs, revenueOptions?.operatingCostOverride);
   return { quarter, opening, allocation, consequence, ending, checks, passed: checks.every(c => c.passed) };
 }
 
@@ -673,4 +761,44 @@ export function runV2CommercialScenario(scenario: V2CommercialScenario, quarters
 
 export function runAllV2CommercialScenarios(): V2CommercialScenarioResult[] {
   return V2_COMMERCIAL_SCENARIOS.map(s => runV2CommercialScenario(s));
+}
+
+
+// ============ PHASE 2D SEGMENT REVENUE RUNS ============
+
+export type V2RevenueMarketCase = 'static-neutral' | 'competitive';
+
+export function marketForCase(c: V2RevenueMarketCase): V2MarketConditions {
+  const m = getNeutralMarket();
+  return c === 'static-neutral' ? { ...m, competitorProgress: { consumer: 0, enterprise: 0, credential: 0 } } : m;
+}
+
+export interface V2RevenueRunResult {
+  scenario: V2CommercialScenario;
+  marketCase: V2RevenueMarketCase;
+  quarters: V2QuarterRecord[];
+  passed: boolean;
+}
+
+/**
+ * Run a Phase 2C calibration strategy with Phase 2D segment revenue feeding the ledger.
+ * Operating cost stays at the $170M placeholder: profit/cash are diagnostic only.
+ */
+export function runV2RevenueScenario(scenario: V2CommercialScenario, marketCase: V2RevenueMarketCase, quarters = 8): V2RevenueRunResult {
+  let state = scenario.opening();
+  const market = scenario.market ?? marketForCase(marketCase);
+  const recs: V2QuarterRecord[] = [];
+  for (let q = 1; q <= quarters; q++) {
+    if (scenario.pinnedCapabilities) {
+      state = { ...state, capabilities: { ...state.capabilities, ...scenario.pinnedCapabilities } };
+    }
+    const rec = runV2Quarter(state, q, scenario.allocation, 30, undefined, undefined, market, { revenueSource: 'segment' });
+    recs.push(rec);
+    state = rec.ending;
+  }
+  return { scenario, marketCase, quarters: recs, passed: recs.every(r => r.passed) };
+}
+
+export function runAllV2RevenueScenarios(marketCase: V2RevenueMarketCase): V2RevenueRunResult[] {
+  return V2_COMMERCIAL_SCENARIOS.map(s => runV2RevenueScenario(s, marketCase));
 }

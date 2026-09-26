@@ -6,6 +6,9 @@ import {
   V2CapabilityScenarioResult,
   runAllV2CommercialScenarios,
   V2CommercialScenarioResult,
+  runAllV2RevenueScenarios,
+  V2RevenueRunResult,
+  V2RevenueMarketCase,
   runV2Strategy,
   V2QuarterRecord,
   V2ScenarioResult,
@@ -356,6 +359,86 @@ const CommercialPanel: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }
   );
 };
 
+// ============ PHASE 2D: SEGMENT REVENUE ============
+
+const m1 = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n).toFixed(2)}M`;
+
+const RevenueQuarterDetail: React.FC<{ rec: V2QuarterRecord }> = ({ rec }) => {
+  const R = rec.consequence.revenue;
+  const c = R.consumer, e = R.enterprise, u = R.university, a = R.aiNative;
+  const row = (label: string, cells: [string, string][]) => (
+    <tr>
+      <td><strong>{label}</strong></td>
+      <td style={{ fontSize: '12px' }}>{cells.map(([k, v]) => `${k}: ${v}`).join(' · ')}</td>
+    </tr>
+  );
+  return (
+    <div className="audit-section">
+      <h4>Q{rec.quarter} segment revenue: how each business moved</h4>
+      <table className="comparison-table">
+        <tbody>
+          {row('Consumer', [['opening', m1(c.opening)], ['exposed base (30%)', m1(c.exposedBase)], ['retention', `${(c.retention * 100).toFixed(2)}%`],
+            ['churn', `−${m1(c.churn)}`], ['retained', m1(c.retained)], ['CAC index', c.cacIndex.toFixed(1)], ['acquisition/replacement', `+${m1(c.acquisition)}`],
+            ['ΔPricing Power', c.pricingPowerChange.toFixed(3)], ['price/mix', m1(c.priceMix)], ['closing', m1(c.closing)]])}
+          {row('Enterprise', [['opening base', m1(e.opening)], ['opening pipeline', m1(e.openingPipeline)], ['resolved pipeline', m1(e.resolvedPipeline)],
+            ['win rate', `${(e.winRate * 100).toFixed(2)}%`], ['bookings (ACV)', m1(e.bookingsACV)], ['new run-rate booked', m1(e.newRunRateBooked)],
+            ['renewal rate', `${(e.renewalRate * 100).toFixed(2)}%`], ['churn', `−${m1(e.churn)}`], ['expansion', `+${m1(e.expansion)}`],
+            ['live from this quarter’s bookings', m1(e.liveFromCurrentBookings)], ['live from earlier bookings', `+${m1(e.liveFromEarlierBookings)}`],
+            ['closing', m1(e.closing)], ['backlog (not yet live)', `${m1(e.backlogRunRate)}/qtr = ${m1(e.backlogACV)} ACV`]])}
+          {row('University', [['opening base', m1(u.opening)], ['renewal', `${(u.renewalRate * 100).toFixed(2)}%`], ['churn', `−${m1(u.churn)}`],
+            ['opening pipeline', m1(u.openingPipeline)], ['resolved', m1(u.resolvedPipeline)], ['institutional win rate', `${(u.institutionalWinRate * 100).toFixed(1)}%`],
+            ['wins (ACV)', m1(u.winsACV)], ['recognized from earlier wins', `+${m1(u.liveFromEarlierWins)}`], ['closing', m1(u.closing)],
+            ['backlog', `${m1(u.backlogRunRate)}/qtr = ${m1(u.backlogACV)} ACV`]])}
+          {row('AI-native', [['opening', m1(a.opening)], ['readiness', a.readiness.toFixed(2)], ['adoption', a.adoption.toFixed(2)], ['AI-native demand', a.aiNativeDemand.toFixed(2)],
+            ['quality/execution factor', a.qualityExecutionFactor.toFixed(3)], ['retention', `${(a.retentionRate * 100).toFixed(2)}%`],
+            ['churn', `−${m1(a.churn)}`], ['retained base', m1(a.retainedBase)], ['new monetization', `+${m1(a.newMonetization)}`], ['closing', m1(a.closing)]])}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const RevenuePanel: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: '12px' }}>
+      <h4 style={{ marginBottom: 0 }}>Segment revenue (Phase 2D)</h4>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="comparison-table">
+          <thead>
+            <tr><th>Q</th><th>Consumer</th><th>Enterprise</th><th>University</th><th>AI-native</th><th>Total revenue</th>
+              <th>Op. profit*</th><th>Closing cash*</th><th>Ent. bookings ACV</th><th>Ent. backlog ACV</th><th>Univ. backlog ACV</th><th>AI adoption</th><th>Rev. checks</th></tr>
+          </thead>
+          <tbody>
+            {quarters.map(rec => {
+              const R = rec.consequence.revenue;
+              const L = rec.consequence.ledger;
+              const s = R.closing.segments;
+              const failed = rec.checks.filter(x => x.id.startsWith('rev_') && !x.passed);
+              return (
+                <tr key={rec.quarter}>
+                  <td>Q{rec.quarter}</td>
+                  <td>{money(s.consumer)}</td><td>{money(s.enterprise)}</td><td>{money(s.university)}</td><td>{money(s.aiNative)}</td>
+                  <td><strong>{money(R.totalRevenue)}</strong></td>
+                  <td style={{ color: '#777' }}>{money(L.operatingProfit)}</td>
+                  <td style={{ ...cashStyle(L.closingCash), color: L.closingCash < 0 ? '#c62828' : '#777' }}>{money(L.closingCash)}</td>
+                  <td>{money(R.enterprise.bookingsACV)}</td><td>{money(R.enterprise.backlogACV)}</td><td>{money(R.university.backlogACV)}</td>
+                  <td>{R.aiNative.adoption.toFixed(1)}</td>
+                  <td title={failed.map(x => `${x.id}: ${x.details}`).join('\n')}>{failed.length === 0 ? '✅' : `🚨 ${failed.length}`}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <button className="btn btn-secondary" style={{ marginTop: '8px' }} onClick={() => setOpen(!open)}>
+        {open ? 'Hide' : 'Show'} per-quarter revenue build-up
+      </button>
+      {open && quarters.map(rec => <RevenueQuarterDetail key={rec.quarter} rec={rec} />)}
+    </div>
+  );
+};
+
 export const V2FinancialLedgerTest: React.FC = () => {
   const [scenarioResults, setScenarioResults] = useState<V2ScenarioResult[] | null>(null);
   const [strategyId, setStrategyId] = useState('balanced');
@@ -364,6 +447,17 @@ export const V2FinancialLedgerTest: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [capResults, setCapResults] = useState<V2CapabilityScenarioResult[] | null>(null);
   const [comResults, setComResults] = useState<V2CommercialScenarioResult[] | null>(null);
+  const [revCase, setRevCase] = useState<V2RevenueMarketCase>('competitive');
+  const [revResults, setRevResults] = useState<V2RevenueRunResult[] | null>(null);
+
+  const runRevenueScenarios = () => {
+    try {
+      setError(null);
+      setRevResults(runAllV2RevenueScenarios(revCase));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const runCommercialScenarios = () => {
     try {
@@ -405,7 +499,7 @@ export const V2FinancialLedgerTest: React.FC = () => {
 
   return (
     <div className="testlab-form">
-      <h2>Mode 5: V2 Engine: Ledger (2A) + Capabilities (2B) + Commercial Indicators (2C)</h2>
+      <h2>Mode 5: V2 Engine: Ledger (2A) + Capabilities (2B) + Commercial (2C) + Segment Revenue (2D)</h2>
       <p>
         V2 accounting core, running in parallel to the frozen V1 engine. Every quarter exposes its full ledger and
         re-checks the identity:
@@ -415,9 +509,10 @@ export const V2FinancialLedgerTest: React.FC = () => {
 Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − Event Costs + Financing`}
       </pre>
       <div className="testlab-warning">
-        <strong>Scope (Phase 2A–2C):</strong> financial ledger, capability pipeline and leading commercial indicators under
-        a neutral market. Revenue and operating cost are still carried forward (or injected by a test): capabilities and
-        indicators have <em>no</em> revenue effect yet. There are no financing choices (financing = $0), no Q1–Q8 event rebalance, no scoring and no Q4
+        <strong>Scope (Phase 2A–2D):</strong> ledger, capability pipeline, leading commercial indicators and segment revenue.
+        Sections A–D run in <em>hold</em> revenue mode (revenue carried forward or injected, as before). Section E runs in
+        <em>segment</em> mode, where ledger revenue is the sum of the four businesses. Operating cost is an uncalibrated
+        $170M placeholder everywhere. There are no financing choices (financing = $0), no Q1–Q8 event rebalance, no scoring and no Q4
         destination effects. Negative cash is shown in red and is never floored.
       </div>
 
@@ -541,6 +636,59 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
           <p style={{ fontSize: '13px' }}>{r.scenario.description}</p>
           <CommercialPanel quarters={r.quarters} />
           <CapabilityPipeline quarters={r.quarters} />
+        </div>
+      ))}
+
+      <h3 style={{ marginTop: '30px' }}>E. Segment revenue (Phase 2D)</h3>
+      <div className="testlab-warning">
+        <strong>Revenue mode = segment.</strong> Ledger revenue = Consumer + Enterprise + University + AI-native. *Operating cost is
+        still the $170M placeholder (not calibrated), so operating profit and cash are <strong>diagnostic only</strong>. No
+        market events, cost architecture, financing or scoring.
+      </div>
+      <div className="form-group">
+        <label>Market</label>
+        <select value={revCase} onChange={e => setRevCase(e.target.value as V2RevenueMarketCase)}>
+          <option value="competitive">Normal competitive market (Phase 2C competitor progression)</option>
+          <option value="static-neutral">Static neutral market (zero competitor progress: fixed-point test)</option>
+        </select>
+      </div>
+      <div className="button-group">
+        <button className="btn btn-primary" onClick={runRevenueScenarios}>Run revenue scenarios</button>
+      </div>
+      {revResults && (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="comparison-table">
+            <thead>
+              <tr><th>Strategy</th><th>Q</th><th>Consumer</th><th>Enterprise</th><th>University</th><th>AI-native</th><th>Total</th><th>Op. profit*</th><th>Cash*</th><th>Ent. bookings</th><th>Ent. backlog ACV</th><th>AI adoption</th></tr>
+            </thead>
+            <tbody>
+              {revResults.flatMap(r => [1, 4, 8].map(q => {
+                const rec = r.quarters[q - 1];
+                const R = rec.consequence.revenue;
+                const s = R.closing.segments;
+                return (
+                  <tr key={`${r.scenario.id}-${q}`} style={q === 1 ? { borderTop: '2px solid #667eea' } : undefined}>
+                    <td>{q === 1 ? `${r.passed ? '✅' : '🚨'} ${r.scenario.name}` : ''}</td>
+                    <td>Q{q}</td>
+                    <td>{money(s.consumer)}</td><td>{money(s.enterprise)}</td><td>{money(s.university)}</td><td>{money(s.aiNative)}</td>
+                    <td><strong>{money(R.totalRevenue)}</strong></td>
+                    <td style={{ color: '#777' }}>{money(rec.consequence.ledger.operatingProfit)}</td>
+                    <td style={{ color: rec.consequence.ledger.closingCash < 0 ? '#c62828' : '#777' }}>{money(rec.consequence.ledger.closingCash)}</td>
+                    <td>{money(R.enterprise.bookingsACV)}</td><td>{money(R.enterprise.backlogACV)}</td><td>{R.aiNative.adoption.toFixed(1)}</td>
+                  </tr>
+                );
+              }))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {revResults && revResults.map(r => (
+        <div key={r.scenario.id} className="audit-card" style={{ padding: '12px' }}>
+          <h4>{r.passed ? '✅' : '🚨'} {r.scenario.name} · {r.marketCase}</h4>
+          <p style={{ fontSize: '13px' }}>{r.scenario.description}</p>
+          <RevenuePanel quarters={r.quarters} />
+          <CommercialPanel quarters={r.quarters} />
+          <QuarterCheckDetails quarters={r.quarters} />
         </div>
       ))}
     </div>

@@ -3,8 +3,9 @@
  *
  * Parallel to the frozen V1 engine (engine.ts). Self-contained: imports nothing
  * from V1 (no runtime logic, no types). Phase 2B capability logic lives in
- * engineV2Capabilities.ts and Phase 2C commercial logic in engineV2Commercial.ts;
- * both are orchestrated here but audited separately from the financial ledger.
+ * engineV2Capabilities.ts, Phase 2C commercial logic in engineV2Commercial.ts and
+ * Phase 2D segment revenue in engineV2Revenue.ts; all are orchestrated here but
+ * audited separately from the financial ledger.
  *
  * Canonical accounting identity (ECONOMICS_V2_ARCHITECTURE.md §1):
  *
@@ -44,7 +45,16 @@ import {
 } from './engineV2Commercial';
 
 export type { V2Capabilities, V2CapabilityConsequence, V2InvestmentCohort } from './engineV2Capabilities';
+import {
+  V2BookingCohort,
+  V2RevenueConsequence,
+  V2SegmentRevenue,
+  calculateV2RevenueConsequence,
+  getV2RevenueBaseline,
+} from './engineV2Revenue';
+
 export type { V2CommercialState, V2CommercialConsequence, V2MarketConditions } from './engineV2Commercial';
+export type { V2BookingCohort, V2RevenueConsequence, V2SegmentRevenue } from './engineV2Revenue';
 export { getNeutralMarket } from './engineV2Commercial';
 
 // ============ TYPES ============
@@ -113,8 +123,12 @@ export interface V2FinancialLedger {
   closingCash: number;
   /** operatingProfit − strategicInvestment − eventCosts + financing */
   netCashFlow: number;
-  /** Source of operating inputs, for audit. */
-  operatingInputsSource: 'carried-forward' | 'injected';
+  /**
+   * Source of revenue/operating cost, for audit:
+   * 'carried-forward' (hold), 'injected' (test operating inputs), or
+   * 'segment' (Phase 2D: revenue = Σ segment revenue; cost carried forward or overridden).
+   */
+  operatingInputsSource: 'carried-forward' | 'injected' | 'segment';
 }
 
 export interface V2TeamState {
@@ -148,12 +162,21 @@ export interface V2TeamState {
   /** Leading commercial indicators (Phase 2C). Not revenue. */
   commercial: V2CommercialState;
 
+  /** Phase 2D segment revenue stocks (always computed; feeds the ledger only in 'segment' mode). */
+  segmentRevenue: V2SegmentRevenue;
+  /** Contracted Enterprise run-rate not yet live (booking cohorts). */
+  enterpriseBacklog: V2BookingCohort[];
+  /** Won University run-rate not yet live (booking cohorts). */
+  universityBacklog: V2BookingCohort[];
+
   /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
   /** Every completed quarter's capability consequence, in order. */
   capabilityHistory: V2CapabilityConsequence[];
   /** Every completed quarter's commercial consequence, in order. */
   commercialHistory: V2CommercialConsequence[];
+  /** Every completed quarter's segment revenue consequence, in order. */
+  revenueHistory: V2RevenueConsequence[];
 }
 
 export interface V2QuarterInput {
@@ -167,6 +190,13 @@ export interface V2QuarterInput {
   eventCosts?: V2EventCost[];
   /** Market conditions for the commercial engine; defaults to the neutral market. */
   market?: V2MarketConditions;
+  /**
+   * Revenue source for the ledger. 'hold' (default) keeps Phase 2A–2C behaviour: revenue carried
+   * forward or taken from operatingInputs. 'segment' (Phase 2D): ledger revenue = Σ segment revenue.
+   */
+  revenueSource?: 'hold' | 'segment';
+  /** 'segment' mode only: operating cost override (otherwise carried forward). */
+  operatingCostOverride?: number;
 }
 
 /**
@@ -186,6 +216,9 @@ export interface V2Consequence {
   // Commercial consequence (Phase 2C) — leading indicators only, no revenue
   commercial: V2CommercialConsequence;
   commercialFlags: string[];
+  // Segment revenue consequence (Phase 2D)
+  revenue: V2RevenueConsequence;
+  revenueSource: 'hold' | 'segment';
 }
 
 export interface V2IdentityCheck {
@@ -216,6 +249,7 @@ export function getV2Baseline(): V2TeamState {
   const trust = 70;
   const commercial = getV2CommercialBaseline();
   commercial.aiCommercialReadiness = calculateAIReadiness({ capabilities, productQuality, trust }).readiness;
+  const revenueBaseline = getV2RevenueBaseline();
   return {
     quarter: 0,
     revenue: 200,
@@ -234,9 +268,13 @@ export function getV2Baseline(): V2TeamState {
     technicalDebt: 25,
     pendingCohorts: [],
     commercial,
+    segmentRevenue: revenueBaseline.segments,
+    enterpriseBacklog: revenueBaseline.enterpriseBacklog,
+    universityBacklog: revenueBaseline.universityBacklog,
     ledgerHistory: [],
     capabilityHistory: [],
     commercialHistory: [],
+    revenueHistory: [],
   };
 }
 
@@ -271,12 +309,28 @@ export function sumStrategicInvestment(allocation: V2Allocation): number {
  * Build one quarter's financial ledger from opening state + inputs.
  * Pure: does not mutate `opening`.
  */
-export function calculateV2Ledger(opening: V2TeamState, input: V2QuarterInput): V2FinancialLedger {
+export function calculateV2Ledger(
+  opening: V2TeamState,
+  input: V2QuarterInput,
+  /** Phase 2D: Σ segment revenue; required when input.revenueSource === 'segment'. */
+  segmentTotalRevenue?: number
+): V2FinancialLedger {
   validateV2Allocation(input.allocation, input.strategicEnvelope);
 
+  const segmentMode = input.revenueSource === 'segment';
+  if (segmentMode && input.operatingInputs !== undefined) {
+    throw new Error("Revenue is endogenous in 'segment' mode; inject operating cost via operatingCostOverride, not operatingInputs");
+  }
+  if (segmentMode && segmentTotalRevenue === undefined) {
+    throw new Error("'segment' revenue mode requires the segment total revenue");
+  }
   const injected = input.operatingInputs !== undefined;
-  const revenue = injected ? input.operatingInputs!.revenue : opening.revenue;
-  const operatingCost = injected ? input.operatingInputs!.operatingCost : opening.operatingCost;
+  const revenue = segmentMode ? segmentTotalRevenue! : injected ? input.operatingInputs!.revenue : opening.revenue;
+  const operatingCost = segmentMode
+    ? input.operatingCostOverride ?? opening.operatingCost
+    : injected
+      ? input.operatingInputs!.operatingCost
+      : opening.operatingCost;
   if (!Number.isFinite(revenue) || !Number.isFinite(operatingCost)) {
     throw new Error(`V2 operating inputs must be finite (revenue=${revenue}, operatingCost=${operatingCost})`);
   }
@@ -326,7 +380,7 @@ export function calculateV2Ledger(opening: V2TeamState, input: V2QuarterInput): 
     financingItems,
     closingCash,
     netCashFlow,
-    operatingInputsSource: injected ? 'injected' : 'carried-forward',
+    operatingInputsSource: segmentMode ? 'segment' : injected ? 'injected' : 'carried-forward',
   };
 }
 
@@ -368,8 +422,32 @@ export function checkV2AccountingIdentity(
 // ============ QUARTER ============
 
 export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2QuarterInput): V2Consequence {
-  // Financial consequence (Phase 2A) — unchanged
-  const ledger = calculateV2Ledger(opening, input);
+  const market = input.market ?? getNeutralMarket();
+
+  // Capability consequence (Phase 2B) — never touches cash
+  const capability = calculateV2CapabilityConsequence(opening, input.allocation, input.quarter);
+  const capabilityFlags: string[] = [];
+  if (capability.absorptionFactor < 1) capabilityFlags.push('ABSORPTION_PENALTY');
+  if (capability.loadToCapacityRatio > 1) capabilityFlags.push('LOAD_EXCEEDS_CAPACITY');
+  if (capability.targets.some(t => t.wastedSaturation > 1e-9)) capabilityFlags.push('CAPABILITY_SATURATION_WASTE');
+
+  // Commercial consequence (Phase 2C) — reads post-maturation capabilities + market; never touches cash
+  const commercial = calculateV2CommercialConsequence(opening.commercial, capability.closing, market, input.quarter);
+  const commercialFlags = commercial.indicators.filter(i => i.clipped).map(i => `CLIPPED_${i.indicator}`);
+
+  // Segment revenue consequence (Phase 2D) — reads commercial state; investment never enters
+  const revenue = calculateV2RevenueConsequence(
+    { segments: opening.segmentRevenue, enterpriseBacklog: opening.enterpriseBacklog, universityBacklog: opening.universityBacklog },
+    opening.commercial,
+    commercial,
+    capability.closing,
+    market,
+    input.quarter
+  );
+  const revenueSource = input.revenueSource ?? 'hold';
+
+  // Financial consequence (Phase 2A identity) — revenue from segments only in 'segment' mode
+  const ledger = calculateV2Ledger(opening, input, revenueSource === 'segment' ? revenue.totalRevenue : undefined);
   const identity = checkV2AccountingIdentity(ledger);
 
   const flags: string[] = [];
@@ -379,23 +457,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   if (ledger.strategicInvestment === 0) flags.push('ZERO_STRATEGIC_INVESTMENT');
   if (!identity.holds) flags.push('ACCOUNTING_IDENTITY_VIOLATION');
 
-  // Capability consequence (Phase 2B) — separate calculation; never touches cash
-  const capability = calculateV2CapabilityConsequence(opening, input.allocation, input.quarter);
-  const capabilityFlags: string[] = [];
-  if (capability.absorptionFactor < 1) capabilityFlags.push('ABSORPTION_PENALTY');
-  if (capability.loadToCapacityRatio > 1) capabilityFlags.push('LOAD_EXCEEDS_CAPACITY');
-  if (capability.targets.some(t => t.wastedSaturation > 1e-9)) capabilityFlags.push('CAPABILITY_SATURATION_WASTE');
-
-  // Commercial consequence (Phase 2C) — reads post-maturation capabilities + market; never touches cash
-  const commercial = calculateV2CommercialConsequence(
-    opening.commercial,
-    capability.closing,
-    input.market ?? getNeutralMarket(),
-    input.quarter
-  );
-  const commercialFlags = commercial.indicators.filter(i => i.clipped).map(i => `CLIPPED_${i.indicator}`);
-
-  return { quarter: input.quarter, ledger, identity, flags, capability, capabilityFlags, commercial, commercialFlags };
+  return { quarter: input.quarter, ledger, identity, flags, capability, capabilityFlags, commercial, commercialFlags, revenue, revenueSource };
 }
 
 /**
@@ -421,8 +483,12 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     technicalDebt: capability.closing.technicalDebt,
     pendingCohorts: capability.pendingCohortsAfter,
     commercial: consequence.commercial.closing,
+    segmentRevenue: consequence.revenue.closing.segments,
+    enterpriseBacklog: consequence.revenue.closing.enterpriseBacklog,
+    universityBacklog: consequence.revenue.closing.universityBacklog,
     ledgerHistory: [...state.ledgerHistory, ledger],
     capabilityHistory: [...state.capabilityHistory, capability],
     commercialHistory: [...state.commercialHistory, consequence.commercial],
+    revenueHistory: [...state.revenueHistory, consequence.revenue],
   };
 }
