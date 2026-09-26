@@ -97,6 +97,8 @@ import {
   financingOptions,
   assessSolvency,
   strategicValue,
+  companyValuation,
+  debtCapacity,
 } from './engineV2Financing';
 export type { V2FinancingAction, V2FinancingState, V2SolvencyState, V2FinancingOptions } from './engineV2Financing';
 import { destinationStrength } from './engineV2Destination';
@@ -112,6 +114,14 @@ import {
 } from './engineV2Crisis';
 export type { V2CrisisState, V2CrisisResponseId, V2CrisisAssessment } from './engineV2Crisis';
 import { contractConcentration } from './engineV2Opportunity';
+import {
+  V2FinalOptionId,
+  V2FinalDecisionRecord,
+  V2FinalView,
+  finalDecisionEffects,
+  maxEnvelope,
+} from './engineV2Final';
+export type { V2FinalOptionId, V2FinalDecisionRecord } from './engineV2Final';
 
 export type { V2BookingCohort, V2RevenueConsequence, V2SegmentRevenue } from './engineV2Revenue';
 export type { V2CostConsequence, V2CostState, V2CostCommitment } from './engineV2Costs';
@@ -249,6 +259,8 @@ export interface V2TeamState {
   solvency: V2SolvencyState;
   /** Batch 3 · Q7: the strategy-dependent crisis (assessment, response) and pending aftershocks. */
   crisis: V2CrisisState;
+  /** Batch 3 · Q8: the final strategic decision (null until taken) and integration load still to land. */
+  final: { record: V2FinalDecisionRecord | null; pendingLoad: { quarter: number; load: number; source: string }[] };
 
   /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
@@ -272,6 +284,8 @@ export interface V2QuarterDecisions {
   financing?: V2FinancingAction[];
   /** Q7: response to the strategy-dependent crisis (default 'absorb' when the crisis fires and no response is given). */
   crisisResponse?: V2CrisisResponseId;
+  /** Q8: final strategic option (default 'continue'); must be available for the company built. */
+  finalOption?: V2FinalOptionId;
 }
 
 export interface V2DecisionLogEntry {
@@ -314,6 +328,8 @@ export interface V2QuarterInput {
   decisions?: V2QuarterDecisions;
   /** Batch 3 · Q7: the scenario fires the strategy-dependent crisis this quarter (derived from the company). */
   crisis?: boolean;
+  /** Batch 3 · Q8: the scenario opens the final strategic decision this quarter. */
+  finalDecision?: boolean;
 }
 
 /**
@@ -364,6 +380,7 @@ export interface V2Consequence {
   crisis: V2CrisisState;
   /** The crisis assessment when the crisis fires this quarter. */
   crisisAssessment: V2CrisisAssessment | null;
+  final: V2TeamState['final'];
 }
 
 export interface V2IdentityCheck {
@@ -483,6 +500,7 @@ export function getV2Baseline(): V2TeamState {
     financing: getFinancingBaseline(),
     solvency: getSolvencyBaseline(),
     crisis: getCrisisBaseline(),
+    final: { record: null, pendingLoad: [] },
     ledgerHistory: [],
     capabilityHistory: [],
     commercialHistory: [],
@@ -749,6 +767,23 @@ interface V2DecisionOutcome {
   crisis: V2CrisisState;
   crisisAssessment: V2CrisisAssessment | null;
   crisisContractLoss: number;
+  final: V2TeamState['final'];
+}
+
+export function finalView(s: V2TeamState, quarter: number): V2FinalView {
+  const fv = financingView(s, quarter);
+  const last = s.solvency.history[s.solvency.history.length - 1];
+  return {
+    cash: s.cash, debt: s.financing.debt, revenue: s.revenue, operatingProfit: s.operatingProfit,
+    growth: fv.revenueYearAgo > 0 ? s.revenue / fv.revenueYearAgo - 1 : 0,
+    execution: s.capabilities.execution, organizationalCapacity: s.organizationalCapacity, culture: s.culture,
+    aiCommercialReadiness: s.commercial.aiCommercialReadiness, destinationStrength: fv.destinationStrength,
+    destinationId: s.destination?.id ?? null, distressed: s.solvency.distressed, insolvent: s.solvency.status === 'insolvent',
+    covenantBreach: last?.covenantBreach ?? false, strategicValue: fv.strategicValue,
+    standaloneEquityValue: companyValuation({ ...fv, status: 'healthy', distressed: false }).preMoney,
+    debtCapacity: debtCapacity(fv, s.financing), partnerROFR: s.financing.partner?.rightOfFirstRefusal ?? false,
+    fixedSemiFixed: s.costs.fixedSemiFixed,
+  };
 }
 
 export function crisisView(s: V2TeamState): V2CrisisCompanyView {
@@ -878,11 +913,39 @@ function collectDecisionEffects(
     });
   }
 
+  // Q8 final decision (availability from the opening state) and integration load still to land
+  let final: V2TeamState['final'] = { record: opening.final.record, pendingLoad: opening.final.pendingLoad.filter(p => p.quarter > input.quarter) };
+  for (const p of opening.final.pendingLoad.filter(x => x.quarter === input.quarter)) {
+    const pe = emptyEffects();
+    pe.extraLoad.push({ source: p.source, load: p.load });
+    parts.push(pe);
+  }
+  if (input.decisions?.finalOption && !input.finalDecision) throw new Error('The final strategic decision is not open this quarter');
+  let finalEquity = 0;
+  let rateRelief = 0;
+  if (input.finalDecision) {
+    if (opening.final.record) throw new Error(`The final strategic decision was already taken in Q${opening.final.record.quarter}`);
+    const option = input.decisions?.finalOption ?? 'continue';
+    if (input.strategicEnvelope > maxEnvelope(option) + 1e-9) {
+      throw new Error(`Strategic envelope $${input.strategicEnvelope}M exceeds the $${maxEnvelope(option)}M allowed under '${option}'`);
+    }
+    const invested = input.allocation.consumer + input.allocation.enterprise + input.allocation.aiProduct + input.allocation.people + input.allocation.universityCredentials;
+    const fd = finalDecisionEffects(option, finalView(opening, input.quarter), input.quarter, invested);
+    parts.push(fd.effects);
+    finalEquity = fd.equityAction;
+    rateRelief = fd.rateRelief;
+    final = { record: fd.record, pendingLoad: [...final.pendingLoad, ...fd.pendingLoad.map(p => ({ ...p, source: `Q${input.quarter} acquisition integration` }))] };
+    log.push({ quarter: input.quarter, kind: 'final', decision: option, detail: fd.record.availability.filter(o => o.available).map(o => o.id).join(', ') });
+  }
+
   // Financing: interest on opening debt, partner revenue share, distress while insolvent, explicit actions
   const mgmtCut = -mgmt.effects.cost.fixedPoolDelta.reduce((t, d) => t + d.amount, 0);
   const fview = { ...financingView(opening, input.quarter, dest), fixedSemiFixed: opening.costs.fixedSemiFixed - mgmtCut };
   const finOpts = financingOptions(fview, opening.financing);
-  const fin = financingEffects(opening.financing, opening.solvency, fview, input.decisions?.financing, input.quarter);
+  const finActions: V2FinancingAction[] = [...(input.decisions?.financing ?? [])];
+  if (finalEquity > 0) finActions.push({ kind: 'equity', amount: Math.min(finalEquity, finOpts.maxEquity) });
+  const fin = financingEffects(opening.financing, opening.solvency, fview, finActions, input.quarter);
+  if (rateRelief > 0 && fin.state.debt > 0) fin.state.interestRate = Math.max(0, fin.state.interestRate - rateRelief);
   parts.push(fin.effects);
   for (const a of input.decisions?.financing ?? []) {
     log.push({ quarter: input.quarter, kind: 'financing', decision: a.kind, detail: JSON.stringify(a) });
@@ -892,7 +955,7 @@ function collectDecisionEffects(
     effects: parts.length ? mergeEffects(...parts) : emptyEffects(), contracts, destinationState: dest, opportunityTerms: terms, log, contractOutcomes,
     management: mgmt.state, managementSummary: { savingsPerQuarter: mgmt.savingsPerQuarter, oneOffCost: mgmt.oneOffCost },
     financing: fin.state, financingOptions: finOpts,
-    crisis, crisisAssessment, crisisContractLoss,
+    crisis, crisisAssessment, crisisContractLoss, final,
   };
 }
 
@@ -1060,6 +1123,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     financingOptions: decided.financingOptions,
     crisis: decided.crisis,
     crisisAssessment: decided.crisisAssessment,
+    final: decided.final,
   };
 }
 
@@ -1098,6 +1162,7 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     solvency: consequence.solvency,
     debt: consequence.financing.debt,
     crisis: consequence.crisis,
+    final: consequence.final,
     ledgerHistory: [...state.ledgerHistory, ledger],
     capabilityHistory: [...state.capabilityHistory, capability],
     commercialHistory: [...state.commercialHistory, consequence.commercial],

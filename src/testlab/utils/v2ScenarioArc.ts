@@ -13,7 +13,8 @@ import {
   V2PlayerSignal,
   V2SignalCompanyView,
 } from '../../simulation/engineV2Scenario';
-import { V2QuarterDecisions, V2ManagementActions, V2FinancingAction, V2QuarterInput, assessLiquidity, crisisView } from '../../simulation/engineV2';
+import { V2QuarterDecisions, V2ManagementActions, V2FinancingAction, V2QuarterInput, assessLiquidity, crisisView, finalView } from '../../simulation/engineV2';
+import { V2FinalOptionAvailability, V2FinalOptionId, finalOptions, maxEnvelope, V2_FINAL_CALIBRATION } from '../../simulation/engineV2Final';
 import { V2CrisisAssessment, V2CrisisResponseId, assessCrisis } from '../../simulation/engineV2Crisis';
 import { V2OpportunityTerms, opportunityTerms } from '../../simulation/engineV2Opportunity';
 import { V2QuarterRecord, runV2Quarter } from './v2Diagnostics';
@@ -60,7 +61,33 @@ export interface V2ArcPolicy {
   liquidity: (ctx: V2ArcContext, forecast: V2LiquidityForecast, planned: V2Allocation) => { actions: V2FinancingAction[]; allocation?: V2Allocation };
   /** Q7: response to the company's own crisis (the player sees the assessment: type, severity, response costs). */
   crisis: (ctx: V2ArcContext, assessment: V2CrisisAssessment) => V2CrisisResponseId;
+  /** Q8: choose among the options the company has earned. */
+  final: (ctx: V2ArcContext, options: V2FinalOptionAvailability[]) => V2FinalOptionId;
 }
+
+/** Q8 allocation under an option: extra envelope goes to destination-aligned buckets (≤ $30M each); stabilize caps investment. */
+export function allocationForFinalOption(planned: V2Allocation, option: V2FinalOptionId, aligned: string[]): { allocation: V2Allocation; envelope: number } {
+  const envelope = maxEnvelope(option);
+  const out = { ...planned };
+  if (option === 'stabilize-restructure') {
+    const invested = planned.consumer + planned.enterprise + planned.aiProduct + planned.people + planned.universityCredentials;
+    const cap = V2_FINAL_CALIBRATION.stabilize.investmentCap;
+    return { allocation: invested > cap ? slowInvestment(planned, invested - cap) : out, envelope: ENVELOPE };
+  }
+  let extra = envelope - ENVELOPE;
+  if (extra <= 0) return { allocation: out, envelope: ENVELOPE };
+  const targets = (aligned.length ? aligned : ['consumer', 'enterprise', 'aiProduct']) as (keyof V2Allocation)[];
+  for (const b of targets) {
+    const room = 30 - out[b];
+    const add = Math.min(room, extra / targets.length);
+    out[b] += add;
+    extra -= add;
+  }
+  out.cashReserve += extra; // unplaceable remainder stays in reserve
+  return { allocation: out, envelope };
+}
+
+const avail = (options: V2FinalOptionAvailability[], id: V2FinalOptionId) => options.find(o => o.id === id)?.available === true;
 
 export type V2LiquidityForecast = ReturnType<typeof assessLiquidity> & { reforecast: (allocation: V2Allocation) => number };
 
@@ -139,6 +166,16 @@ export const DEFAULT_POLICY: V2ArcPolicy = {
     return { actions, allocation: thin ? slowInvestment(planned, 10, protect) : undefined };
   },
   liquidity: liquidityPolicy('debt-first'),
+  /**
+   * Q8 default: distressed companies stabilize; financially and organizationally strong ones scale independently;
+   * capital-hungry growth companies raise growth capital; otherwise continue.
+   */
+  final: (ctx, options) => {
+    if (ctx.state.solvency.distressed && avail(options, 'stabilize-restructure')) return 'stabilize-restructure';
+    if (avail(options, 'scale-independently')) return 'scale-independently';
+    if (avail(options, 'raise-growth-capital') && ctx.state.cash < 60) return 'raise-growth-capital';
+    return 'continue';
+  },
   /** Remediate a serious crisis when cash allows; contain a moderate one; absorb a minor one. */
   crisis: (ctx, a) => {
     const remediate = a.responses.find(r => r.id === 'remediate')!;
@@ -164,6 +201,7 @@ export interface V2ArcQuarter {
   decisions?: V2QuarterDecisions;
   opportunityTerms?: V2OpportunityTerms;
   crisisAssessment?: V2CrisisAssessment;
+  finalOptions?: V2FinalOptionAvailability[];
 }
 
 export interface V2ArcRun {
@@ -243,11 +281,11 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
       terms = opportunityTerms(offerId, { capabilities: state.capabilities, productQuality: state.productQuality, trust: state.trust, aiCommercialReadiness: state.commercial.aiCommercialReadiness }, state.destination?.id ?? null);
       decisions.opportunity = { offerId, accept: policy.opportunity(ctx, terms) };
     }
-    let finalAllocation = allocation;
+    let finalAllocationBase = allocation;
     if (sq?.events?.recessionResponse) {
       const r = policy.recession(ctx, allocation);
       decisions.management = r.actions;
-      if (r.allocation) finalAllocation = r.allocation;
+      if (r.allocation) finalAllocationBase = r.allocation;
     }
     let crisisAssessment: V2CrisisAssessment | undefined;
     const crisisFires = sq?.events?.crisis === true && !options.suppressCrisis;
@@ -255,25 +293,38 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
       crisisAssessment = assessCrisis(state.destination?.id ?? 'balanced-marketplace', crisisView(state));
       decisions.crisisResponse = policy.crisis(ctx, crisisAssessment);
     }
+    let envelope = ENVELOPE;
+    let finalChoices: V2FinalOptionAvailability[] | undefined;
+    if (sq?.events?.finalDecision) {
+      finalChoices = finalOptions(finalView(state, q));
+      const option = policy.final(ctx, finalChoices);
+      decisions.finalOption = option;
+      const fa = allocationForFinalOption(finalAllocationBase, option, state.destination ? alignedBucketsOf(state.destination.id) : []);
+      finalAllocationBase = fa.allocation;
+      envelope = fa.envelope;
+    }
     const inputFor = (alloc: V2Allocation, dec: V2QuarterDecisions): V2QuarterInput => ({
-      quarter: q, allocation: alloc, strategicEnvelope: ENVELOPE, market: getScenarioMarket(q),
+      quarter: q, allocation: alloc, strategicEnvelope: envelope, market: getScenarioMarket(q),
       revenueSource: V2_INTEGRATED_MODE.revenueSource, costSource: V2_INTEGRATED_MODE.costSource, destination, decisions: dec,
       crisis: crisisFires,
+      finalDecision: sq?.events?.finalDecision === true,
     });
     // CFO forecast and explicit liquidity resolution
+    let finalAllocation = finalAllocationBase;
     const base = assessLiquidity(state, inputFor(finalAllocation, decisions));
     const forecast: V2LiquidityForecast = { ...base, reforecast: alloc => assessLiquidity(state, inputFor(alloc, decisions)).projectedClosingCash };
     const liq = policy.liquidity(ctx, forecast, finalAllocation);
     if (liq.allocation) finalAllocation = liq.allocation;
     if (liq.actions.length > 0) decisions.financing = liq.actions;
-    const record = runV2Quarter(state, q, finalAllocation, ENVELOPE, undefined, undefined, getScenarioMarket(q), {
+    const record = runV2Quarter(state, q, finalAllocation, envelope, undefined, undefined, getScenarioMarket(q), {
       revenueSource: V2_INTEGRATED_MODE.revenueSource,
       costSource: V2_INTEGRATED_MODE.costSource,
       destination,
       decisions,
       crisis: crisisFires,
+      finalDecision: sq?.events?.finalDecision === true,
     });
-    history.push({ quarter: q, signals, allocation: finalAllocation, record, decisions, opportunityTerms: terms, crisisAssessment });
+    history.push({ quarter: q, signals, allocation: finalAllocation, record, decisions, opportunityTerms: terms, crisisAssessment, finalOptions: finalChoices });
     state = record.ending;
     last = record.consequence;
   }

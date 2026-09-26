@@ -66,6 +66,19 @@ financing items (ledger). Culture now modulates effective capacity (×(1 + 0.006
 - Severity: Consumer+AI 0.57 vs Consumer100 0.77; Enterprise+AI (with contract) 0.65; People100 0.47; University100 0.44;
   Balanced 0.66. Absorb vs remediate by Q10 (Consumer+AI): −$14.5M vs −$3.1M revenue; −$35M vs −$20M net cash.
 
+## Q8 — Final Strategic Decision (PASS)
+
+- `engineV2Final.ts`: Q8 is played normally plus one decision; availability from state. Continue (always); Scale
+  independently (not distressed, cash ≥ $40M, margin ≥ 10%, Execution ≥ 55, Capacity ≥ 55 → $45M envelope); Raise growth
+  capital (not insolvent, no partner ROFR, growth ≥ 4% AND (AI readiness ≥ 40 or specialization ≥ 0.8) → $60M equity,
+  $60M envelope); Acquire/consolidate (not distressed, cash + debt capacity ≥ $50.4M, Execution/Capacity ≥ 55, Culture ≥ 60
+  → $7M/qtr focus-segment business at 1.8× revenue, overhead 55% − 20%×synergy, integration load 12 + 8, Culture −3);
+  Strategic sale (strategic value ≥ 0.4 → offer = standalone equity × (0.95 + 0.45·SV) × 0.85 if distressed; $3M deal cost,
+  load 5; closes at end of Q8); Stabilize/restructure (distressed / covenant / margin < 6% → −10% pool at 1.5× cost,
+  Culture −4, Execution −2, investment ≤ $10M, rate −0.5%).
+- Market: recovery (macro 0.15). Default options chosen: scale (Consumer+AI, Balanced, AI100, Cash100…), raise (Enterprise+AI),
+  continue (Enterprise100, People100, University100, low-X).
+
 ---
 
 ## Batch 2 status (approved at 9af2aac) — Q1–Q4 Strategic Arc

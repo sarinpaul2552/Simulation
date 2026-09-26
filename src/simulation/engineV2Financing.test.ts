@@ -185,7 +185,8 @@ describe('Batch 3: liquidity triggers, insolvency and distress (no floor, no hid
       for (const h of r.quarters) {
         const acts = h.decisions?.financing ?? [];
         const L = h.record.consequence.ledger;
-        expect(L.financingItems.length).toBe(acts.filter(a => a.kind !== 'restructure').length);
+        const growthRaise = h.decisions?.finalOption === 'raise-growth-capital' ? 1 : 0; // Q8 option = an explicit equity raise
+        expect(L.financingItems.length).toBe(acts.filter(a => a.kind !== 'restructure').length + growthRaise);
       }
     }
   });

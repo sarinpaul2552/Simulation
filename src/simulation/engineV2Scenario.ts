@@ -576,8 +576,24 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
         headline: 'Recovery under way: enterprise budgets reopening, consumer spending stabilising.',
         truthReference: { field: 'macroPressure', value: 0.15, note: 'recovery' },
       },
+      {
+        id: 'q8-investors', audience: 'CFO', topic: 'finance', reliability: 'headline',
+        headline: 'Growth investors are back for AI-enabled learning companies with momentum; valuations still below peak.',
+      },
+      {
+        id: 'q8-consolidation', audience: 'CEO', topic: 'competition', reliability: 'headline',
+        headline: 'Recession-weakened competitors are available at 1.5–2× revenue; several strategic buyers are circling the sector.',
+        shownRange: [1.5, 2], unit: '× revenue',
+      },
+      {
+        id: 'q8-board', audience: 'CEO', topic: 'finance', reliability: 'headline',
+        headline: 'Board: “Tell us what this company should become next — and whether we can afford it.”',
+      },
     ],
-    designNotes: ['Market truth drafted at the Q6 checkpoint; final-decision mechanics authored at Q8.'],
+    designNotes: [
+      'Recovery: macro 0.15, consumer 0.96, enterprise 1.05 / AI 1.4, AI-native 1.4, university 1.02.',
+      'Final options (engineV2Final) emerge from state: scale independently, raise growth capital, acquire/consolidate, strategic sale, stabilize/restructure, continue.',
+    ],
   },
 ];
 
