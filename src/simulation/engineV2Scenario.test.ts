@@ -181,3 +181,70 @@ describe('Q2 — Generative AI disruption', () => {
     expect(q2Rev).toBeGreaterThan(0.98 * 200);
   });
 });
+
+// ============ Q3 ============
+describe('Q3 — Conflicting evidence', () => {
+  const q3 = getScenarioQuarter(3)!;
+  const q2 = getScenarioQuarter(2)!;
+  const sig = (id: string) => q3.signals.find(s => s.id === id)!;
+
+  it('no new giant shock: no structural change, and demand moves are smaller than Q2', () => {
+    expect(q3.structuralChanges).toEqual([]);
+    expect(scenarioCapacity(3)).toEqual(scenarioCapacity(2));
+    expect(Math.abs(q3.demand.consumerDemand - 1)).toBeLessThan(Math.abs(q2.demand.consumerDemand - 1));
+    expect(q3.competitorProgress.consumer).toBeLessThan(q2.competitorProgress.consumer);
+  });
+
+  it('signals diverge from truth: usage headline overstates paid consumer weakness', () => {
+    const usage = sig('q3-consumer-usage');
+    expect(usage.reliability).toBe('headline');
+    expect(usage.shownValue!).toBeLessThan(-10);
+    const truthPct = Math.round((q3.demand.consumerDemand - 1) * 1e6) / 1e4;
+    expect(Math.abs(usage.shownValue!)).toBeGreaterThan(2 * Math.abs(truthPct));
+    const cfo = sig('q3-consumer-paid-cohorts');
+    expect(truthPct).toBeGreaterThanOrEqual(cfo.shownRange![0]);
+    expect(truthPct).toBeLessThanOrEqual(cfo.shownRange![1]);
+  });
+
+  it('AI engagement rises while paying AI-native demand eases (engagement ≠ willingness to pay)', () => {
+    expect(sig('q3-ai-engagement').shownValue!).toBeGreaterThan(0);
+    expect(q3.demand.aiNativeDemand).toBeLessThan(q2.demand.aiNativeDemand);
+    expect(sig('q3-ai-wtp').reliability).toBe('estimate');
+    expect(sig('q3-ai-wtp').shownRange![1] - sig('q3-ai-wtp').shownRange![0]).toBeGreaterThanOrEqual(10);
+  });
+
+  it('enterprise strengthening is genuine and university renewals stay strong', () => {
+    expect(q3.demand.enterpriseAIDemand).toBeGreaterThanOrEqual(q2.demand.enterpriseAIDemand);
+    expect(q3.demand.enterpriseDemand).toBeGreaterThan(q2.demand.enterpriseDemand);
+    expect(q3.demand.universityDemand).toBeGreaterThanOrEqual(1);
+  });
+
+  it('partial-information architecture: role-private signals for at least four roles', () => {
+    const roles = new Set(q3.signals.filter(s => s.audience !== 'all').map(s => s.audience));
+    expect(roles.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('controlled comparison (same state): Q3 market hurts Consumer less than Q2 and monetizes AI adoption less than Q2', () => {
+    const s = afterQ1(alloc({ cashReserve: 30 }));
+    const adopted = { ...s, commercial: { ...s.commercial, aiAdoptionIndex: 40 } };
+    const c2 = oneQuarter(s, 2, 2).revenue.consumer.closing;
+    const c3 = oneQuarter(s, 2, 3).revenue.consumer.closing;
+    expect(c3).toBeGreaterThan(c2);
+    expect(oneQuarter(adopted, 2, 3).revenue.aiNative.newMonetization).toBeLessThan(oneQuarter(adopted, 2, 2).revenue.aiNative.newMonetization);
+  });
+
+  it('Q1–Q3 arc: all 15 strategies pass every check; the disruption is material but not a collapse', () => {
+    const runs = runAllArcStrategies(3);
+    for (const r of runs) expect(r.passed, r.strategy.id).toBe(true);
+    const cash = runs.find(r => r.strategy.id === 'cash100')!;
+    const cons = cash.quarters[2].record.ending.segmentRevenue.consumer;
+    expect(cons).toBeLessThan(0.98 * 140);
+    expect(cons).toBeGreaterThan(0.94 * 140);
+  });
+
+  it('player policies can react to signals: the evidence-responsive policy changes allocation after the disruption', () => {
+    const r = runArc(strat('evidence-responsive'), 3);
+    expect(r.quarters[0].allocation).not.toEqual(r.quarters[1].allocation);
+    expect(r.quarters[1].allocation.enterprise + r.quarters[1].allocation.aiProduct).toBeGreaterThan(r.quarters[0].allocation.enterprise + r.quarters[0].allocation.aiProduct);
+  });
+});

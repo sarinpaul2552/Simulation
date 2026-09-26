@@ -158,10 +158,11 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
       'Consumer-grade generative AI reaches mass adoption within weeks. Free AI tutors undercut paid consumer learning; ' +
       'acquisition gets more expensive and differentiation erodes. Enterprises urgently ask how AI changes workforce ' +
       'learning. AI-native learning products see a surge of interest. Universities are cautious but stable.',
+    // Calibration (Q3 checkpoint): 0.93/0.35/1.15 → 0.90/0.45/1.20 — cumulative Q2+Q3 consumer hit was only −2.4%.
     demand: {
-      consumerDemand: 0.93,
-      consumerCommoditization: 0.35,
-      consumerCacPressure: 1.15,
+      consumerDemand: 0.9,
+      consumerCommoditization: 0.45,
+      consumerCacPressure: 1.2,
       enterpriseDemand: 1.05,
       enterpriseAIDemand: 1.35,
       universityDemand: 1.0,
@@ -184,13 +185,13 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
         id: 'q2-consumer-conversion', audience: 'all', topic: 'consumer', reliability: 'estimate',
         headline: 'Consumer trial-to-paid conversion is falling; analysts estimate −4% to −12% category demand.',
         shownRange: [-12, -4], unit: '% demand',
-        truthReference: { field: 'consumerDemand', value: 0.93, note: '−7%' },
+        truthReference: { field: 'consumerDemand', value: 0.9, note: '−10%' },
       },
       {
         id: 'q2-consumer-cac', audience: 'Growth', topic: 'consumer', reliability: 'headline',
-        headline: 'Paid acquisition costs up ~15% as AI-native apps bid for the same audiences; price comparison intensifies.',
-        shownValue: 15, unit: '% CAC',
-        truthReference: { field: 'consumerCacPressure', value: 1.15, note: 'plus commoditization 0.35' },
+        headline: 'Paid acquisition costs up ~20% as AI-native apps bid for the same audiences; price comparison intensifies.',
+        shownValue: 20, unit: '% CAC',
+        truthReference: { field: 'consumerCacPressure', value: 1.2, note: 'plus commoditization 0.45' },
       },
       {
         id: 'q2-enterprise-interest', audience: 'all', topic: 'enterprise', reliability: 'headline',
@@ -215,10 +216,84 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
       },
     ],
     designNotes: [
-      'Temporary (this quarter): consumer demand 0.93, commoditization 0.35, CAC pressure 1.15, enterprise demand 1.05, enterprise AI demand 1.35, AI-native demand 1.7.',
+      'Temporary (this quarter): consumer demand 0.90, commoditization 0.45, CAC pressure 1.20, enterprise demand 1.05, enterprise AI demand 1.35, AI-native demand 1.7.',
       'Benchmark acceleration: consumer 0.75 → 1.5 /qtr, enterprise 0.75 → 1.0 /qtr.',
       'Structural: AI-native capacity 80 → 150, enterprise 120 → 135. Consumer capacity NOT reduced (pressure is demand/commoditization, not ceiling).',
       'AI-enabled Consumer defense operates through the existing commoditization shield (AI readiness) in retention.',
+    ],
+  },
+  {
+    quarter: 3,
+    id: 'q3-conflicting-evidence',
+    title: 'Q3 — Conflicting Evidence',
+    briefing:
+      'The dust has not settled. Headline consumer usage is down sharply, yet paying subscribers seem stickier than usage ' +
+      'suggests. Enterprise buyers are issuing AI-learning RFPs. AI product engagement is soaring, but nobody yet knows ' +
+      'how much people will pay for it. Universities are renewing. Decide which evidence you believe.',
+    demand: {
+      consumerDemand: 0.95,
+      consumerCommoditization: 0.35,
+      consumerCacPressure: 1.12,
+      enterpriseDemand: 1.08,
+      enterpriseAIDemand: 1.4,
+      universityDemand: 1.02,
+      aiNativeDemand: 1.45,
+      macroPressure: 0,
+    },
+    competitorProgress: { consumer: 1.25, enterprise: 1.0, credential: 0.5 },
+    structuralChanges: [],
+    signals: [
+      {
+        id: 'q3-consumer-usage', audience: 'Growth', topic: 'consumer', reliability: 'headline',
+        headline: 'Consumer monthly active learners down 11% quarter-on-quarter; time-in-app down 15%.',
+        shownValue: -11, unit: '% MAU',
+        truthReference: { field: 'consumerDemand', value: 0.95, note: 'Usage is not revenue: paid demand only −5%; free/casual users churned first' },
+      },
+      {
+        id: 'q3-consumer-paid-cohorts', audience: 'CFO', topic: 'consumer', reliability: 'estimate',
+        headline: 'Finance cohort analysis: paying-subscriber revenue down an estimated 2%–5%, far less than usage.',
+        shownRange: [-5, -2], unit: '% paid revenue',
+        truthReference: { field: 'consumerDemand', value: 0.95, note: 'consistent with truth' },
+      },
+      {
+        id: 'q3-enterprise-rfps', audience: 'all', topic: 'enterprise', reliability: 'headline',
+        headline: 'Enterprise RFPs for AI-enabled learning up ~25%; procurement cycles still long.',
+        shownValue: 25, unit: '% RFPs',
+        truthReference: { field: 'enterpriseAIDemand', value: 1.4, note: 'enterpriseDemand 1.08 — genuine strengthening' },
+      },
+      {
+        id: 'q3-ai-engagement', audience: 'Product', topic: 'ai-native', reliability: 'headline',
+        headline: 'AI product engagement up 45%; sessions per user doubling.',
+        shownValue: 45, unit: '% engagement',
+        truthReference: { field: 'aiNativeDemand', value: 1.45, note: 'Paying AI-native demand actually eased from 1.7 to 1.45: engagement ≠ willingness to pay' },
+      },
+      {
+        id: 'q3-ai-wtp', audience: 'all', topic: 'ai-native', reliability: 'estimate',
+        headline: 'Pilot-to-paid conversion for AI tutoring is uncertain: estimates range from 5% to 20%.',
+        shownRange: [5, 20], unit: '% conversion',
+        truthReference: { field: 'aiNativeDemand', value: 1.45, note: 'truth sits in the lower-middle of the range' },
+      },
+      {
+        id: 'q3-university', audience: 'CEO', topic: 'university', reliability: 'headline',
+        headline: 'University renewals strong; three partners expanding credential programmes.',
+        truthReference: { field: 'universityDemand', value: 1.02, note: 'mildly positive' },
+      },
+      {
+        id: 'q3-competition', audience: 'all', topic: 'competition', reliability: 'headline',
+        headline: 'Consumer AI entrants are consolidating; the pace of new launches is slowing.',
+        truthReference: { field: 'competitorProgress.consumer', value: 1.25, note: 'still faster than normal (0.75), slower than Q2 (1.5)' },
+      },
+      {
+        id: 'q3-people-strain', audience: 'People', topic: 'competition', reliability: 'lagging',
+        headline: 'AI engineers are being poached at 30–40% premiums; attrition risk rising in product teams.',
+        shownRange: [30, 40], unit: '% premium',
+      },
+    ],
+    designNotes: [
+      'No new structural shock and no structural capacity change.',
+      'Signals deliberately diverge from truth: usage (−11%) overstates paid consumer weakness (−5%); AI engagement (+45%) rises while paying AI-native demand eases (1.7 → 1.45); enterprise strengthening is genuine.',
+      'Role-private signals: Growth sees usage; CFO sees paid cohorts; Product sees engagement; CEO sees university; People sees talent strain.',
+      'Belief quality is not scored yet.',
     ],
   },
 ];

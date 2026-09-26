@@ -15,10 +15,18 @@ market size separately (demand = near-term activity; `segmentCapacity` = structu
 
 ## Q2 — Generative AI Disruption (PASS)
 
-- Temporary demand: consumer 0.93, commoditization 0.35, CAC pressure 1.15; enterprise 1.05, enterprise AI 1.35;
+- Temporary demand: consumer 0.90, commoditization 0.45, CAC pressure 1.20 (strengthened at Q3 checkpoint); enterprise 1.05, enterprise AI 1.35;
   AI-native 1.7; university 1.0. Benchmark acceleration: consumer 1.5/qtr, enterprise 1.0/qtr.
 - Structural (persisting): AI-native capacity 80 → 150; enterprise 120 → 135. Consumer capacity unchanged.
 - Flows only via market inputs; AI readiness shields consumer retention; enterprise AI interest needs capability.
+
+## Q3 — Conflicting Evidence (PASS)
+
+- Truth: consumer 0.95 / commoditization 0.35 / CAC 1.12; enterprise 1.08, enterprise AI 1.40; AI-native 1.45 (eases from
+  1.7); university 1.02; consumer benchmark 1.25/qtr. No structural change.
+- Signals diverge from truth: usage −11% (Growth) vs paid −5% (CFO range −5%…−2%); AI engagement +45% (Product) while paying
+  AI demand eases; pilot conversion 5–20% (estimate); enterprise RFPs +25% (genuine). Role-private signals for CEO, CFO,
+  Product, People, Growth.
 
 ---
 
