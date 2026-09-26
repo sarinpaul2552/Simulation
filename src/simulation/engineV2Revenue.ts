@@ -8,6 +8,9 @@
  * Investment never appears in any revenue formula. AI Capability never multiplies revenue.
  * Pipeline is never revenue: pipeline → bookings (ACV) → backlog → live recurring revenue.
  *
+ * Phase 3C calibration: growth flows are scaled by addressable-market headroom
+ * (market.segmentCapacity), exactly 1 at starting revenue, so no segment compounds without bound.
+ *
  * All coefficients are Draft 1 calibration values in V2_REVENUE_CALIBRATION and are chosen
  * so that the starting company under a static neutral market (zero competitor progress)
  * is an exact revenue fixed point.
@@ -123,6 +126,8 @@ export interface V2ConsumerRevenueDiagnostic {
   demand: number;
   cacIndex: number;
   acquisition: number;
+  /** Market headroom multiplier applied to acquisition (1 at starting revenue). */
+  headroom: number;
   pricingPowerChange: number;
   priceMix: number;
   closing: number;
@@ -133,6 +138,8 @@ export interface V2EnterpriseRevenueDiagnostic {
   openingPipeline: number;
   resolvedPipeline: number;
   winRate: number;
+  /** Market headroom multiplier applied to bookings and expansion. */
+  headroom: number;
   bookingsACV: number;
   newRunRateBooked: number;
   renewalRate: number;
@@ -155,6 +162,7 @@ export interface V2UniversityRevenueDiagnostic {
   openingPipeline: number;
   resolvedPipeline: number;
   institutionalWinRate: number;
+  headroom: number;
   winsACV: number;
   newRunRateWon: number;
   liveFromEarlierWins: number;
@@ -169,6 +177,7 @@ export interface V2AINativeRevenueDiagnostic {
   adoption: number;
   aiNativeDemand: number;
   qualityExecutionFactor: number;
+  headroom: number;
   retentionRate: number;
   exposedBase: number;
   churn: number;
@@ -275,6 +284,19 @@ function releaseBacklog(
   return { cohorts: next, liveCurrent, liveEarlier };
 }
 
+// ============ MARKET HEADROOM (Phase 3C calibration) ============
+
+/**
+ * Growth-flow multiplier from addressable-market headroom:
+ *   (1 − revenue / capacity) / (1 − startRevenue / capacity), floored at 0.
+ * Exactly 1 at the starting revenue (fixed points preserved); falls as a segment fills its market,
+ * so retention-driven and expansion-driven growth cannot compound without bound.
+ */
+export function headroomMultiplier(revenue: number, capacity: number, startRevenue: number): number {
+  if (!(capacity > startRevenue)) throw new Error(`Segment capacity ${capacity} must exceed starting revenue ${startRevenue}`);
+  return Math.max(0, 1 - revenue / capacity) / (1 - startRevenue / capacity);
+}
+
 // ============ ENTERPRISE RENEWAL (exported for tests/diagnostics) ============
 
 export function enterpriseRenewalRate(company: V2RevenueCompanyInput, market: V2MarketConditions): number {
@@ -334,7 +356,8 @@ export function calculateV2RevenueConsequence(
   const retention = cc.consumerRetention / 100;
   const cChurn = cExposed * (1 - retention);
   const cRetained = C0 - cChurn;
-  const cAcq = kc.baseAcquisition * Math.max(0, market.consumerDemand) * Math.pow(100 / cc.consumerCacIndex, kc.cacElasticity);
+  const cHeadroom = headroomMultiplier(C0, market.segmentCapacity.consumer, K.start.consumer);
+  const cAcq = kc.baseAcquisition * Math.max(0, market.consumerDemand) * Math.pow(100 / cc.consumerCacIndex, kc.cacElasticity) * cHeadroom;
   const ppChange = cc.pricingPower - commercialOpening.pricingPower;
   const cPrice = cRetained * kc.pricePerPricingPoint * ppChange;
   const C1 = Math.max(0, cRetained + cAcq + cPrice);
@@ -345,12 +368,13 @@ export function calculateV2RevenueConsequence(
   const entPipe = commercial.indicators.find(i => i.indicator === 'enterprisePipeline')!;
   const resolvedPipeline = -entPipe.decayOrAttrition;
   const winRate = cc.enterpriseWinRate / 100;
-  const bookingsACV = resolvedPipeline * winRate;
+  const eHeadroom = headroomMultiplier(E0, market.segmentCapacity.enterprise, K.start.enterprise);
+  const bookingsACV = resolvedPipeline * winRate * eHeadroom;
   const newRunRate = bookingsACV * ke.acvToQuarterlyRunRate;
   const eRenewal = enterpriseRenewalRate(company, market);
   const eExposed = E0 * ke.renewalExposure;
   const eChurn = eExposed * (1 - eRenewal);
-  const eExpansion = eExposed * ke.expansionRate * ramp(company.capabilities.customerSuccess, ke.expansionCsRamp[0], ke.expansionCsRamp[1]);
+  const eExpansion = eExposed * ke.expansionRate * ramp(company.capabilities.customerSuccess, ke.expansionCsRamp[0], ke.expansionCsRamp[1]) * eHeadroom;
   const entNewCohort: V2BookingCohort = {
     id: `E-Q${quarter}`, quarterBooked: quarter, bookingsACV, runRate: newRunRate,
     liveThisQuarter: 0, liveToDate: 0, remaining: newRunRate,
@@ -368,7 +392,8 @@ export function calculateV2RevenueConsequence(
   const uniPipe = commercial.indicators.find(i => i.indicator === 'universityPipeline')!;
   const uResolved = -uniPipe.decayOrAttrition;
   const uWinRate = universityWinRate(company.trust);
-  const winsACV = uResolved * uWinRate;
+  const uHeadroom = headroomMultiplier(U0, market.segmentCapacity.university, K.start.university);
+  const winsACV = uResolved * uWinRate * uHeadroom;
   const uNewRunRate = winsACV * ku.acvToQuarterlyRunRate;
   const uniNewCohort: V2BookingCohort = {
     id: `U-Q${quarter}`, quarterBooked: quarter, bookingsACV: winsACV, runRate: uNewRunRate,
@@ -387,7 +412,8 @@ export function calculateV2RevenueConsequence(
   const aExposed = A0 * ka.renewalExposure;
   const aChurn = aExposed * (1 - aiRetention);
   const qe = aiQualityExecutionFactor(company.productQuality, company.capabilities.execution);
-  const aNew = aiNewMonetization(adoption, market.aiNativeDemand, qe);
+  const aHeadroom = headroomMultiplier(A0, market.segmentCapacity.aiNative, K.start.aiNative);
+  const aNew = aiNewMonetization(adoption, market.aiNativeDemand, qe) * aHeadroom;
   const A1 = Math.max(0, A0 - aChurn + aNew);
 
   const segments = { consumer: C1, enterprise: E1, university: U1, aiNative: A1 };
@@ -395,23 +421,23 @@ export function calculateV2RevenueConsequence(
     quarter,
     consumer: {
       opening: C0, exposedBase: cExposed, retention, retained: cRetained, churn: cChurn,
-      demand: market.consumerDemand, cacIndex: cc.consumerCacIndex, acquisition: cAcq,
+      demand: market.consumerDemand, cacIndex: cc.consumerCacIndex, acquisition: cAcq, headroom: cHeadroom,
       pricingPowerChange: ppChange, priceMix: cPrice, closing: C1,
     },
     enterprise: {
-      opening: E0, openingPipeline: entPipe.opening, resolvedPipeline, winRate, bookingsACV,
+      opening: E0, openingPipeline: entPipe.opening, resolvedPipeline, winRate, headroom: eHeadroom, bookingsACV,
       newRunRateBooked: newRunRate, renewalRate: eRenewal, exposedBase: eExposed, churn: eChurn,
       expansion: eExpansion, liveFromCurrentBookings: entRelease.liveCurrent, liveFromEarlierBookings: entRelease.liveEarlier,
       closing: E1, backlogRunRate: entBacklogRunRate, backlogACV: entBacklogRunRate / ke.acvToQuarterlyRunRate,
     },
     university: {
       opening: U0, renewalRate: uRenewal, exposedBase: uExposed, churn: uChurn, openingPipeline: uniPipe.opening,
-      resolvedPipeline: uResolved, institutionalWinRate: uWinRate, winsACV, newRunRateWon: uNewRunRate,
+      resolvedPipeline: uResolved, institutionalWinRate: uWinRate, headroom: uHeadroom, winsACV, newRunRateWon: uNewRunRate,
       liveFromEarlierWins: uniRelease.liveEarlier + uniRelease.liveCurrent, closing: U1,
       backlogRunRate: uniBacklogRunRate, backlogACV: uniBacklogRunRate / ku.acvToQuarterlyRunRate,
     },
     aiNative: {
-      opening: A0, readiness, adoption, aiNativeDemand: market.aiNativeDemand, qualityExecutionFactor: qe,
+      opening: A0, readiness, adoption, aiNativeDemand: market.aiNativeDemand, qualityExecutionFactor: qe, headroom: aHeadroom,
       retentionRate: aiRetention, exposedBase: aExposed, churn: aChurn, retainedBase: A0 - aChurn,
       newMonetization: aNew, closing: A1,
     },

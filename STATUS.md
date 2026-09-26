@@ -20,6 +20,14 @@
   Pure restatement of the ledger; financing 0, events 0, no floor.
 - Test Lab Mode 5 section F: Q1/Q4/Q8 integrated table + Q8 segment/capability/commercial state.
 
+## Phase 3C — Economic Stress Audit (PASS)
+
+- `src/testlab/utils/v2StressAudit.ts`: 32 stress cases (8/16/40 quarters) + automated detectors; Mode 5 section G;
+  `engineV2StressAudit.test.ts`. Full audit: `ECONOMICS_V2_BATCH1_AUDIT.md`.
+- Calibration: market headroom via `market.segmentCapacity` (Consumer 300 / Enterprise 120 / University 40 / AI-native 80
+  $M/qtr; multiplier 1 at start); semi-fixed ratchet 0.10 → 0.20.
+- Unresolved (design): long-horizon structural advantage of breadth once concentrated capabilities saturate at 100.
+
 ---
 
 ## Phase 2D status (approved, frozen at 5c4f1e5)

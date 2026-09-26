@@ -42,7 +42,9 @@ export const V2_COST_CALIBRATION = {
   },
   fixed: {
     /** Semi-fixed ratchet: target rises by this share of prior-quarter revenue above the $200M baseline. */
-    scaleStepPerRevenueAboveBaseline: 0.1,
+    // Calibration (3C): 0.10 → 0.20. At 0.10 long-run margins reached 40–52% at 2–3× scale;
+    // scale needs proportionally more management, systems and facilities.
+    scaleStepPerRevenueAboveBaseline: 0.2,
     baselineRevenue: 200,
     /** Partial adjustment speeds toward target (up faster than down: costs are sticky). */
     adjustUpSpeed: 0.25,

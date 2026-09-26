@@ -278,9 +278,10 @@ export function checkV2RevenueQuarter(
   checks.push({
     id: 'rev_pipeline_is_not_revenue',
     message: 'Enterprise/University revenue enters only via bookings × recognition, never pipeline directly',
-    passed: near(e.bookingsACV, e.resolvedPipeline * e.winRate, tol) && near(e.newRunRateBooked, e.bookingsACV * 0.25, tol) &&
-      near(u.winsACV, u.resolvedPipeline * u.institutionalWinRate, tol) && e.liveFromCurrentBookings === 0,
-    details: `bookings ${e.bookingsACV.toFixed(3)} = resolved ${e.resolvedPipeline.toFixed(3)} × win ${e.winRate.toFixed(4)}`,
+    passed: near(e.bookingsACV, e.resolvedPipeline * e.winRate * e.headroom, tol) && near(e.newRunRateBooked, e.bookingsACV * 0.25, tol) &&
+      near(u.winsACV, u.resolvedPipeline * u.institutionalWinRate * u.headroom, tol) && e.liveFromCurrentBookings === 0 &&
+      [c.headroom, e.headroom, u.headroom, a.headroom].every(h => Number.isFinite(h) && h >= 0),
+    details: `bookings ${e.bookingsACV.toFixed(3)} = resolved ${e.resolvedPipeline.toFixed(3)} × win ${e.winRate.toFixed(4)} × headroom ${e.headroom.toFixed(4)}`,
   });
 
   const openMatch = near(c.opening, opening.segmentRevenue.consumer, tol) && near(e.opening, opening.segmentRevenue.enterprise, tol) &&

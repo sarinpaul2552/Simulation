@@ -109,11 +109,13 @@ describe('Phase 3A: cost behaviour', () => {
     expect(c1.fixedSemiFixed).toBeCloseTo(115.45, 9); // lag: prior-quarter revenue was $200M
     state = c1.closing;
     const c2 = calculateV2CostConsequence(state, big, revenueWith(big), noInvest, getNeutralMarket(), 2);
-    expect(c2.fixedTarget).toBeCloseTo(115.45 + 5, 9);
-    expect(c2.fixedSemiFixed).toBeCloseTo(115.45 + 1.25, 9);
+    const k = V2_COST_CALIBRATION.fixed;
+    const step = k.scaleStepPerRevenueAboveBaseline * 50; // $250M − $200M
+    expect(c2.fixedTarget).toBeCloseTo(115.45 + step, 9);
+    expect(c2.fixedSemiFixed).toBeCloseTo(115.45 + step * k.adjustUpSpeed, 9);
     state = c2.closing;
     const c3 = calculateV2CostConsequence(state, START, revenueWith(START), noInvest, getNeutralMarket(), 3);
-    expect(c3.fixedSemiFixed).toBeCloseTo(115.45 + 1.25 - 0.125, 9); // unwinds at 10%
+    expect(c3.fixedSemiFixed).toBeCloseTo(115.45 + step * k.adjustUpSpeed * (1 - k.adjustDownSpeed), 9); // unwinds slowly
     expect(c3.fixedSemiFixed).toBeGreaterThanOrEqual(115.45);
   });
 

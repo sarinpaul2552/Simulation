@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { allocationStrategies } from '../utils/testPresets';
+import { runV2StressAudit, V2StressResult } from '../utils/v2StressAudit';
 import {
   runAllV2Scenarios,
   runAllV2CapabilityScenarios,
@@ -563,6 +564,15 @@ export const V2FinancialLedgerTest: React.FC = () => {
   const [costMode, setCostMode] = useState<'hold' | 'modelled'>('modelled');
   const [intCase, setIntCase] = useState<V2RevenueMarketCase>('competitive');
   const [intResults, setIntResults] = useState<V2RevenueRunResult[] | null>(null);
+  const [stress, setStress] = useState<V2StressResult[] | null>(null);
+  const runStress = () => {
+    try {
+      setError(null);
+      setStress(runV2StressAudit());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
   const runIntegrated = () => {
     try {
       setError(null);
@@ -621,7 +631,7 @@ export const V2FinancialLedgerTest: React.FC = () => {
 
   return (
     <div className="testlab-form">
-      <h2>Mode 5: V2 Engine: Ledger (2A) · Capabilities (2B) · Commercial (2C) · Revenue (2D) · Costs (3A) · Integrated (3B)</h2>
+      <h2>Mode 5: V2 Engine: Ledger (2A) · Capabilities (2B) · Commercial (2C) · Revenue (2D) · Costs (3A) · Integrated (3B) · Stress audit (3C)</h2>
       <p>
         V2 accounting core, running in parallel to the frozen V1 engine. Every quarter exposes its full ledger and
         re-checks the identity:
@@ -839,6 +849,46 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
       </div>
       {intResults && <IntegratedTable results={intResults} />}
       {intResults && <Q8StateTable results={intResults} />}
+
+      <h3 style={{ marginTop: '30px' }}>G. Economic stress audit (Phase 3C)</h3>
+      <div className="testlab-warning">
+        Integrated economy under stress (zero/max investment, concentrated, broad, switching, weak Execution/Trust/Talent/CS,
+        saturation, high/low capacity, 16- and 40-quarter runs). Automated detectors: invariants, non-finite values, negative
+        revenue/cost, in-quarter expensing of investment, runaway growth, margin band, cost vanishing with revenue, revenue
+        without commercial cause, revenue scale. Insolvency is allowed and reported.
+      </div>
+      <div className="button-group">
+        <button className="btn btn-primary" onClick={runStress}>Run stress audit</button>
+      </div>
+      {stress && (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="comparison-table">
+            <thead>
+              <tr><th>Case</th><th>Qs</th><th>Q8 revenue</th><th>Final revenue</th><th>Final Cons/Ent/Univ/AI</th><th>Final OP</th>
+                <th>Margin range</th><th>Max qtr growth</th><th>Final cash</th><th>First negative cash</th><th>Detector hits</th></tr>
+            </thead>
+            <tbody>
+              {stress.map(r => {
+                const f = r.summary.final;
+                const kinds = [...new Set(r.anomalies.map(a => a.detector))];
+                return (
+                  <tr key={r.stress.id}>
+                    <td>{r.stress.name}</td><td>{r.stress.quarters}</td>
+                    <td>{r.summary.q8 ? money(r.summary.q8.revenue) : '—'}</td><td>{money(f.revenue)}</td>
+                    <td>{`${f.segments.consumer.toFixed(0)} / ${f.segments.enterprise.toFixed(0)} / ${f.segments.university.toFixed(1)} / ${f.segments.aiNative.toFixed(1)}`}</td>
+                    <td style={cashStyle(f.operatingProfit)}>{money(f.operatingProfit)}</td>
+                    <td>{`${(r.summary.minMargin * 100).toFixed(1)}% – ${(r.summary.maxMargin * 100).toFixed(1)}%`}</td>
+                    <td>{(r.summary.maxQuarterlyRevenueGrowth * 100).toFixed(2)}%</td>
+                    <td style={cashStyle(f.cash)}>{money(f.cash)}</td>
+                    <td>{r.firstNegativeCashQuarter ? `Q${r.firstNegativeCashQuarter}` : '—'}</td>
+                    <td style={{ fontSize: '11px' }}>{kinds.map(k => `${k} ×${r.anomalies.filter(a => a.detector === k).length}`).join(', ') || 'none'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };

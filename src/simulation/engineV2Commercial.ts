@@ -46,7 +46,28 @@ export interface V2MarketConditions {
    * (e.g. 0 = benchmarks frozen, 2× neutral = fast-moving competitors).
    */
   competitorProgress: V2CompetitorProgress;
+  /**
+   * Addressable quarterly revenue pool per segment ($M/qtr). Growth flows (acquisition, bookings,
+   * expansion, wins, AI monetization) scale with remaining headroom so no segment compounds without
+   * bound. Added in Phase 3C calibration (market saturation); injectable like every market input.
+   */
+  segmentCapacity: V2SegmentCapacity;
 }
+
+export interface V2SegmentCapacity {
+  consumer: number;
+  enterprise: number;
+  university: number;
+  aiNative: number;
+}
+
+/** Draft 1 calibration (Phase 3C): neutral-market addressable revenue pools, $M per quarter. */
+export const V2_NEUTRAL_SEGMENT_CAPACITY: Readonly<V2SegmentCapacity> = Object.freeze({
+  consumer: 300,
+  enterprise: 120,
+  university: 40,
+  aiNative: 80,
+});
 
 export interface V2CompetitorProgress {
   consumer: number;
@@ -75,6 +96,7 @@ export function getNeutralMarket(): V2MarketConditions {
     aiNativeDemand: 1,
     macroPressure: 0,
     competitorProgress: { ...V2_NEUTRAL_COMPETITOR_PROGRESS },
+    segmentCapacity: { ...V2_NEUTRAL_SEGMENT_CAPACITY },
   };
 }
 
@@ -626,7 +648,7 @@ export function calculateV2CommercialConsequence(
 
   return {
     quarter,
-    market: { ...market, competitorProgress: { ...market.competitorProgress } },
+    market: { ...market, competitorProgress: { ...market.competitorProgress }, segmentCapacity: { ...market.segmentCapacity } },
     competitorBenchmarks,
     relativeCapability,
     aiReadiness,
