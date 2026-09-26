@@ -19,7 +19,9 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
   financing explicit and fixed at $0, event costs explicit/itemised (none by default).
 - Operating inputs are carried forward (flat $200M/$170M) or injected by tests — placeholder until calibration.
 - Production gameplay still runs V1. V2 is reachable only via Test Lab Mode 5.
-- Known pre-existing preset defect: `people-60` weights sum to 0.92; V2 runner books the unallocated $2.4M as Cash Reserve and shows a note.
+- Phase 2A cleanup: `engineV2.ts` is fully self-contained (V2-native `V2Capabilities`; no import from V1 `engine.ts`).
+- Phase 2A cleanup: Test-Lab-only `people-60` preset fixed to total 100% (was 92%); all presets now asserted to sum to 100%.
+  The V2 runner's unallocated-remainder → Cash Reserve guard remains as a visible safety net but no preset triggers it.
 
 NOT done (by design): capability/revenue calibration, financing choices, Q1–Q8 event rebalance, scoring, Q4 destinations.
 

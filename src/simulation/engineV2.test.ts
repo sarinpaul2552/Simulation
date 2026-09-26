@@ -11,6 +11,7 @@ import {
 import { getQ1Baseline, calculateQ2Consequence } from './engine';
 import { V2_SCENARIOS, runV2Scenario, runV2Strategy } from '../testlab/utils/v2Diagnostics';
 import { allocationStrategies } from '../testlab/utils/testPresets';
+import engineV2Source from './engineV2.ts?raw';
 
 const alloc = (p: Partial<V2Allocation>): V2Allocation => ({
   consumer: 0, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0, cashReserve: 0, ...p,
@@ -130,5 +131,51 @@ describe('V1 frozen baseline is unchanged', () => {
       null, false, [], s
     );
     expect(c.__diagnostic__cashLedger?.closingCash).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe('V2 baseline is self-contained (no dependency on V1 engine)', () => {
+  it('engineV2.ts has no import statements (in particular none from ./engine)', () => {
+    const importLines = engineV2Source.split('\n').filter(l => /^\s*import\s/.test(l) || /from\s+['"]\.\/engine['"]/.test(l));
+    expect(importLines).toEqual([]);
+  });
+
+  it('V2 baseline uses the V2-native capability set with Draft 1 starting values', () => {
+    const b = getV2Baseline();
+    expect(b.capabilities).toEqual({
+      consumer: 55,
+      enterprise: 30,
+      ai: 10,
+      talent: 55,
+      credential: 40,
+      customerSuccess: 30,
+      execution: 60,
+    });
+    expect('growth' in b.capabilities).toBe(false);
+    expect({ productQuality: b.productQuality, trust: b.trust, culture: b.culture }).toEqual({ productQuality: 70, trust: 70, culture: 72 });
+    expect({ revenue: b.revenue, operatingCost: b.operatingCost, operatingProfit: b.operatingProfit, cash: b.cash, debt: b.debt })
+      .toEqual({ revenue: 200, operatingCost: 170, operatingProfit: 30, cash: 60, debt: 0 });
+    expect(b.ledgerHistory).toEqual([]);
+  });
+
+  it('each baseline call returns an independent object', () => {
+    const a = getV2Baseline();
+    a.capabilities.ai = 99;
+    expect(getV2Baseline().capabilities.ai).toBe(10);
+  });
+});
+
+describe('Test Lab presets', () => {
+  it('every allocation preset sums to 100%', () => {
+    for (const s of Object.values(allocationStrategies)) {
+      const total = Object.values(s.weights).reduce((a: number, b) => a + (b || 0), 0);
+      expect(Math.abs(total - 1), s.id).toBeLessThan(1e-9);
+    }
+  });
+
+  it('V2 strategy runs need no unallocated-remainder adjustment', () => {
+    for (const s of Object.values(allocationStrategies)) {
+      expect(runV2Strategy(s, 'carried-forward').notes, s.id).toEqual([]);
+    }
   });
 });

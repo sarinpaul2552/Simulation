@@ -1,9 +1,8 @@
 /**
  * V2 Simulation Engine — Phase 2A: Financial Accounting Core
  *
- * Parallel to the frozen V1 engine (engine.ts). This module does NOT import or
- * call any V1 runtime logic; it only reuses V1 *types* for non-financial state
- * that is carried through unchanged in this phase.
+ * Parallel to the frozen V1 engine (engine.ts). This module is self-contained:
+ * it imports nothing from V1 (no runtime logic, no types).
  *
  * Canonical accounting identity (ECONOMICS_V2_ARCHITECTURE.md §1):
  *
@@ -25,9 +24,24 @@
  *   scoring changes, Q4 destination effects.
  */
 
-import type { Capabilities } from './engine';
-
 // ============ TYPES ============
+
+/**
+ * V2-native capability set (Architecture §7; Notion "Core company capabilities").
+ * Product Quality and Trust are also core V2 capabilities but live on
+ * V2TeamState alongside Culture, as in the starting-company model.
+ * V1's `growth` capability is intentionally not carried into V2.
+ * Values 0–100. Carried through unchanged in Phase 2A.
+ */
+export interface V2Capabilities {
+  consumer: number;
+  enterprise: number;
+  ai: number;
+  talent: number;
+  credential: number;
+  customerSuccess: number;
+  execution: number;
+}
 
 /** The six V2 allocation buckets (Architecture §4). Values in $M. */
 export interface V2Allocation {
@@ -113,7 +127,7 @@ export interface V2TeamState {
   productQuality: number;
   culture: number;
   trust: number;
-  capabilities: Capabilities;
+  capabilities: V2Capabilities;
 
   /** Every completed quarter's ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
@@ -170,7 +184,6 @@ export function getV2Baseline(): V2TeamState {
       talent: 55,
       credential: 40,
       customerSuccess: 30,
-      growth: 55,
       execution: 60,
     },
     ledgerHistory: [],

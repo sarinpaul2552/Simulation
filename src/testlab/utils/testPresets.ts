@@ -85,15 +85,15 @@ export const allocationStrategies: Record<string, AllocationStrategy> = {
   'people-60': {
     id: 'people-60',
     name: 'People-Heavy 60%',
-    description: 'Heavy people investment (50% instructor + 10% credential), remaining 40% distributed',
+    description: 'Heavy people investment (50% instructor + 10% credential), remaining 40% distributed evenly',
     category: 'normal',
     weights: {
-      consumerGrowth: 0.08,
-      enterpriseSales: 0.08,
-      aiProduct: 0.08,
+      consumerGrowth: 0.10,
+      enterpriseSales: 0.10,
+      aiProduct: 0.10,
       instructorPeople: 0.50,
       universityCredential: 0.10,
-      cash: 0.08,
+      cash: 0.10,
     },
   },
   'cash-60': {
