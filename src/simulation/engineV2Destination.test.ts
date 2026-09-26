@@ -103,7 +103,8 @@ describe('Q4 destinations: choice matters (same history, different destination)'
   });
 
   it('destinations begin separating trajectories from Q5 and the separation widens by Q8', () => {
-    const runs = V2_DESTINATION_IDS.map(d => runArc(strat('balanced'), 8, { destination: d, postQ4Allocation: 'aligned' }));
+    // Destination mechanics only: the Batch 3 Q7 crisis (which deliberately tests each destination's own fragility) is suppressed.
+    const runs = V2_DESTINATION_IDS.map(d => runArc(strat('balanced'), 8, { destination: d, postQ4Allocation: 'aligned', suppressCrisis: true }));
     const spread = (q: number) => Math.max(...runs.map(r => rev(r, q))) - Math.min(...runs.map(r => rev(r, q)));
     expect(spread(5)).toBeGreaterThan(0.5);
     expect(spread(8)).toBeGreaterThan(spread(5));

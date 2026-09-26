@@ -53,6 +53,19 @@ financing items (ledger). Culture now modulates effective capacity (×(1 + 0.006
   right of first refusal. Restructuring: moderate/deep 8%/16% of pool, 2× event cost, Culture/Execution/Capacity/Talent damage.
 - Structural minimum fixed pool $69.3M (60% of start). No cash floor; no hidden rescue (financing = Σ explicit actions).
 
+## Q7 — Strategy-Dependent Crisis (PASS)
+
+- `engineV2Crisis.ts`: type follows the destination; severity = 0.2 + 0.8 × vulnerability from the company's own drivers
+  (Consumer AI: PQ, Trust, AI readiness, consumer share, retention; Enterprise AI: contracted-client concentration
+  incl. rollout backlog, CS, Execution, PQ, AI; Premium: Talent, Capacity, Culture, load, AI support; University:
+  Credential, Trust, PQ, university share; Balanced: breadth, Execution, load, Capacity, Culture).
+- Responses remediate / contain / absorb trade cash now vs revenue, Trust, capability (load, roadmap) and lingering
+  aftershocks (Q8). Impacts only via itemised losses, backlog cancellation, shocks, price lines, load, commitments, event costs.
+- Market: macro 0.5, consumer 0.9, enterprise 0.95 / AI 1.3, AI-native 1.35. Signals show every crisis family to its
+  natural owner without revealing which will hit.
+- Severity: Consumer+AI 0.57 vs Consumer100 0.77; Enterprise+AI (with contract) 0.65; People100 0.47; University100 0.44;
+  Balanced 0.66. Absorb vs remediate by Q10 (Consumer+AI): −$14.5M vs −$3.1M revenue; −$35M vs −$20M net cash.
+
 ---
 
 ## Batch 2 status (approved at 9af2aac) — Q1–Q4 Strategic Arc

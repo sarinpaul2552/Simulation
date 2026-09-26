@@ -100,6 +100,18 @@ import {
 } from './engineV2Financing';
 export type { V2FinancingAction, V2FinancingState, V2SolvencyState, V2FinancingOptions } from './engineV2Financing';
 import { destinationStrength } from './engineV2Destination';
+import {
+  V2CrisisState,
+  V2CrisisResponseId,
+  V2CrisisAssessment,
+  getCrisisBaseline,
+  assessCrisis,
+  crisisEffects,
+  pendingCrisisEffects,
+  V2CrisisCompanyView,
+} from './engineV2Crisis';
+export type { V2CrisisState, V2CrisisResponseId, V2CrisisAssessment } from './engineV2Crisis';
+import { contractConcentration } from './engineV2Opportunity';
 
 export type { V2BookingCohort, V2RevenueConsequence, V2SegmentRevenue } from './engineV2Revenue';
 export type { V2CostConsequence, V2CostState, V2CostCommitment } from './engineV2Costs';
@@ -235,6 +247,8 @@ export interface V2TeamState {
   financing: V2FinancingState;
   /** Batch 3: liquidity/solvency status and history (explicit insolvency/distress state). */
   solvency: V2SolvencyState;
+  /** Batch 3 · Q7: the strategy-dependent crisis (assessment, response) and pending aftershocks. */
+  crisis: V2CrisisState;
 
   /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
@@ -256,6 +270,8 @@ export interface V2QuarterDecisions {
   management?: V2ManagementActions;
   /** Any quarter: financing / liquidity resolution (equity, debt, repayment, partner, cost restructuring). */
   financing?: V2FinancingAction[];
+  /** Q7: response to the strategy-dependent crisis (default 'absorb' when the crisis fires and no response is given). */
+  crisisResponse?: V2CrisisResponseId;
 }
 
 export interface V2DecisionLogEntry {
@@ -296,6 +312,8 @@ export interface V2QuarterInput {
   destination?: V2DestinationId;
   /** Batch 3: explicit management decisions (opportunity, management actions, financing, crisis, final). */
   decisions?: V2QuarterDecisions;
+  /** Batch 3 · Q7: the scenario fires the strategy-dependent crisis this quarter (derived from the company). */
+  crisis?: boolean;
 }
 
 /**
@@ -343,6 +361,9 @@ export interface V2Consequence {
   solvency: V2SolvencyState;
   /** Financing terms available at the start of the quarter (what the CFO could choose from). */
   financingOptions: V2FinancingOptions;
+  crisis: V2CrisisState;
+  /** The crisis assessment when the crisis fires this quarter. */
+  crisisAssessment: V2CrisisAssessment | null;
 }
 
 export interface V2IdentityCheck {
@@ -461,6 +482,7 @@ export function getV2Baseline(): V2TeamState {
     management: getManagementBaseline(),
     financing: getFinancingBaseline(),
     solvency: getSolvencyBaseline(),
+    crisis: getCrisisBaseline(),
     ledgerHistory: [],
     capabilityHistory: [],
     commercialHistory: [],
@@ -724,6 +746,26 @@ interface V2DecisionOutcome {
   managementSummary: { savingsPerQuarter: number; oneOffCost: number };
   financing: V2FinancingState;
   financingOptions: V2FinancingOptions;
+  crisis: V2CrisisState;
+  crisisAssessment: V2CrisisAssessment | null;
+  crisisContractLoss: number;
+}
+
+export function crisisView(s: V2TeamState): V2CrisisCompanyView {
+  const last = s.capabilityHistory[s.capabilityHistory.length - 1];
+  return {
+    capabilities: s.capabilities, productQuality: s.productQuality, trust: s.trust, culture: s.culture,
+    organizationalCapacity: s.organizationalCapacity, aiCommercialReadiness: s.commercial.aiCommercialReadiness,
+    consumerRetention: s.commercial.consumerRetention, enterprisePipeline: s.commercial.enterprisePipeline,
+    universityPipeline: s.commercial.universityPipeline, segmentRevenue: { ...s.segmentRevenue },
+    contractConcentration: contractConcentration(s.contracts, s.segmentRevenue.enterprise),
+    lastLoadToCapacity: last ? last.loadToCapacityRatio : 0,
+    lastActiveInitiatives: last ? last.activeInitiatives.length : 0,
+    fixedSemiFixed: s.costs.fixedSemiFixed,
+    contractCohorts: s.contracts.filter(c => c.status !== 'terminated').map(c => ({
+      cohortId: c.cohortId, remaining: s.enterpriseBacklog.find(k => k.id === c.cohortId)?.remaining ?? 0,
+    })),
+  };
 }
 
 /** Revenue four quarters before the last completed quarter (starting $200M before that exists). */
@@ -814,6 +856,28 @@ function collectDecisionEffects(
     });
   }
 
+  // Q7 crisis (derived from the company) and any aftershocks due
+  const due = pendingCrisisEffects(opening.crisis, input.quarter);
+  parts.push(due.effects);
+  let crisis: V2CrisisState = { record: opening.crisis.record, pending: due.remaining };
+  let crisisAssessment: V2CrisisAssessment | null = null;
+  let crisisContractLoss = 0;
+  if (input.decisions?.crisisResponse && !input.crisis) throw new Error('No crisis fires this quarter; a crisis response is not applicable');
+  if (input.crisis) {
+    if (opening.crisis.record) throw new Error(`The strategy-dependent crisis already occurred in Q${opening.crisis.record.quarter}`);
+    const view = crisisView(opening);
+    crisisAssessment = assessCrisis(dest?.id ?? 'balanced-marketplace', view);
+    const response = input.decisions?.crisisResponse ?? 'absorb';
+    const ce = crisisEffects(crisisAssessment, response, view, input.quarter);
+    parts.push(ce.effects);
+    crisis = { record: ce.record, pending: [...crisis.pending, ...ce.pending] };
+    crisisContractLoss = ce.contractLoss;
+    log.push({
+      quarter: input.quarter, kind: 'crisis', decision: response,
+      detail: `${crisisAssessment.title}: vulnerability ${crisisAssessment.vulnerability.toFixed(2)}, severity ${crisisAssessment.severity.toFixed(2)}`,
+    });
+  }
+
   // Financing: interest on opening debt, partner revenue share, distress while insolvent, explicit actions
   const mgmtCut = -mgmt.effects.cost.fixedPoolDelta.reduce((t, d) => t + d.amount, 0);
   const fview = { ...financingView(opening, input.quarter, dest), fixedSemiFixed: opening.costs.fixedSemiFixed - mgmtCut };
@@ -828,6 +892,7 @@ function collectDecisionEffects(
     effects: parts.length ? mergeEffects(...parts) : emptyEffects(), contracts, destinationState: dest, opportunityTerms: terms, log, contractOutcomes,
     management: mgmt.state, managementSummary: { savingsPerQuarter: mgmt.savingsPerQuarter, oneOffCost: mgmt.oneOffCost },
     financing: fin.state, financingOptions: finOpts,
+    crisis, crisisAssessment, crisisContractLoss,
   };
 }
 
@@ -942,9 +1007,16 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   const contracts = decided.contracts.map(c => {
     const outcome = decided.contractOutcomes.get(c.id) ?? { health: c.fitAtAcceptance, shortfall: 0, slaPenalty: 0, lostLive: 0, cancelFraction: 0 };
     const openingCohort = opening.enterpriseBacklog.find(k => k.id === c.cohortId);
-    const cancelled = openingCohort ? openingCohort.remaining * Math.min(1, outcome.cancelFraction) : 0;
+    // All cancellations of this contract's cohort this quarter (delivery termination and/or crisis), as applied by revenue
+    const fraction = Math.min(1, effects.revenue.backlogCancellation.filter(x => x.cohortId === c.cohortId).reduce((t, x) => t + x.fraction, 0));
+    const cancelled = openingCohort ? openingCohort.remaining * fraction : 0;
     const closingCohort = revenue.closing.enterpriseBacklog.find(k => k.id === c.cohortId);
-    return updateContract(c, input.quarter, outcome, closingCohort, cancelled);
+    const updated = updateContract(c, input.quarter, outcome, closingCohort, cancelled);
+    // Crisis losses on strategic contracts (pro rata to live run-rate)
+    const liveTotal = decided.contracts.reduce((t, k) => t + k.live, 0);
+    const share = liveTotal > 0 ? c.live / liveTotal : 0;
+    const crisisLoss = Math.min(updated.live, decided.crisisContractLoss * share);
+    return crisisLoss > 0 ? { ...updated, live: updated.live - crisisLoss, lostToDate: updated.lostToDate + crisisLoss } : updated;
   });
 
   // Solvency: compare with the counterfactual of taking no financing/restructuring action this quarter
@@ -986,6 +1058,8 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     financing: decided.financing,
     solvency,
     financingOptions: decided.financingOptions,
+    crisis: decided.crisis,
+    crisisAssessment: decided.crisisAssessment,
   };
 }
 
@@ -1023,6 +1097,7 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     financing: consequence.financing,
     solvency: consequence.solvency,
     debt: consequence.financing.debt,
+    crisis: consequence.crisis,
     ledgerHistory: [...state.ledgerHistory, ledger],
     capabilityHistory: [...state.capabilityHistory, capability],
     commercialHistory: [...state.commercialHistory, consequence.commercial],

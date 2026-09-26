@@ -13,7 +13,8 @@ import {
   V2PlayerSignal,
   V2SignalCompanyView,
 } from '../../simulation/engineV2Scenario';
-import { V2QuarterDecisions, V2ManagementActions, V2FinancingAction, V2QuarterInput, assessLiquidity } from '../../simulation/engineV2';
+import { V2QuarterDecisions, V2ManagementActions, V2FinancingAction, V2QuarterInput, assessLiquidity, crisisView } from '../../simulation/engineV2';
+import { V2CrisisAssessment, V2CrisisResponseId, assessCrisis } from '../../simulation/engineV2Crisis';
 import { V2OpportunityTerms, opportunityTerms } from '../../simulation/engineV2Opportunity';
 import { V2QuarterRecord, runV2Quarter } from './v2Diagnostics';
 import { V2DestinationId, V2_DESTINATIONS, V2_DESTINATION_IDS } from '../../simulation/engineV2Destination';
@@ -57,6 +58,8 @@ export interface V2ArcPolicy {
    * financing/restructuring actions and optionally a deferred allocation. Returning nothing = management refuses.
    */
   liquidity: (ctx: V2ArcContext, forecast: V2LiquidityForecast, planned: V2Allocation) => { actions: V2FinancingAction[]; allocation?: V2Allocation };
+  /** Q7: response to the company's own crisis (the player sees the assessment: type, severity, response costs). */
+  crisis: (ctx: V2ArcContext, assessment: V2CrisisAssessment) => V2CrisisResponseId;
 }
 
 export type V2LiquidityForecast = ReturnType<typeof assessLiquidity> & { reforecast: (allocation: V2Allocation) => number };
@@ -136,6 +139,13 @@ export const DEFAULT_POLICY: V2ArcPolicy = {
     return { actions, allocation: thin ? slowInvestment(planned, 10, protect) : undefined };
   },
   liquidity: liquidityPolicy('debt-first'),
+  /** Remediate a serious crisis when cash allows; contain a moderate one; absorb a minor one. */
+  crisis: (ctx, a) => {
+    const remediate = a.responses.find(r => r.id === 'remediate')!;
+    if (a.severity >= 0.45 && ctx.state.cash - remediate.cash > LIQUIDITY_TARGET) return 'remediate';
+    if (a.severity >= 0.3) return 'contain';
+    return 'absorb';
+  },
 };
 
 function alignedBucketsOf(id: V2DestinationId): string[] {
@@ -153,6 +163,7 @@ export interface V2ArcQuarter {
   record: V2QuarterRecord;
   decisions?: V2QuarterDecisions;
   opportunityTerms?: V2OpportunityTerms;
+  crisisAssessment?: V2CrisisAssessment;
 }
 
 export interface V2ArcRun {
@@ -197,6 +208,8 @@ export interface V2ArcOptions {
   postQ4Allocation?: 'same' | 'aligned';
   /** Override policy hooks (e.g. force accept/decline for comparisons). */
   policy?: Partial<V2ArcPolicy>;
+  /** Counterfactual analysis only: suppress the Q7 crisis. */
+  suppressCrisis?: boolean;
 }
 
 export const DESTINATION_COMMIT_QUARTER = 4;
@@ -236,9 +249,16 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
       decisions.management = r.actions;
       if (r.allocation) finalAllocation = r.allocation;
     }
+    let crisisAssessment: V2CrisisAssessment | undefined;
+    const crisisFires = sq?.events?.crisis === true && !options.suppressCrisis;
+    if (crisisFires) {
+      crisisAssessment = assessCrisis(state.destination?.id ?? 'balanced-marketplace', crisisView(state));
+      decisions.crisisResponse = policy.crisis(ctx, crisisAssessment);
+    }
     const inputFor = (alloc: V2Allocation, dec: V2QuarterDecisions): V2QuarterInput => ({
       quarter: q, allocation: alloc, strategicEnvelope: ENVELOPE, market: getScenarioMarket(q),
       revenueSource: V2_INTEGRATED_MODE.revenueSource, costSource: V2_INTEGRATED_MODE.costSource, destination, decisions: dec,
+      crisis: crisisFires,
     });
     // CFO forecast and explicit liquidity resolution
     const base = assessLiquidity(state, inputFor(finalAllocation, decisions));
@@ -251,8 +271,9 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
       costSource: V2_INTEGRATED_MODE.costSource,
       destination,
       decisions,
+      crisis: crisisFires,
     });
-    history.push({ quarter: q, signals, allocation: finalAllocation, record, decisions, opportunityTerms: terms });
+    history.push({ quarter: q, signals, allocation: finalAllocation, record, decisions, opportunityTerms: terms, crisisAssessment });
     state = record.ending;
     last = record.consequence;
   }

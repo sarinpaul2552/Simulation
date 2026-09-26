@@ -318,8 +318,14 @@ export function updateContract(
   };
 }
 
-/** Share of Enterprise revenue that depends on strategic contracts (concentration). */
+/**
+ * Share of contracted Enterprise run-rate that depends on strategic contracts (concentration). Contracted run-rate
+ * = live revenue + booked scope not yet live: a client whose programme is mid-rollout is already a concentration risk.
+ */
 export function contractConcentration(contracts: V2StrategicContract[], enterpriseRevenue: number): number {
-  const live = contracts.filter(c => c.status !== 'terminated').reduce((s, c) => s + c.live, 0);
-  return enterpriseRevenue > 0 ? Math.min(1, live / enterpriseRevenue) : 0;
+  const active = contracts.filter(c => c.status !== 'terminated');
+  const live = active.reduce((s, c) => s + c.live, 0);
+  const pending = active.reduce((s, c) => s + Math.max(0, c.bookedRunRate - c.recognizedToDate), 0);
+  const base = enterpriseRevenue + pending;
+  return base > 0 ? Math.min(1, (live + pending) / base) : 0;
 }

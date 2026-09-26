@@ -500,7 +500,11 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
     id: 'q7-strategy-crisis',
     title: 'Q7 — Strategy-Dependent Crisis',
     briefing:
-      'The recession is easing but not over. Now the company you built is tested by the crisis its own strategy invites.',
+      'The recession is easing but not over. Each strategy carries its own fragility, and this quarter the company you ' +
+      'built meets the crisis its strategy invites: consumer platforms face AI-quality scandals and price wars, enterprise ' +
+      'suppliers face major-client reliability failures, premium services face expert talent drains, credential providers ' +
+      'face accreditation challenges, and diversified players face coordination breakdowns. How badly it hurts depends on ' +
+      'what you built.',
     demand: {
       consumerDemand: 0.9,
       consumerCommoditization: 0.35,
@@ -520,8 +524,32 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
         headline: 'Economists see the downturn bottoming out; consumer confidence still weak.',
         truthReference: { field: 'macroPressure', value: 0.5, note: 'recession easing' },
       },
+      {
+        id: 'q7-ai-errors', audience: 'Growth', topic: 'consumer', reliability: 'headline',
+        headline: 'A rival AI tutor\'s viral error sparks a wave of refund requests across consumer learning apps.',
+      },
+      {
+        id: 'q7-sla-disputes', audience: 'CFO', topic: 'enterprise', reliability: 'headline',
+        headline: 'Enterprise buyers are invoking SLA clauses and consolidating suppliers after reliability incidents.',
+      },
+      {
+        id: 'q7-poaching', audience: 'People', topic: 'organization', reliability: 'headline',
+        headline: 'Recovering competitors are poaching senior experts with 30%+ premiums.',
+      },
+      {
+        id: 'q7-accreditation', audience: 'CEO', topic: 'university', reliability: 'headline',
+        headline: 'Accreditation bodies announce reviews of AI-assisted assessment integrity.',
+      },
+      {
+        id: 'q7-complexity', audience: 'Product', topic: 'organization', reliability: 'lagging',
+        headline: 'Launch slippage and cross-team escalations rose last quarter.',
+      },
     ],
-    designNotes: ['Market truth drafted at the Q6 checkpoint; crisis mechanics authored at Q7.'],
+    designNotes: [
+      'Macro easing: 0.5; consumer 0.9, enterprise 0.95 / AI 1.3, AI-native 1.35.',
+      'Crisis type follows the destination; severity = 0.2 + 0.8 × vulnerability from the company\'s own capabilities (engineV2Crisis).',
+      'Signals show all crisis families to their natural owners; none reveals which one will hit the company or how hard.',
+    ],
   },
   {
     quarter: 8,

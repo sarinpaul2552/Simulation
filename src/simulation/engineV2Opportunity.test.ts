@@ -9,7 +9,7 @@ import opportunitySource from './engineV2Opportunity.ts?raw';
 const strat = (id: string) => ARC_STRATEGIES.find(s => s.id === id)!;
 // Recession response and financing held fixed (none) in both arms so comparisons isolate the contract decision.
 const run = (id: string, accept: boolean, quarters = 10): V2ArcRun =>
-  runArc(strat(id), quarters, { policy: { opportunity: () => accept, recession: () => ({ actions: {} }), liquidity: liquidityPolicy('refuse') } });
+  runArc(strat(id), quarters, { suppressCrisis: true, policy: { opportunity: () => accept, recession: () => ({ actions: {} }), liquidity: liquidityPolicy('refuse') } });
 const q = (r: V2ArcRun, n: number) => r.quarters[n - 1].record;
 const OFFER = 'q5-global-enterprise';
 
@@ -96,8 +96,9 @@ describe('Batch 3 · Q5: opportunity is not "take contract = revenue"', () => {
     expect(sla.length).toBeGreaterThan(0);
     expect(q(weak, 8).ending.trust).toBeLessThan(q(run('consumer100', false), 8).ending.trust - 3);
     const strong = run('enterprise-ai', true).finalState.contracts[0];
-    expect(strong.lostToDate).toBe(0);
-    expect(strong.live).toBeCloseTo(12, 6);
+    // No delivery losses (the Q7 client crisis is a separate, itemised event)
+    expect(strong.history.reduce((t, h) => t + h.lost, 0)).toBe(0);
+    expect(strong.history.every(h => h.slaPenalty < 0.5)).toBe(true);
   });
 
   it('attractiveness depends on the company built in Q1–Q4 (no universally correct answer)', () => {

@@ -476,6 +476,7 @@ export function runV2Quarter(
     costSource?: 'hold' | 'modelled';
     destination?: V2DestinationId;
     decisions?: V2QuarterDecisions;
+    crisis?: boolean;
   }
 ): V2QuarterRecord {
   const consequence = calculateV2QuarterConsequence(opening, {
@@ -490,6 +491,7 @@ export function runV2Quarter(
     costSource: revenueOptions?.costSource,
     destination: revenueOptions?.destination,
     decisions: revenueOptions?.decisions,
+    crisis: revenueOptions?.crisis,
   });
   const ending = applyV2(opening, consequence);
   const checks = checkV2Quarter(opening, allocation, consequence, ending, operatingInputs, revenueOptions?.operatingCostOverride);
