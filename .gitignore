@@ -34,3 +34,7 @@ coverage/
 # Temporary
 *.tmp
 .cache/
+
+# Playwright
+test-results/
+playwright-report/
