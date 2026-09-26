@@ -23,13 +23,16 @@
 export type V2CapabilityBucket = 'consumer' | 'enterprise' | 'aiProduct' | 'people' | 'universityCredentials';
 
 /**
- * State variables that Phase 2B investment curves can move.
- * Customer Success, Execution, Culture, Innovation Velocity and Technical Debt
- * exist in state but have no approved Draft 1 curve yet, so nothing targets them.
+ * State variables that investment curves can move.
+ * Customer Success is a separate capability (not an allocation bucket) developed as a
+ * secondary effect of Enterprise investment (Phase 2C calibration patch).
+ * Execution, Culture, Innovation Velocity and Technical Debt exist in state but have
+ * no approved Draft 1 curve yet, so nothing targets them.
  */
 export type V2CapabilityTarget =
   | 'consumer'
   | 'enterprise'
+  | 'customerSuccess'
   | 'ai'
   | 'talent'
   | 'credential'
@@ -40,6 +43,7 @@ export type V2CapabilityTarget =
 export const V2_CAPABILITY_TARGETS: V2CapabilityTarget[] = [
   'consumer',
   'enterprise',
+  'customerSuccess',
   'ai',
   'talent',
   'credential',
@@ -199,7 +203,11 @@ export const V2_BUCKET_CURVES: Record<V2CapabilityBucket, V2BucketCurve> = {
   },
   enterprise: {
     bucket: 'enterprise',
-    gains: [{ target: 'enterprise', points: [0, 6, 11, 17, 21] }],
+    gains: [
+      { target: 'enterprise', points: [0, 6, 11, 17, 21] },
+      // Secondary Customer Success development: same cohort, absorption and 25/45/30 schedule.
+      { target: 'customerSuccess', points: [0, 1, 2, 3.5, 5] },
+    ],
     load: [0, 5, 10, 18, 26],
     maturationSchedule: [0.25, 0.45, 0.3],
   },
@@ -336,6 +344,7 @@ export function readTarget(s: Omit<V2CapabilityState, 'pendingCohorts'>, target:
   switch (target) {
     case 'consumer': return s.capabilities.consumer;
     case 'enterprise': return s.capabilities.enterprise;
+    case 'customerSuccess': return s.capabilities.customerSuccess;
     case 'ai': return s.capabilities.ai;
     case 'talent': return s.capabilities.talent;
     case 'credential': return s.capabilities.credential;
@@ -349,6 +358,7 @@ function writeTarget(s: Omit<V2CapabilityState, 'pendingCohorts'>, target: V2Cap
   switch (target) {
     case 'consumer': s.capabilities.consumer = value; return;
     case 'enterprise': s.capabilities.enterprise = value; return;
+    case 'customerSuccess': s.capabilities.customerSuccess = value; return;
     case 'ai': s.capabilities.ai = value; return;
     case 'talent': s.capabilities.talent = value; return;
     case 'credential': s.capabilities.credential = value; return;

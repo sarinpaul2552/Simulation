@@ -37,11 +37,32 @@ export interface V2MarketConditions {
   /** Macroeconomic pressure (0 = none, 1 = severe recession). */
   macroPressure: number;
   /**
-   * Competitor capability progress per quarter (capability points). Drives the
-   * competitor benchmarks so that standing still slowly loses relative position.
+   * Competitor benchmark progress per quarter (capability-equivalent points).
+   *
+   * Absolute capability does NOT decay merely because competitors improve.
+   * Relative competitive position (company capability − benchmark) deteriorates
+   * as the market benchmark advances. Commercial indicators respond to relative
+   * position. Market scenarios may accelerate, slow or stop this progression
+   * (e.g. 0 = benchmarks frozen, 2× neutral = fast-moving competitors).
    */
-  competitorProgress: { consumer: number; enterprise: number; credential: number };
+  competitorProgress: V2CompetitorProgress;
 }
+
+export interface V2CompetitorProgress {
+  consumer: number;
+  enterprise: number;
+  credential: number;
+}
+
+/**
+ * Draft 1 calibration: neutral-market competitor benchmark progression per quarter.
+ * Tunable; injected through V2MarketConditions.competitorProgress, never read directly by formulas.
+ */
+export const V2_NEUTRAL_COMPETITOR_PROGRESS: Readonly<V2CompetitorProgress> = Object.freeze({
+  consumer: 0.75,
+  enterprise: 0.75,
+  credential: 0.5,
+});
 
 export function getNeutralMarket(): V2MarketConditions {
   return {
@@ -53,7 +74,7 @@ export function getNeutralMarket(): V2MarketConditions {
     universityDemand: 1,
     aiNativeDemand: 1,
     macroPressure: 0,
-    competitorProgress: { consumer: 0.75, enterprise: 0.75, credential: 0.5 },
+    competitorProgress: { ...V2_NEUTRAL_COMPETITOR_PROGRESS },
   };
 }
 

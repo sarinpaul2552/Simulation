@@ -18,9 +18,13 @@ No revenue, cost, cash, stock or score effects.
   20%/qtr), Renewal 90% (75–97), Pricing Power 50 (slow).
 - Neutral market includes competitor progress (Consumer/Enterprise 0.75, Credential 0.5 capability pts/qtr): standing still
   slowly loses relative position. Zero competitor progress makes the starting company an exact fixed point.
-- Known constraints for review: Customer Success/Execution have no investment curve, so enterprise upside is CS-limited in
-  all strategies; "weak" scenarios inject weak opening state. Balanced edges Consumer100 on Q8 retention (91.9 vs 91.2)
-  because Consumer100 saturates at 100 by Q4 while Balanced gets AI×Consumer synergy.
+- **Phase 2C calibration patch:** Enterprise investment develops Customer Success as a secondary capability (not a bucket):
+  $0/5/10/20/30M → +0/1/2/3.5/5 CS, same cohort, same absorption factor, Enterprise 25/45/30 schedule, capped at 100 with
+  nominal/effective/wasted diagnostics. Weak-CS Test Lab scenario re-pins CS to 15 at each quarter start.
+  Competitor progress formalized as `V2_NEUTRAL_COMPETITOR_PROGRESS` (0.75 / 0.75 / 0.50 per quarter), injected only via
+  `V2MarketConditions.competitorProgress`. Absolute capability never decays because competitors improve; relative position does.
+- Accepted: Balanced edges Consumer100 on Q8 retention (91.9 vs 91.2); Consumer100 leads CAC; Consumer+AI leads retention.
+- Execution still has no investment curve.
 
 NOT done (by design): revenue conversion, opex, payroll, destinations, financing, insolvency, stock, scoring, events, Q7/Q8.
 

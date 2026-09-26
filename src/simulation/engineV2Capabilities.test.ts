@@ -41,7 +41,7 @@ const target = (c: ReturnType<typeof calculateV2QuarterConsequence>, t: V2Capabi
 // Approved Draft 1 tables, written independently of the engine constants.
 const SPEC: Record<V2CapabilityBucket, { gains: Partial<Record<V2CapabilityTarget, number[]>>; load: number[] }> = {
   consumer: { gains: { consumer: [0, 5, 9, 14, 17] }, load: [0, 6, 11, 20, 28] },
-  enterprise: { gains: { enterprise: [0, 6, 11, 17, 21] }, load: [0, 5, 10, 18, 26] },
+  enterprise: { gains: { enterprise: [0, 6, 11, 17, 21], customerSuccess: [0, 1, 2, 3.5, 5] }, load: [0, 5, 10, 18, 26] },
   aiProduct: { gains: { ai: [0, 7, 13, 21, 27] }, load: [0, 7, 13, 23, 32] },
   people: {
     gains: { talent: [0, 4, 7, 11, 13], organizationalCapacity: [0, 3, 6, 10, 12], productQuality: [0, 0.5, 1.0, 1.8, 2.2] },
@@ -74,10 +74,10 @@ describe('2. Piecewise-linear interpolation', () => {
     ['consumer', 8, { consumer: 7.4 }, 9],
     ['consumer', 15, { consumer: 11.5 }, 15.5],
     ['consumer', 25, { consumer: 15.5 }, 24],
-    ['enterprise', 2.5, { enterprise: 3 }, 2.5],
-    ['enterprise', 7.5, { enterprise: 8.5 }, 7.5],
-    ['enterprise', 15, { enterprise: 14 }, 14],
-    ['enterprise', 25, { enterprise: 19 }, 22],
+    ['enterprise', 2.5, { enterprise: 3, customerSuccess: 0.5 }, 2.5],
+    ['enterprise', 7.5, { enterprise: 8.5, customerSuccess: 1.5 }, 7.5],
+    ['enterprise', 15, { enterprise: 14, customerSuccess: 2.75 }, 14],
+    ['enterprise', 25, { enterprise: 19, customerSuccess: 4.25 }, 22],
     ['aiProduct', 2.5, { ai: 3.5 }, 3.5],
     ['aiProduct', 7.5, { ai: 10 }, 10],
     ['aiProduct', 15, { ai: 17 }, 18],
@@ -283,6 +283,7 @@ describe('8. Cohorts mature exactly across their schedules', () => {
   const schedules: [V2CapabilityBucket, V2CapabilityTarget, number, number[]][] = [
     ['consumer', 'consumer', 9, [0.5, 0.35, 0.15]],
     ['enterprise', 'enterprise', 11, [0.25, 0.45, 0.3]],
+    ['enterprise', 'customerSuccess', 2, [0.25, 0.45, 0.3]],
     ['aiProduct', 'ai', 13, [0.2, 0.4, 0.4]],
     ['people', 'talent', 7, [0.5, 0.35, 0.15]],
     ['people', 'organizationalCapacity', 6, [0.5, 0.35, 0.15]],
@@ -511,5 +512,61 @@ describe('Gameplay-scale absorption for legal $30M allocations (capacity 60 vs 7
     expect(w60.key).toBe('5/2/19/2/2');
     expect(w60.f).toBeCloseTo(0.84, 12);
     expect(worst(75).f).toBeCloseTo(0.914667, 5);
+  });
+});
+
+describe('Phase 2C patch: Customer Success developed through Enterprise investment', () => {
+  it('CS is not an allocation bucket; only the Enterprise cohort carries a CS gain', () => {
+    const c = calculateV2QuarterConsequence(getV2Baseline(), {
+      quarter: 1, allocation: alloc({ consumer: 6, enterprise: 6, aiProduct: 6, people: 6, universityCredentials: 6 }), strategicEnvelope: 30,
+    });
+    const withCs = c.capability.newCohorts.filter(k => k.gains.some(g => g.target === 'customerSuccess'));
+    expect(withCs.map(k => k.bucket)).toEqual(['enterprise']);
+  });
+
+  it('CS gain uses the Enterprise cohort absorption factor (nominal × factor)', () => {
+    const c = calculateV2QuarterConsequence(getV2Baseline(), {
+      quarter: 1, allocation: alloc({ enterprise: 10, consumer: 10, aiProduct: 10 }), strategicEnvelope: 30,
+    });
+    const ent = c.capability.newCohorts.find(k => k.bucket === 'enterprise')!;
+    const cs = ent.gains.find(g => g.target === 'customerSuccess')!;
+    expect(c.capability.absorptionFactor).toBeLessThan(1);
+    expect(cs.nominalGain).toBe(2);
+    expect(cs.effectiveGain).toBeCloseTo(2 * c.capability.absorptionFactor, 12);
+    expect(ent.gains.find(g => g.target === 'enterprise')!.effectiveGain).toBeCloseTo(11 * c.capability.absorptionFactor, 12);
+  });
+
+  it('$30M Enterprise: CS nominal +5, absorbed at 0.966667, matures 25/45/30 → CS 30 → 31.21 → 34.38 → 38.02 (with repeated investment)', () => {
+    const f = 1 - ((26 / 60 - 0.3) / 0.2) * 0.05;
+    const { out } = runQuarters(getV2Baseline(), Array(3).fill({ a: alloc({ enterprise: 30 }), env: 30 }));
+    const e = 5 * f;
+    expect(out[0].state.capabilities.customerSuccess).toBeCloseTo(30 + e * 0.25, 9);
+    expect(out[1].state.capabilities.customerSuccess).toBeCloseTo(30 + e * 0.25 + e * 0.45 + e * 0.25, 9);
+    expect(out[2].state.capabilities.customerSuccess).toBeCloseTo(30 + e * (0.25 + 0.45 + 0.3) + e * (0.25 + 0.45) + e * 0.25, 9);
+  });
+
+  it('pipeline-driving Enterprise capability gets ahead of CS (CS rises gradually, never instantaneously)', () => {
+    const { out } = runQuarters(getV2Baseline(), Array(4).fill({ a: alloc({ enterprise: 30 }), env: 30 }));
+    let prev = 30;
+    for (const o of out) {
+      const cs = o.state.capabilities.customerSuccess;
+      expect(cs - prev).toBeGreaterThan(0);
+      expect(cs - prev).toBeLessThanOrEqual(5);
+      prev = cs;
+    }
+    const q1 = out[0].state.capabilities;
+    expect(q1.enterprise - 30).toBeGreaterThan(4 * (q1.customerSuccess - 30));
+  });
+
+  it('CS is capped at 100 with nominal/effective/wasted diagnostics like other capabilities', () => {
+    const b = getV2Baseline();
+    const opening = { ...b, capabilities: { ...b.capabilities, customerSuccess: 99.5 } };
+    const c = calculateV2QuarterConsequence(opening, { quarter: 1, allocation: alloc({ enterprise: 30 }), strategicEnvelope: 30 });
+    const t = c.capability.targets.find(x => x.target === 'customerSuccess')!;
+    expect(t.nominalNew).toBe(5);
+    expect(t.maturedThisQuarter).toBeCloseTo(t.effectiveNew * 0.25, 12);
+    expect(t.closing).toBe(100);
+    expect(t.realized).toBeCloseTo(0.5, 12);
+    expect(t.wastedSaturation).toBeCloseTo(t.maturedThisQuarter - 0.5, 12);
   });
 });

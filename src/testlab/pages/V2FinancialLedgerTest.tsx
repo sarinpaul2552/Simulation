@@ -104,7 +104,7 @@ const BUCKET_LABEL: Record<string, string> = {
   consumer: 'Consumer', enterprise: 'Enterprise', aiProduct: 'AI & Product', people: 'People', universityCredentials: 'University & Cred.',
 };
 const TARGET_LABEL: Record<string, string> = {
-  consumer: 'Consumer Cap', enterprise: 'Enterprise Cap', ai: 'AI Cap', talent: 'Talent', credential: 'Credential Cap',
+  consumer: 'Consumer Cap', enterprise: 'Enterprise Cap', customerSuccess: 'Customer Success', ai: 'AI Cap', talent: 'Talent', credential: 'Credential Cap',
   organizationalCapacity: 'Org Capacity', productQuality: 'Product Quality', trust: 'Trust',
 };
 
@@ -115,7 +115,7 @@ const CapabilityOverview: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarter
       <thead>
         <tr>
           <th>Q</th><th>Active initiatives</th><th>Bucket load</th><th>Coordination load</th><th>Total load</th><th>Opening Org Cap</th><th>Load / Cap</th><th>Absorption</th>
-          <th>Consumer</th><th>Enterprise</th><th>AI</th><th>Talent</th><th>Credential</th><th>Org Cap</th><th>PQ</th><th>Trust</th>
+          <th>Consumer</th><th>Enterprise</th><th>CS</th><th>AI</th><th>Talent</th><th>Credential</th><th>Org Cap</th><th>PQ</th><th>Trust</th>
           <th>Pending cohorts</th><th>Cap. checks</th>
         </tr>
       </thead>
@@ -134,7 +134,7 @@ const CapabilityOverview: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarter
               <td>{n2(C.openingOrganizationalCapacity)}</td>
               <td>{(C.loadToCapacityRatio * 100).toFixed(1)}%</td>
               <td style={C.absorptionFactor < 1 ? { color: '#b26a00', fontWeight: 700 } : {}}>{(C.absorptionFactor * 100).toFixed(1)}%</td>
-              <td>{n2(e.capabilities.consumer)}</td><td>{n2(e.capabilities.enterprise)}</td><td>{n2(e.capabilities.ai)}</td>
+              <td>{n2(e.capabilities.consumer)}</td><td>{n2(e.capabilities.enterprise)}</td><td>{n2(e.capabilities.customerSuccess)}</td><td>{n2(e.capabilities.ai)}</td>
               <td>{n2(e.capabilities.talent)}</td><td>{n2(e.capabilities.credential)}</td><td>{n2(e.organizationalCapacity)}</td>
               <td>{n2(e.productQuality)}</td><td>{n2(e.trust)}</td>
               <td>{e.pendingCohorts.length}</td>

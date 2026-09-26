@@ -623,6 +623,12 @@ export interface V2CommercialScenario {
   opening: () => V2TeamState;
   allocation: V2Allocation;
   market?: V2MarketConditions;
+  /**
+   * Test-Lab-only diagnostic override: capability values re-imposed at the start of every
+   * quarter (e.g. to hold Customer Success low while Enterprise investment would otherwise
+   * develop it). Not an engine mechanic.
+   */
+  pinnedCapabilities?: Partial<V2TeamState['capabilities']>;
 }
 
 const withCaps = (p: Partial<V2TeamState['capabilities']>, extra: Partial<V2TeamState> = {}) => () => {
@@ -640,7 +646,7 @@ export const V2_COMMERCIAL_SCENARIOS: V2CommercialScenario[] = [
   { id: 'balanced', name: 'Balanced', description: '$5M in each bucket incl. $5M reserve', opening: getV2Baseline, allocation: alloc({ consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 5, cashReserve: 5 }) },
   { id: 'consumer-ai', name: 'Consumer + AI', description: '$15M Consumer + $15M AI', opening: getV2Baseline, allocation: alloc({ consumer: 15, aiProduct: 15 }) },
   { id: 'enterprise-ai', name: 'Enterprise + AI', description: '$15M Enterprise + $15M AI', opening: getV2Baseline, allocation: alloc({ enterprise: 15, aiProduct: 15 }) },
-  { id: 'enterprise-weak-cs', name: 'Enterprise100, weak CS', description: '$30M Enterprise with Customer Success injected at 15 (vs 30)', opening: withCaps({ customerSuccess: 15 }), allocation: alloc({ enterprise: 30 }) },
+  { id: 'enterprise-weak-cs', name: 'Enterprise100, weak CS (pinned)', description: '$30M Enterprise with Customer Success re-pinned to 15 at the start of every quarter (diagnostic override; Enterprise investment would otherwise develop CS). That quarter\'s matured CS tranche still lands before indicators are read, so end-of-quarter CS is ≈16–20.', opening: withCaps({ customerSuccess: 15 }), allocation: alloc({ enterprise: 30 }), pinnedCapabilities: { customerSuccess: 15 } },
   { id: 'ai-weak-org', name: 'AI100, weak Talent/Execution', description: '$30M AI with Talent 35 and Execution 35 injected (vs 55/60)', opening: withCaps({ talent: 35, execution: 35 }), allocation: alloc({ aiProduct: 30 }) },
   { id: 'university-weak-trust', name: 'University100, weak Trust', description: '$30M University with Trust injected at 45 (vs 70)', opening: withCaps({}, { trust: 45 }), allocation: alloc({ universityCredentials: 30 }) },
 ];
@@ -655,6 +661,9 @@ export function runV2CommercialScenario(scenario: V2CommercialScenario, quarters
   let state = scenario.opening();
   const recs: V2QuarterRecord[] = [];
   for (let q = 1; q <= quarters; q++) {
+    if (scenario.pinnedCapabilities) {
+      state = { ...state, capabilities: { ...state.capabilities, ...scenario.pinnedCapabilities } };
+    }
     const rec = runV2Quarter(state, q, scenario.allocation, 30, undefined, undefined, scenario.market);
     recs.push(rec);
     state = rec.ending;

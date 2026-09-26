@@ -3,6 +3,7 @@ import {
   calculateV2CommercialConsequence,
   calculateAIReadiness,
   getNeutralMarket,
+  V2_NEUTRAL_COMPETITOR_PROGRESS,
   V2CommercialCapabilityInput,
   V2CommercialState,
   V2MarketConditions,
@@ -310,7 +311,8 @@ describe('Synergies', () => {
     const withoutAi = run(b, alloc({ enterprise: 15, cashReserve: 15 }), 8)[7].commercial;
     expect(withAi.enterpriseWinRate).toBeGreaterThan(withoutAi.enterpriseWinRate + 1);
     // Pipeline differs only through Phase 2B absorption (AI adds Transformation Load), not via AI synergy
-    expect(Math.abs(withAi.enterprisePipeline - withoutAi.enterprisePipeline) / withoutAi.enterprisePipeline).toBeLessThan(0.01);
+    // AI adds Transformation Load, lowering absorption of the Enterprise and CS cohorts; still ≤ 2%.
+    expect(Math.abs(withAi.enterprisePipeline - withoutAi.enterprisePipeline) / withoutAi.enterprisePipeline).toBeLessThan(0.02);
   });
 
   it('AI synergy acts through Win Rate, not pipeline (identical capabilities, different AI)', () => {
@@ -329,7 +331,10 @@ describe('Weak-support constraints', () => {
     expect(weak.enterpriseWinRate).toBeLessThan(normal.enterpriseWinRate);
     expect(normal.enterpriseWinRate).toBeLessThan(strong.enterpriseWinRate);
     expect(weak.enterprisePipeline).toBeLessThan(normal.enterprisePipeline);
-    expect(weak.enterpriseWinRate).toBeLessThan(25); // high Enterprise capability, not world-class economics
+    // High Enterprise capability with CS held low stays near the starting win rate, well below normal CS.
+    // (CS is pinned to 15 at each quarter start; that quarter's matured CS tranche still lands before indicators are read.)
+    expect(weak.enterpriseWinRate).toBeLessThan(26);
+    expect(normal.enterpriseWinRate - weak.enterpriseWinRate).toBeGreaterThan(5);
   });
 
   it('University-heavy with weak Trust renews worse than a Cash100 company with normal Trust', () => {
@@ -428,5 +433,51 @@ describe('Phase 2A accounting and Phase 2B maturation preserved', () => {
     const s2 = applyV2Consequence(s[0], calculateV2QuarterConsequence(s[0], { quarter: 2, allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 }));
     const s3 = applyV2Consequence(s2, calculateV2QuarterConsequence(s2, { quarter: 3, allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 }));
     expect([s[0].capabilities.consumer, s2.capabilities.consumer, s3.capabilities.consumer]).toEqual([59.5, expect.closeTo(62.65, 12), expect.closeTo(64, 12)]);
+  });
+});
+
+describe('Phase 2C patch: weak-CS scenario stays weak; CS develops otherwise', () => {
+  it('weak-CS scenario keeps CS pinned at 15 in every quarter', () => {
+    for (const q of scenario('enterprise-weak-cs').quarters) {
+      expect(q.opening.capabilities.customerSuccess).toBe(15);
+    }
+  });
+
+  it('Enterprise100 develops CS gradually from 30', () => {
+    const cs = scenario('enterprise100').quarters.map(q => q.ending.capabilities.customerSuccess);
+    expect(cs[0]).toBeGreaterThan(30);
+    expect(cs[0]).toBeLessThan(32);
+    for (let i = 1; i < 8; i++) expect(cs[i]).toBeGreaterThan(cs[i - 1]);
+  });
+});
+
+describe('Phase 2C patch: competitor progress is a named, injectable market parameter', () => {
+  it('neutral market uses the named Draft 1 values (Consumer 0.75, Enterprise 0.75, Credential 0.50)', () => {
+    expect(getNeutralMarket().competitorProgress).toEqual({ consumer: 0.75, enterprise: 0.75, credential: 0.5 });
+    expect(getNeutralMarket().competitorProgress).toEqual({ ...V2_NEUTRAL_COMPETITOR_PROGRESS });
+    expect(Object.isFrozen(V2_NEUTRAL_COMPETITOR_PROGRESS)).toBe(true);
+  });
+
+  it('absolute capability never depends on competitor progress; relative position does', () => {
+    const b = getV2Baseline();
+    const fast = { ...getNeutralMarket(), competitorProgress: { consumer: 1.5, enterprise: 1.5, credential: 1.0 } };
+    const neutral = run(b, alloc({ cashReserve: 30 }), 8);
+    const faster = run(b, alloc({ cashReserve: 30 }), 8, fast);
+    const stopped = run(b, alloc({ cashReserve: 30 }), 8, noCompetitors());
+    expect(faster[7].capabilities).toEqual(neutral[7].capabilities);
+    expect(stopped[7].capabilities).toEqual(neutral[7].capabilities);
+    expect(faster[7].commercial.consumerRetention).toBeLessThan(neutral[7].commercial.consumerRetention);
+    expect(neutral[7].commercial.consumerRetention).toBeLessThan(stopped[7].commercial.consumerRetention);
+    expect(faster[7].commercial.enterprisePipeline).toBeLessThan(neutral[7].commercial.enterprisePipeline);
+    expect(faster[7].commercial.competitorBenchmarks.consumer).toBeCloseTo(55 + 8 * 1.5, 9);
+  });
+
+  it('stopped competitor progress keeps the starting company commercially stable', () => {
+    const s = run(getV2Baseline(), alloc({ cashReserve: 30 }), 8, noCompetitors())[7].commercial;
+    expect(s.consumerRetention).toBeCloseTo(85, 9);
+    expect(s.enterprisePipeline).toBeCloseTo(80, 9);
+    expect(s.enterpriseWinRate).toBeCloseTo(25, 9);
+    expect(s.universityRenewalRate).toBeCloseTo(90, 9);
+    expect(s.competitorBenchmarks).toEqual({ consumer: 55, enterprise: 30, credential: 40 });
   });
 });
