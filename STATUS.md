@@ -1,3 +1,30 @@
+# CURRENT STATUS — Phase 2A V2 Financial Accounting Core (awaiting review)
+
+**Last Updated:** 2026-09-26
+**V1 restore point:** tag `v1-engine-frozen` → ee4a8bc (engine.ts unchanged by Phase 2A)
+
+## Phase 2A — V2 Financial Accounting Core (COMPLETE, STOPPED FOR REVIEW)
+
+Canonical identity implemented on a parallel V2 path:
+
+```
+Operating Profit = Revenue − Operating Costs
+Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − Event Costs + Financing
+```
+
+- New: `src/simulation/engineV2.ts` (ledger + state model), `src/simulation/engineV2.test.ts` (Vitest),
+  `src/testlab/utils/v2StateBuilder.ts`, `src/testlab/utils/v2Diagnostics.ts`, `src/testlab/pages/V2FinancialLedgerTest.tsx`
+- Modified: `src/testlab/index.tsx` (Mode 5), `package.json` (`npm test`, vitest)
+- No ΔOperatingProfit cash semantics, no cash floor, Cash Reserve is memo only, strategic investment booked outside opex,
+  financing explicit and fixed at $0, event costs explicit/itemised (none by default).
+- Operating inputs are carried forward (flat $200M/$170M) or injected by tests — placeholder until calibration.
+- Production gameplay still runs V1. V2 is reachable only via Test Lab Mode 5.
+- Known pre-existing preset defect: `people-60` weights sum to 0.92; V2 runner books the unallocated $2.4M as Cash Reserve and shows a note.
+
+NOT done (by design): capability/revenue calibration, financing choices, Q1–Q8 event rebalance, scoring, Q4 destinations.
+
+---
+
 # CURRENT STATUS — Phase 1 Economics Audit CLOSED
 
 **Last Updated:** 2026-09-25 17:35 UTC  

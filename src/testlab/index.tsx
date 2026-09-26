@@ -3,9 +3,10 @@ import { SingleQuarterTest } from './pages/SingleQuarterTest';
 import { FullStrategyTest } from './pages/FullStrategyTest';
 import { CompareStrategies } from './pages/CompareStrategies';
 import DiagnosticSuite from './pages/DiagnosticSuite';
+import { V2FinancialLedgerTest } from './pages/V2FinancialLedgerTest';
 import './testlab.css';
 
-type TestMode = 'mode-select' | 'single-quarter' | 'full-strategy' | 'compare-strategies' | 'diagnostic-suite';
+type TestMode = 'mode-select' | 'single-quarter' | 'full-strategy' | 'compare-strategies' | 'diagnostic-suite' | 'v2-ledger';
 
 export const TestLab: React.FC = () => {
   const [mode, setMode] = useState<TestMode>('mode-select');
@@ -73,6 +74,17 @@ export const TestLab: React.FC = () => {
               Run all diagnostic strategies and capture authoritative terminal values
             </p>
           </div>
+          <div
+            className="mode-button"
+            onClick={() => handleModeSelect('v2-ledger')}
+            style={{ cursor: 'pointer' }}
+          >
+            <h3>🧾 Mode 5</h3>
+            <p>V2 Financial Ledger</p>
+            <p style={{ fontSize: '12px', marginTop: '8px' }}>
+              Phase 2A accounting core: per-quarter ledger and identity checks (V1 untouched)
+            </p>
+          </div>
         </div>
       )}
 
@@ -109,6 +121,14 @@ export const TestLab: React.FC = () => {
             ← Back to Mode Select
           </button>
           <DiagnosticSuite />
+        </>
+      )}
+      {mode === 'v2-ledger' && (
+        <>
+          <button className="btn btn-secondary" onClick={() => handleModeSelect('mode-select')}>
+            ← Back to Mode Select
+          </button>
+          <V2FinancialLedgerTest />
         </>
       )}
     </div>
