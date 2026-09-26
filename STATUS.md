@@ -1,3 +1,12 @@
+# CURRENT STATUS — Autonomous Batch 4 (Destination Architecture Repair) — PASS
+
+- Premium Value Proposition and Credential Network Value added in the commercial layer (see
+  `ECONOMICS_V2_BATCH4_REPAIR.md`). Flow: capabilities → value index → commercial indicators → segment economics → revenue.
+- Premium-builder → Premium 80.6 (weak Trust 69.1 / weak Execution 70.8); credential-builder → University 63.1,
+  University100 → University 60.9 (weak Trust 48.5); Consumer+AI 81.6; Enterprise100 best as Enterprise AI; Balanced 76.8.
+- Calibration: People PQ 0/1/1.8/3.2/4; AI/Product builds PQ 0/0.5/1/1.6/2; Enterprise WTP 0.004/pricing point.
+- Long horizon: decelerating everywhere; broad 40q = 2.2× (saturating). 393 tests.
+
 # CURRENT STATUS — Autonomous Build Batch 3 (Q5–Q8, Financing, Solvency & Terminal Outcome)
 
 **Last Updated:** 2026-09-26 · **Batch 2 approved:** 9af2aac. Consumer AI / University / destination economics NOT rebalanced

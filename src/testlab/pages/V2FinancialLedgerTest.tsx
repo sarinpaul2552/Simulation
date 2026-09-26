@@ -896,7 +896,7 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
             <thead>
               <tr>
                 <th>Strategy</th><th>Destination</th><th>Revenue</th><th>C / E / U / AI</th><th>OP (margin)</th><th>Cash</th><th>Debt</th>
-                <th>Financing</th><th>Culture / Trust / Exec</th><th>Q5</th><th>Q6</th><th>Q7 crisis</th><th>Q8</th><th>F / S / O</th><th>Overall</th>
+                <th>Financing</th><th>Culture / Trust / Exec</th><th>Premium Value / Credential Network / Pricing</th><th>Q5</th><th>Q6</th><th>Q7 crisis</th><th>Q8</th><th>F / S / O</th><th>Overall</th>
               </tr>
             </thead>
             <tbody>
@@ -908,6 +908,7 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
                   <td style={cashStyle(r.cash)}>{money(r.cash)}</td><td>{money(r.debt)}</td>
                   <td>{`eq ${r.financing.equity.toFixed(0)} · debt ${r.financing.debtDrawn.toFixed(0)} · own ${(r.financing.ownership * 100).toFixed(1)}%`}</td>
                   <td>{`${r.culture.toFixed(0)} / ${r.trust.toFixed(0)} / ${r.execution.toFixed(0)}`}</td>
+                  <td>{`${r.pv.toFixed(0)} / ${r.cn.toFixed(0)} / ${r.pp.toFixed(0)}`}</td>
                   <td>{r.q5Accepted ? 'accept' : 'decline'}</td><td>{r.q6Actions}</td>
                   <td>{r.crisis ? `${r.crisis.type} ${r.crisis.severity.toFixed(2)} ${r.crisis.response}` : '—'}</td>
                   <td>{r.q8Choice}</td>
