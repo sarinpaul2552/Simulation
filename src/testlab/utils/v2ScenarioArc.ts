@@ -13,7 +13,7 @@ import {
   V2PlayerSignal,
   V2SignalCompanyView,
 } from '../../simulation/engineV2Scenario';
-import { V2QuarterDecisions } from '../../simulation/engineV2';
+import { V2QuarterDecisions, V2ManagementActions } from '../../simulation/engineV2';
 import { V2OpportunityTerms, opportunityTerms } from '../../simulation/engineV2Opportunity';
 import { V2QuarterRecord, runV2Quarter } from './v2Diagnostics';
 import { V2DestinationId, V2_DESTINATIONS, V2_DESTINATION_IDS } from '../../simulation/engineV2Destination';
@@ -50,6 +50,20 @@ export interface V2ArcStrategy {
 export interface V2ArcPolicy {
   /** Q5: accept the offered opportunity? */
   opportunity: (ctx: V2ArcContext, terms: V2OpportunityTerms) => boolean;
+  /** Q6: recession response — management actions plus (optionally) a revised allocation (slow / protect / continue). */
+  recession: (ctx: V2ArcContext, planned: V2Allocation) => { actions: V2ManagementActions; allocation?: V2Allocation };
+}
+
+/** Move `amount` of the planned investment into Cash Reserve, cutting non-protected buckets pro rata. */
+export function slowInvestment(planned: V2Allocation, amount: number, protect: (keyof V2Allocation)[] = []): V2Allocation {
+  const buckets = (['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const).filter(b => !protect.includes(b));
+  const pool = buckets.reduce((t, b) => t + planned[b], 0);
+  const cut = Math.min(amount, pool);
+  if (cut <= 0) return { ...planned };
+  const out = { ...planned };
+  for (const b of buckets) out[b] = planned[b] - (cut * planned[b]) / pool;
+  out.cashReserve = planned.cashReserve + cut;
+  return out;
 }
 
 /**
@@ -59,7 +73,23 @@ export interface V2ArcPolicy {
 export const DEFAULT_POLICY: V2ArcPolicy = {
   opportunity: (ctx, t) => (t.aligned && t.fit.fit >= 0.3) || t.fit.fit >= 0.55 ||
     (ctx.state.destination?.id === 'balanced-marketplace' && t.fit.fit >= 0.45),
+  /**
+   * Default recession response: freeze hiring when not investing in People; when cash is thin (< $40M) also make a
+   * targeted, R&D-protecting reduction and slow a third of discretionary investment, protecting destination-aligned buckets.
+   */
+  recession: (ctx, planned) => {
+    const thin = ctx.state.cash < 40;
+    const actions: V2ManagementActions = {};
+    if (planned.people === 0) actions.hiringFreeze = true;
+    if (thin) actions.workforceReduction = { depth: 'targeted', protectRnD: true };
+    const protect = (ctx.state.destination ? alignedBucketsOf(ctx.state.destination.id) : []) as (keyof V2Allocation)[];
+    return { actions, allocation: thin ? slowInvestment(planned, 10, protect) : undefined };
+  },
 };
+
+function alignedBucketsOf(id: V2DestinationId): string[] {
+  return [...V2_DESTINATIONS[id].alignedBuckets];
+}
 
 function policyOf(strategy: V2ArcStrategy): V2ArcPolicy {
   return { ...DEFAULT_POLICY, ...(strategy.policy ?? {}) };
@@ -149,13 +179,19 @@ export function runArc(strategy: V2ArcStrategy, quarters = lastAuthoredQuarter()
       terms = opportunityTerms(offerId, { capabilities: state.capabilities, productQuality: state.productQuality, trust: state.trust, aiCommercialReadiness: state.commercial.aiCommercialReadiness }, state.destination?.id ?? null);
       decisions.opportunity = { offerId, accept: policy.opportunity(ctx, terms) };
     }
-    const record = runV2Quarter(state, q, allocation, ENVELOPE, undefined, undefined, getScenarioMarket(q), {
+    let finalAllocation = allocation;
+    if (sq?.events?.recessionResponse) {
+      const r = policy.recession(ctx, allocation);
+      decisions.management = r.actions;
+      if (r.allocation) finalAllocation = r.allocation;
+    }
+    const record = runV2Quarter(state, q, finalAllocation, ENVELOPE, undefined, undefined, getScenarioMarket(q), {
       revenueSource: V2_INTEGRATED_MODE.revenueSource,
       costSource: V2_INTEGRATED_MODE.costSource,
       destination,
       decisions,
     });
-    history.push({ quarter: q, signals, allocation, record, decisions, opportunityTerms: terms });
+    history.push({ quarter: q, signals, allocation: finalAllocation, record, decisions, opportunityTerms: terms });
     state = record.ending;
     last = record.consequence;
   }

@@ -422,6 +422,135 @@ export const V2_SCENARIO_ARC: V2ScenarioQuarter[] = [
       'Contracted revenue flows through the Enterprise backlog; costs, load, roadmap diversion, focus dilution and SLA exposure are explicit.',
     ],
   },
+  {
+    quarter: 6,
+    id: 'q6-recession',
+    title: 'Q6 — Recession / Resource Constraint',
+    briefing:
+      'A genuine downturn arrives. Households cut discretionary subscriptions, enterprises freeze discretionary training ' +
+      'budgets, investors and procurement teams slow AI purchases even as productivity pressure makes AI more relevant. ' +
+      'Universities are comparatively steady. The board asks how you will protect the company: cut costs, slow investment, ' +
+      'protect AI and product, change pricing, close weak offerings, or keep investing through the cycle.',
+    demand: {
+      // Calibration (Q6 checkpoint): consumer 0.85 → 0.82, CAC 1.05 → 1.08; enterprise 0.88 → 0.85; AI-native 1.15 → 1.3
+      // (productivity demand holds; funding pressure acts through the macro factor on new monetization).
+      consumerDemand: 0.82,
+      consumerCommoditization: 0.35,
+      consumerCacPressure: 1.08,
+      enterpriseDemand: 0.85,
+      enterpriseAIDemand: 1.2,
+      universityDemand: 0.98,
+      aiNativeDemand: 1.3,
+      macroPressure: 0.8,
+    },
+    competitorProgress: { consumer: 0.6, enterprise: 0.6, credential: 0.4 },
+    structuralChanges: [],
+    events: { recessionResponse: true },
+    signals: [
+      {
+        id: 'q6-recession', audience: 'all', topic: 'macro', reliability: 'headline',
+        headline: 'Recession confirmed: GDP contracts two quarters running; consumer confidence at a ten-year low.',
+        truthReference: { field: 'macroPressure', value: 0.8, note: 'demand shock, not structural: segment capacities unchanged' },
+      },
+      {
+        id: 'q6-consumer', audience: 'Growth', topic: 'consumer', reliability: 'estimate',
+        headline: 'Consumer learning spend expected to fall 12–20%; discount-seeking rising; paid acquisition gets cheaper but converts worse.',
+        shownRange: [-20, -12], unit: '% demand',
+        truthReference: { field: 'consumerDemand', value: 0.85, note: '−15%, CAC pressure eases to 1.05' },
+      },
+      {
+        id: 'q6-enterprise', audience: 'all', topic: 'enterprise', reliability: 'headline',
+        headline: 'Enterprises freeze discretionary L&D; renewals of proven, mission-critical programmes continue; AI-productivity projects survive.',
+        truthReference: { field: 'enterpriseDemand', value: 0.88, note: 'enterprise AI demand 1.2; strong CS halves renewal pressure' },
+      },
+      {
+        id: 'q6-ai', audience: 'Product', topic: 'ai-native', reliability: 'estimate',
+        headline: 'AI buyers split: funding and procurement slow (−10% to −30% new deals) while productivity use cases grow.',
+        shownRange: [-30, -10], unit: '% new AI deals',
+        truthReference: { field: 'aiNativeDemand', value: 1.15, note: 'demand still above neutral; new monetization × (1 − 0.25 × macro)' },
+      },
+      {
+        id: 'q6-university', audience: 'CEO', topic: 'university', reliability: 'headline',
+        headline: 'University partners hold budgets; counter-cyclical enrolment in credentials expected.',
+        truthReference: { field: 'universityDemand', value: 0.98, note: 'comparatively resilient (inflow × (1 − 0.15 macro))' },
+      },
+      {
+        id: 'q6-cfo', audience: 'CFO', topic: 'finance', reliability: 'estimate',
+        headline: 'Finance: revenue likely 3–8% below plan for the next two quarters; lenders tightening; equity valuations down.',
+        shownRange: [-8, -3], unit: '% vs plan',
+      },
+      {
+        id: 'q6-people', audience: 'People', topic: 'organization', reliability: 'headline',
+        headline: 'Sector layoffs widespread; deep cuts historically trigger regretted attrition among survivors for two to three quarters.',
+      },
+      {
+        id: 'q6-competition', audience: 'all', topic: 'competition', reliability: 'headline',
+        headline: 'Competitors are cutting too; several AI entrants have paused launches.',
+        truthReference: { field: 'competitorProgress.consumer', value: 0.6, note: 'benchmarks slow (0.6/0.6/0.4)' },
+      },
+    ],
+    designNotes: [
+      'Demand shock, NOT structural: segment capacities unchanged (AI-native 150, enterprise 135 persist).',
+      'Relative exposure through existing formulas: consumer demand −15% + macro (retention −3.2, pricing −4); enterprise inflow × (1 − 0.5·0.8) and win rate −4, renewals shielded by CS; university inflow × 0.88 and renewal −1.6; AI-native demand 1.15 but new monetization × 0.8.',
+      'Management responses: engineV2Management (workforce reduction, marketing level, hiring freeze, pricing, close weak offerings) + allocation (slow/protect/continue investing).',
+    ],
+  },
+  {
+    quarter: 7,
+    id: 'q7-strategy-crisis',
+    title: 'Q7 — Strategy-Dependent Crisis',
+    briefing:
+      'The recession is easing but not over. Now the company you built is tested by the crisis its own strategy invites.',
+    demand: {
+      consumerDemand: 0.9,
+      consumerCommoditization: 0.35,
+      consumerCacPressure: 1.05,
+      enterpriseDemand: 0.95,
+      enterpriseAIDemand: 1.3,
+      universityDemand: 1.0,
+      aiNativeDemand: 1.35,
+      macroPressure: 0.5,
+    },
+    competitorProgress: { consumer: 0.75, enterprise: 0.75, credential: 0.5 },
+    structuralChanges: [],
+    events: { crisis: true },
+    signals: [
+      {
+        id: 'q7-easing', audience: 'all', topic: 'macro', reliability: 'headline',
+        headline: 'Economists see the downturn bottoming out; consumer confidence still weak.',
+        truthReference: { field: 'macroPressure', value: 0.5, note: 'recession easing' },
+      },
+    ],
+    designNotes: ['Market truth drafted at the Q6 checkpoint; crisis mechanics authored at Q7.'],
+  },
+  {
+    quarter: 8,
+    id: 'q8-final-decision',
+    title: 'Q8 — Final Strategic Decision',
+    briefing:
+      'Recovery is under way. The board asks what the company should become next: the options open to you depend on what you built.',
+    demand: {
+      consumerDemand: 0.96,
+      consumerCommoditization: 0.35,
+      consumerCacPressure: 1.05,
+      enterpriseDemand: 1.05,
+      enterpriseAIDemand: 1.4,
+      universityDemand: 1.02,
+      aiNativeDemand: 1.4,
+      macroPressure: 0.15,
+    },
+    competitorProgress: { consumer: 0.9, enterprise: 0.9, credential: 0.5 },
+    structuralChanges: [],
+    events: { finalDecision: true },
+    signals: [
+      {
+        id: 'q8-recovery', audience: 'all', topic: 'macro', reliability: 'headline',
+        headline: 'Recovery under way: enterprise budgets reopening, consumer spending stabilising.',
+        truthReference: { field: 'macroPressure', value: 0.15, note: 'recovery' },
+      },
+    ],
+    designNotes: ['Market truth drafted at the Q6 checkpoint; final-decision mechanics authored at Q8.'],
+  },
 ];
 
 // ============ MARKET CONSTRUCTION ============

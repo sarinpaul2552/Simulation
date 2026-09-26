@@ -24,6 +24,20 @@ financing items (ledger). Culture now modulates effective capacity (×(1 + 0.006
 - Accept vs decline by Q10: Enterprise+AI +$11.8M rev, +$13.6M cash; Enterprise100 +$11.9M, +$12.5M; Consumer+AI −$17M cash,
   AI −16; Consumer100 −$8.5M rev, −$34M cash; University100 −$14M cash; Balanced +$5.7M rev, −$2.5M cash (mixed).
 
+## Q6 — Recession / Resource Constraint (PASS)
+
+- Market truth: consumer 0.82 / CAC 1.08 / commoditization 0.35; enterprise 0.85 / AI 1.2; university 0.98; AI-native 1.3;
+  macro 0.8; benchmarks slow 0.6/0.6/0.4. Structural capacity unchanged (demand shock, not size).
+- Calibration: consumer retention macro 4 → 8 (never exercised before); AI-native new monetization × (1 − 0.15·macro);
+  Enterprise renewal macro pressure × (1 − 0.5·ramp(CS,30,80)) (proven-ROI resilience).
+- Sustained-recession exposure (3 qtrs vs counterfactual, Balanced): Consumer −5.6%, Enterprise −2.5%, University −0.4%,
+  AI-native −13% of a small, still-growing base; OP −12% to −50%.
+- `engineV2Management.ts`: workforce reduction (targeted 6% / deep 14% of fixed pool, severance 1.25×, Talent/Culture/
+  Capacity/Execution/CS/AI shocks + 2 quarters survivor attrition; protect-R&D option), marketing level (spend × L,
+  volume × L^0.7, persistent), hiring freeze (ratchet frozen, −1.5% pool, erosion; no People investment), pricing
+  (pricing-power-scaled volume response), close weak offerings (−6% consumer, −5.5% pool, $3M wind-down, +capacity).
+  Slow/protect/continue investing via allocation. Deep cut by Q12: +$43–49M cash, −6–7% revenue, Talent −19, Culture −20.
+
 ---
 
 ## Batch 2 status (approved at 9af2aac) — Q1–Q4 Strategic Arc

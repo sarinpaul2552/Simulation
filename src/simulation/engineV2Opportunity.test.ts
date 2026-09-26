@@ -7,7 +7,9 @@ import { destinationStrength } from './engineV2Destination';
 import opportunitySource from './engineV2Opportunity.ts?raw';
 
 const strat = (id: string) => ARC_STRATEGIES.find(s => s.id === id)!;
-const run = (id: string, accept: boolean, quarters = 10): V2ArcRun => runArc(strat(id), quarters, { policy: { opportunity: () => accept } });
+// Recession response held fixed (none) in both arms so comparisons isolate the contract decision.
+const run = (id: string, accept: boolean, quarters = 10): V2ArcRun =>
+  runArc(strat(id), quarters, { policy: { opportunity: () => accept, recession: () => ({ actions: {} }) } });
 const q = (r: V2ArcRun, n: number) => r.quarters[n - 1].record;
 const OFFER = 'q5-global-enterprise';
 
@@ -151,7 +153,7 @@ describe('Batch 3 · Q5: opportunity is not "take contract = revenue"', () => {
   it('hard gates: every quarter of every strategy passes all ledger/revenue/cost checks, accept or decline', () => {
     for (const s of ARC_STRATEGIES) {
       for (const accept of [true, false]) {
-        const r = runArc(s, 10, { policy: { opportunity: () => accept } });
+        const r = runArc(s, 10, { policy: { opportunity: () => accept } }); // default recession policy
         const failed = r.quarters.flatMap(h => h.record.checks.filter(c => !c.passed).map(c => `${s.id} ${accept} Q${h.quarter} ${c.id}`));
         expect(failed).toEqual([]);
         for (const h of r.quarters) {

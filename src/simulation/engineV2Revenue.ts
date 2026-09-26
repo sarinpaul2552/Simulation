@@ -51,6 +51,11 @@ export const V2_REVENUE_CALIBRATION = {
     renewalPerTrust: 0.0015,
     renewalPerExecution: 0.001,
     renewalMacro: 0.04,
+    /**
+     * Batch 3 (Q6): proven-ROI / mission-critical resilience. Macro renewal pressure is scaled by
+     * (1 − macroCsShield × ramp(CS, 30, 80)): strong Customer Success halves recession churn pressure.
+     */
+    macroCsShield: 0.5,
     renewalBounds: [0.7, 0.97] as const,
     /** Expansion on the exposed base, scaled by Customer Success strength. */
     expansionRate: 0.1,
@@ -84,9 +89,9 @@ export const V2_REVENUE_CALIBRATION = {
     qualityBounds: [0.5, 1.5] as const,
     /**
      * Batch 3 (Q6): AI-native new monetization is exposed to buyer funding/procurement pressure:
-     * × (1 − macroMonetization × macroPressure). 0 macro pressure = unchanged (Q1–Q4 unaffected).
+     * × (1 − macroMonetization × macroPressure) (0.25 → 0.15 at Q6 calibration: double-counted with lower demand). 0 macro pressure = unchanged (Q1–Q4 unaffected).
      */
-    macroMonetization: 0.25,
+    macroMonetization: 0.15,
   },
 } as const;
 
@@ -333,7 +338,7 @@ export function enterpriseRenewalRate(company: V2RevenueCompanyInput, market: V2
     k.renewalPerCS * (company.capabilities.customerSuccess - 30) +
     k.renewalPerTrust * (company.trust - 70) +
     k.renewalPerExecution * (company.capabilities.execution - 60) -
-    k.renewalMacro * market.macroPressure;
+    k.renewalMacro * market.macroPressure * (1 - k.macroCsShield * ramp(company.capabilities.customerSuccess, 30, 80));
   return clamp(raw, k.renewalBounds[0], k.renewalBounds[1]);
 }
 

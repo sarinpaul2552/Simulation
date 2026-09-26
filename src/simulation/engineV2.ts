@@ -82,6 +82,8 @@ import {
   opportunityTerms,
 } from './engineV2Opportunity';
 export type { V2StrategicContract, V2OpportunityTerms } from './engineV2Opportunity';
+import { V2ManagementActions, V2ManagementState, getManagementBaseline, managementEffects } from './engineV2Management';
+export type { V2ManagementActions, V2ManagementState } from './engineV2Management';
 
 export type { V2BookingCohort, V2RevenueConsequence, V2SegmentRevenue } from './engineV2Revenue';
 export type { V2CostConsequence, V2CostState, V2CostCommitment } from './engineV2Costs';
@@ -211,6 +213,8 @@ export interface V2TeamState {
   contracts: V2StrategicContract[];
   /** Batch 3: every explicit management decision, in order (audit trail; never read by revenue formulas). */
   decisionLog: V2DecisionLogEntry[];
+  /** Batch 3 · Q6: persistent management settings (marketing level) and committed aftershocks. */
+  management: V2ManagementState;
 
   /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
@@ -228,6 +232,8 @@ export interface V2TeamState {
 export interface V2QuarterDecisions {
   /** Q5: accept or decline a scenario opportunity. */
   opportunity?: { offerId: string; accept: boolean };
+  /** Q6+: management actions (workforce, marketing, hiring freeze, pricing, closing weak offerings). */
+  management?: V2ManagementActions;
 }
 
 export interface V2DecisionLogEntry {
@@ -309,6 +315,8 @@ export interface V2Consequence {
   contracts: V2StrategicContract[];
   opportunityTerms: V2OpportunityTerms | null;
   decisionLog: V2DecisionLogEntry[];
+  management: V2ManagementState;
+  managementSummary: { savingsPerQuarter: number; oneOffCost: number };
 }
 
 export interface V2IdentityCheck {
@@ -424,6 +432,7 @@ export function getV2Baseline(): V2TeamState {
     destination: null,
     contracts: [],
     decisionLog: [],
+    management: getManagementBaseline(),
     ledgerHistory: [],
     capabilityHistory: [],
     commercialHistory: [],
@@ -683,6 +692,8 @@ interface V2DecisionOutcome {
   opportunityTerms: V2OpportunityTerms | null;
   log: V2DecisionLogEntry[];
   contractOutcomes: Map<string, ReturnType<typeof contractEffects>>;
+  management: V2ManagementState;
+  managementSummary: { savingsPerQuarter: number; oneOffCost: number };
 }
 
 function opportunityView(s: V2TeamState) {
@@ -735,7 +746,25 @@ function collectDecisionEffects(
     });
   }
 
-  return { effects: parts.length ? mergeEffects(...parts) : emptyEffects(), contracts, destinationState: dest, opportunityTerms: terms, log, contractOutcomes };
+  // Management actions (and previously committed aftershocks; persistent marketing level)
+  const mgmt = managementEffects(
+    opening.management,
+    { fixedSemiFixed: opening.costs.fixedSemiFixed, consumerRevenue: opening.segmentRevenue.consumer, pricingPower: opening.commercial.pricingPower, peopleInvestment: input.allocation.people },
+    input.decisions?.management,
+    input.quarter
+  );
+  parts.push(mgmt.effects);
+  if (input.decisions?.management && Object.keys(input.decisions.management).length > 0) {
+    log.push({
+      quarter: input.quarter, kind: 'management', decision: JSON.stringify(input.decisions.management),
+      detail: `structural savings $${mgmt.savingsPerQuarter.toFixed(1)}M/qtr; one-off $${mgmt.oneOffCost.toFixed(1)}M`,
+    });
+  }
+
+  return {
+    effects: parts.length ? mergeEffects(...parts) : emptyEffects(), contracts, destinationState: dest, opportunityTerms: terms, log, contractOutcomes,
+    management: mgmt.state, managementSummary: { savingsPerQuarter: mgmt.savingsPerQuarter, oneOffCost: mgmt.oneOffCost },
+  };
 }
 
 // ============ QUARTER ============
@@ -872,6 +901,8 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     contracts,
     opportunityTerms: decided.opportunityTerms,
     decisionLog: decided.log,
+    management: decided.management,
+    managementSummary: decided.managementSummary,
   };
 }
 
@@ -905,6 +936,7 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     destination: consequence.destinationState,
     contracts: consequence.contracts,
     decisionLog: [...state.decisionLog, ...consequence.decisionLog],
+    management: consequence.management,
     ledgerHistory: [...state.ledgerHistory, ledger],
     capabilityHistory: [...state.capabilityHistory, capability],
     commercialHistory: [...state.commercialHistory, consequence.commercial],

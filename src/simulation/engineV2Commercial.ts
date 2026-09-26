@@ -160,7 +160,9 @@ export const V2_COMMERCIAL_CALIBRATION = {
     consumerStrengthRamp: [50, 80] as const,
     mktDemand: 10,
     mktCommoditization: 8,
-    mktMacro: 4,
+    // Calibration (Batch 3 · Q6): 4 → 8. Draft-1 value was never exercised (macro 0 in Q1–Q4); at 4 a severe
+    // recession cut consumer revenue only −3.6% over three quarters — too mild for discretionary subscriptions.
+    mktMacro: 8,
     cacSpeed: 0.35,
     cacBounds: [50, 200] as const,
     cacPerRelCapability: 0.6,
