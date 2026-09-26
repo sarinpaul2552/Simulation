@@ -80,9 +80,9 @@ export const TestLab: React.FC = () => {
             style={{ cursor: 'pointer' }}
           >
             <h3>🧾 Mode 5</h3>
-            <p>V2 Financial Ledger</p>
+            <p>V2 Engine</p>
             <p style={{ fontSize: '12px', marginTop: '8px' }}>
-              Phase 2A accounting core: per-quarter ledger and identity checks (V1 untouched)
+              Financial ledger (2A) + capability pipeline (2B), with checks every quarter (V1 untouched)
             </p>
           </div>
         </div>

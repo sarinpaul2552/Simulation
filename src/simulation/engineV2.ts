@@ -1,8 +1,9 @@
 /**
  * V2 Simulation Engine — Phase 2A: Financial Accounting Core
  *
- * Parallel to the frozen V1 engine (engine.ts). This module is self-contained:
- * it imports nothing from V1 (no runtime logic, no types).
+ * Parallel to the frozen V1 engine (engine.ts). Self-contained: imports nothing
+ * from V1 (no runtime logic, no types). Phase 2B capability logic lives in
+ * engineV2Capabilities.ts and is orchestrated here, but audited separately.
  *
  * Canonical accounting identity (ECONOMICS_V2_ARCHITECTURE.md §1):
  *
@@ -24,24 +25,16 @@
  *   scoring changes, Q4 destination effects.
  */
 
-// ============ TYPES ============
+import {
+  V2Capabilities,
+  V2CapabilityConsequence,
+  V2InvestmentCohort,
+  calculateV2CapabilityConsequence,
+} from './engineV2Capabilities';
 
-/**
- * V2-native capability set (Architecture §7; Notion "Core company capabilities").
- * Product Quality and Trust are also core V2 capabilities but live on
- * V2TeamState alongside Culture, as in the starting-company model.
- * V1's `growth` capability is intentionally not carried into V2.
- * Values 0–100. Carried through unchanged in Phase 2A.
- */
-export interface V2Capabilities {
-  consumer: number;
-  enterprise: number;
-  ai: number;
-  talent: number;
-  credential: number;
-  customerSuccess: number;
-  execution: number;
-}
+export type { V2Capabilities, V2CapabilityConsequence, V2InvestmentCohort } from './engineV2Capabilities';
+
+// ============ TYPES ============
 
 /** The six V2 allocation buckets (Architecture §4). Values in $M. */
 export interface V2Allocation {
@@ -123,14 +116,26 @@ export interface V2TeamState {
   debt: number;
   stockPrice: number;
 
-  // Non-financial (carried through unchanged in Phase 2A)
+  // Capabilities & operating state (Phase 2B)
+  capabilities: V2Capabilities;
   productQuality: number;
   culture: number;
   trust: number;
-  capabilities: V2Capabilities;
+  /** Finite transformation capacity (0–100 index). Raised by People investment as it matures. */
+  organizationalCapacity: number;
+  /** Transformation Load created by the most recent quarter's simultaneous initiatives. */
+  transformationLoad: number;
+  /** Carried unchanged in Phase 2B (no approved curve yet). */
+  innovationVelocity: number;
+  /** Carried unchanged in Phase 2B (no approved curve yet). */
+  technicalDebt: number;
+  /** Investment cohorts still maturing into capability. */
+  pendingCohorts: V2InvestmentCohort[];
 
-  /** Every completed quarter's ledger, in order. */
+  /** Every completed quarter's financial ledger, in order. */
   ledgerHistory: V2FinancialLedger[];
+  /** Every completed quarter's capability consequence, in order. */
+  capabilityHistory: V2CapabilityConsequence[];
 }
 
 export interface V2QuarterInput {
@@ -144,11 +149,20 @@ export interface V2QuarterInput {
   eventCosts?: V2EventCost[];
 }
 
+/**
+ * One quarter's outcome. The financial consequence (`ledger`, `identity`, `flags`)
+ * and the capability consequence (`capability`, `capabilityFlags`) are computed by
+ * separate functions and can be audited independently.
+ */
 export interface V2Consequence {
   quarter: number;
+  // Financial consequence (Phase 2A)
   ledger: V2FinancialLedger;
   identity: V2IdentityCheck;
   flags: string[];
+  // Capability consequence (Phase 2B)
+  capability: V2CapabilityConsequence;
+  capabilityFlags: string[];
 }
 
 export interface V2IdentityCheck {
@@ -186,7 +200,13 @@ export function getV2Baseline(): V2TeamState {
       customerSuccess: 30,
       execution: 60,
     },
+    organizationalCapacity: 60,
+    transformationLoad: 0,
+    innovationVelocity: 55,
+    technicalDebt: 25,
+    pendingCohorts: [],
     ledgerHistory: [],
+    capabilityHistory: [],
   };
 }
 
@@ -318,6 +338,7 @@ export function checkV2AccountingIdentity(
 // ============ QUARTER ============
 
 export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2QuarterInput): V2Consequence {
+  // Financial consequence (Phase 2A) — unchanged
   const ledger = calculateV2Ledger(opening, input);
   const identity = checkV2AccountingIdentity(ledger);
 
@@ -328,23 +349,39 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   if (ledger.strategicInvestment === 0) flags.push('ZERO_STRATEGIC_INVESTMENT');
   if (!identity.holds) flags.push('ACCOUNTING_IDENTITY_VIOLATION');
 
-  return { quarter: input.quarter, ledger, identity, flags };
+  // Capability consequence (Phase 2B) — separate calculation; never touches cash
+  const capability = calculateV2CapabilityConsequence(opening, input.allocation, input.quarter);
+  const capabilityFlags: string[] = [];
+  if (capability.absorptionFactor < 1) capabilityFlags.push('ABSORPTION_PENALTY');
+  if (capability.loadToCapacityRatio > 1) capabilityFlags.push('LOAD_EXCEEDS_CAPACITY');
+  if (capability.targets.some(t => t.wastedSaturation > 1e-9)) capabilityFlags.push('CAPABILITY_SATURATION_WASTE');
+
+  return { quarter: input.quarter, ledger, identity, flags, capability, capabilityFlags };
 }
 
 /**
  * Apply a V2 consequence to state. Pure. No clamping of financial values.
- * Non-financial state is carried through unchanged in Phase 2A.
+ * Capability values come from the capability consequence (already capped at 100).
  */
 export function applyV2Consequence(state: V2TeamState, consequence: V2Consequence): V2TeamState {
-  const { ledger } = consequence;
+  const { ledger, capability } = consequence;
   return {
     ...state,
-    capabilities: { ...state.capabilities },
     quarter: ledger.quarter,
     revenue: ledger.revenue,
     operatingCost: ledger.operatingCost,
     operatingProfit: ledger.operatingProfit,
     cash: ledger.closingCash,
+    capabilities: { ...capability.closing.capabilities },
+    productQuality: capability.closing.productQuality,
+    culture: capability.closing.culture,
+    trust: capability.closing.trust,
+    organizationalCapacity: capability.closing.organizationalCapacity,
+    transformationLoad: capability.closing.transformationLoad,
+    innovationVelocity: capability.closing.innovationVelocity,
+    technicalDebt: capability.closing.technicalDebt,
+    pendingCohorts: capability.pendingCohortsAfter,
     ledgerHistory: [...state.ledgerHistory, ledger],
+    capabilityHistory: [...state.capabilityHistory, capability],
   };
 }

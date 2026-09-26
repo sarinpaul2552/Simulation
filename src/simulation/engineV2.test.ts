@@ -12,6 +12,7 @@ import { getQ1Baseline, calculateQ2Consequence } from './engine';
 import { V2_SCENARIOS, runV2Scenario, runV2Strategy } from '../testlab/utils/v2Diagnostics';
 import { allocationStrategies } from '../testlab/utils/testPresets';
 import engineV2Source from './engineV2.ts?raw';
+import engineV2CapabilitiesSource from './engineV2Capabilities.ts?raw';
 
 const alloc = (p: Partial<V2Allocation>): V2Allocation => ({
   consumer: 0, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0, cashReserve: 0, ...p,
@@ -135,9 +136,14 @@ describe('V1 frozen baseline is unchanged', () => {
 });
 
 describe('V2 baseline is self-contained (no dependency on V1 engine)', () => {
-  it('engineV2.ts has no import statements (in particular none from ./engine)', () => {
-    const importLines = engineV2Source.split('\n').filter(l => /^\s*import\s/.test(l) || /from\s+['"]\.\/engine['"]/.test(l));
-    expect(importLines).toEqual([]);
+  it('engineV2.ts imports only V2 modules, never the V1 engine', () => {
+    const froms = [...engineV2Source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
+    expect(froms.every(f => f === './engineV2Capabilities')).toBe(true);
+    expect(froms).not.toContain('./engine');
+  });
+
+  it('engineV2Capabilities.ts has no imports at all', () => {
+    expect(engineV2CapabilitiesSource.split('\n').filter(l => /^\s*import\s/.test(l) || /\bfrom\s+['"]/.test(l))).toEqual([]);
   });
 
   it('V2 baseline uses the V2-native capability set with Draft 1 starting values', () => {

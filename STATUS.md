@@ -1,4 +1,32 @@
-# CURRENT STATUS — Phase 2A V2 Financial Accounting Core (awaiting review)
+# CURRENT STATUS — Phase 2B V2 Capability & Investment Pipeline (awaiting review)
+
+**Last Updated:** 2026-09-26
+**Approved:** Phase 2A at e84978b. **V1 restore point:** tag `v1-engine-frozen` → ee4a8bc.
+
+## Phase 2B — Capability & Investment Pipeline (COMPLETE, STOPPED FOR REVIEW)
+
+Strategic Investment → calibrated curves (piecewise-linear, $0–30M, no extrapolation) → Transformation Load →
+Organizational absorption (smooth, 100% ≤70% of capacity … 40% floor) → investment cohorts → lagged capability maturation.
+
+- New: `src/simulation/engineV2Capabilities.ts` (Draft 1 curves, absorption, cohorts, maturation; no imports),
+  `src/simulation/engineV2Capabilities.test.ts`
+- Modified: `engineV2.ts` (state: Org Capacity 60, Transformation Load, Innovation Velocity 55, Technical Debt 25,
+  pending cohorts, capability history; `V2Consequence.capability` separate from the financial `ledger`),
+  `engineV2.test.ts` (self-containment test now "V2 modules only, never V1"), `v2Diagnostics.ts`, Mode 5 page, Test Lab tile.
+- Capability gains have NO revenue/cost/cash effect yet. Financial ledger unchanged from 2A.
+- Interpretations for review: absorption continues the 125–150% slope past 150% to the 40% floor at 168.75%;
+  absorption uses opening Org Capacity; absorption applies to all new gains (incl. People/University support lines).
+- Carried unchanged (no approved curve): Customer Success, Execution, Culture, Innovation Velocity, Technical Debt;
+  People recurring opex commitment not implemented.
+- Calibration finding: with a $30M envelope the maximum possible load is 34 (56.7% of capacity 60), so absorption never
+  penalizes in current gameplay. It only bites if capacity < 48.6, the envelope grows, or load curves change.
+
+NOT done (by design): segment revenue, pipeline/win rate, AI-native/University revenue, CAC/retention, events,
+Q4 destinations, financing, insolvency, scoring, switching penalties, Q7 crises.
+
+---
+
+## Phase 2A status (approved)
 
 **Last Updated:** 2026-09-26
 **V1 restore point:** tag `v1-engine-frozen` → ee4a8bc (engine.ts unchanged by Phase 2A)

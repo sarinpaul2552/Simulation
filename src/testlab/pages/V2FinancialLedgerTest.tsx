@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { allocationStrategies } from '../utils/testPresets';
 import {
   runAllV2Scenarios,
+  runAllV2CapabilityScenarios,
+  V2CapabilityScenarioResult,
   runV2Strategy,
   V2QuarterRecord,
   V2ScenarioResult,
@@ -93,12 +95,165 @@ const QuarterCheckDetails: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarte
   );
 };
 
+// ============ PHASE 2B: CAPABILITY PIPELINE ============
+
+const n2 = (n: number) => (Math.abs(n) < 1e-9 ? '0' : n.toFixed(2));
+const BUCKET_LABEL: Record<string, string> = {
+  consumer: 'Consumer', enterprise: 'Enterprise', aiProduct: 'AI & Product', people: 'People', universityCredentials: 'University & Cred.',
+};
+const TARGET_LABEL: Record<string, string> = {
+  consumer: 'Consumer Cap', enterprise: 'Enterprise Cap', ai: 'AI Cap', talent: 'Talent', credential: 'Credential Cap',
+  organizationalCapacity: 'Org Capacity', productQuality: 'Product Quality', trust: 'Trust',
+};
+
+/** Cross-quarter overview: load → capacity → absorption → closing capabilities. */
+const CapabilityOverview: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }) => (
+  <div style={{ overflowX: 'auto', marginTop: '12px' }}>
+    <table className="comparison-table">
+      <thead>
+        <tr>
+          <th>Q</th><th>Transformation Load</th><th>Opening Org Cap</th><th>Load / Cap</th><th>Absorption</th>
+          <th>Consumer</th><th>Enterprise</th><th>AI</th><th>Talent</th><th>Credential</th><th>Org Cap</th><th>PQ</th><th>Trust</th>
+          <th>Pending cohorts</th><th>Cap. checks</th>
+        </tr>
+      </thead>
+      <tbody>
+        {quarters.map(rec => {
+          const C = rec.consequence.capability;
+          const e = rec.ending;
+          const capFailed = rec.checks.filter(c => c.id.startsWith('cap_') && !c.passed);
+          return (
+            <tr key={rec.quarter} style={C.absorptionFactor < 1 ? { background: '#fff8e1' } : undefined}>
+              <td>Q{rec.quarter}</td>
+              <td>{n2(C.transformationLoad)}</td>
+              <td>{n2(C.openingOrganizationalCapacity)}</td>
+              <td>{(C.loadToCapacityRatio * 100).toFixed(1)}%</td>
+              <td style={C.absorptionFactor < 1 ? { color: '#b26a00', fontWeight: 700 } : {}}>{(C.absorptionFactor * 100).toFixed(1)}%</td>
+              <td>{n2(e.capabilities.consumer)}</td><td>{n2(e.capabilities.enterprise)}</td><td>{n2(e.capabilities.ai)}</td>
+              <td>{n2(e.capabilities.talent)}</td><td>{n2(e.capabilities.credential)}</td><td>{n2(e.organizationalCapacity)}</td>
+              <td>{n2(e.productQuality)}</td><td>{n2(e.trust)}</td>
+              <td>{e.pendingCohorts.length}</td>
+              <td title={capFailed.map(c => `${c.id}: ${c.details}`).join('\n')}>{capFailed.length === 0 ? '✅' : `🚨 ${capFailed.length}`}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+);
+
+/** Per-quarter detail: allocation → nominal → load → capacity → absorption → effective → matured → pending → closing. */
+const CapabilityQuarterDetail: React.FC<{ rec: V2QuarterRecord }> = ({ rec }) => {
+  const C = rec.consequence.capability;
+  return (
+    <div className="audit-section">
+      <h4>
+        Q{rec.quarter} capability pipeline · Load {n2(C.transformationLoad)} ÷ Org Capacity {n2(C.openingOrganizationalCapacity)} ={' '}
+        {(C.loadToCapacityRatio * 100).toFixed(1)}% → absorption {(C.absorptionFactor * 100).toFixed(2)}%
+        {rec.consequence.capabilityFlags.length > 0 && <span style={{ fontSize: '11px' }}> · {rec.consequence.capabilityFlags.join(', ')}</span>}
+      </h4>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="comparison-table">
+          <thead><tr><th>Bucket</th><th>Allocation</th><th>Transformation Load</th><th>Nominal capability gain (uncapped)</th></tr></thead>
+          <tbody>
+            {C.buckets.map(b => (
+              <tr key={b.bucket}>
+                <td>{BUCKET_LABEL[b.bucket]}</td>
+                <td>{money(b.amount)}</td>
+                <td>{n2(b.transformationLoad)}</td>
+                <td>{b.nominalGains.map(g => `${TARGET_LABEL[g.target]} +${n2(g.nominalGain)}`).join(' · ')}</td>
+              </tr>
+            ))}
+            <tr>
+              <td>Cash Reserve</td><td>{money(rec.allocation.cashReserve)}</td><td>0</td><td>none (unspent liquidity)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style={{ overflowX: 'auto', marginTop: '8px' }}>
+        <table className="comparison-table">
+          <thead>
+            <tr>
+              <th>Target</th><th>Opening</th><th>Nominal new</th><th>Effective new</th><th>Absorption loss</th>
+              <th>Matured this Q</th><th>Realized</th><th>Wasted (cap 100)</th><th>Pending after</th><th>Closing</th>
+            </tr>
+          </thead>
+          <tbody>
+            {C.targets.map(t => (
+              <tr key={t.target}>
+                <td>{TARGET_LABEL[t.target]}</td>
+                <td>{n2(t.opening)}</td>
+                <td>{n2(t.nominalNew)}</td>
+                <td>{n2(t.effectiveNew)}</td>
+                <td style={t.absorptionLoss > 1e-9 ? { color: '#b26a00' } : {}}>{n2(t.absorptionLoss)}</td>
+                <td>{n2(t.maturedThisQuarter)}</td>
+                <td>{n2(t.realized)}</td>
+                <td style={t.wastedSaturation > 1e-9 ? { color: '#c62828', fontWeight: 700 } : {}}>{n2(t.wastedSaturation)}</td>
+                <td>{n2(t.pendingAfter)}</td>
+                <td><strong>{n2(t.closing)}</strong></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {(C.pendingCohortsAfter.length > 0 || C.completedCohorts.length > 0) && (
+        <div style={{ overflowX: 'auto', marginTop: '8px' }}>
+          <table className="comparison-table">
+            <thead>
+              <tr><th>Cohort</th><th>Invested</th><th>Amount</th><th>Absorption</th><th>Schedule</th><th>Gains: matured this Q / to date / remaining (of effective)</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {[...C.completedCohorts.map(c => ({ c, done: true })), ...C.pendingCohortsAfter.map(c => ({ c, done: false }))].map(({ c, done }) => (
+                <tr key={c.id}>
+                  <td>{c.id}</td>
+                  <td>Q{c.quarterInvested}</td>
+                  <td>{money(c.amount)}</td>
+                  <td>{(c.absorptionFactor * 100).toFixed(1)}%</td>
+                  <td>{c.maturationSchedule.map(x => `${Math.round(x * 100)}%`).join(' / ')}</td>
+                  <td style={{ fontSize: '12px' }}>
+                    {c.gains.map(g => `${TARGET_LABEL[g.target]}: ${n2(g.maturedThisQuarter)} / ${n2(g.maturedToDate)} / ${n2(g.remaining)} (of ${n2(g.effectiveGain)})`).join(' · ')}
+                  </td>
+                  <td>{done ? 'fully matured' : 'maturing'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CapabilityPipeline: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarters }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: '12px' }}>
+      <h4 style={{ marginBottom: 0 }}>Capability consequence (Phase 2B)</h4>
+      <CapabilityOverview quarters={quarters} />
+      <button className="btn btn-secondary" style={{ marginTop: '8px' }} onClick={() => setOpen(!open)}>
+        {open ? 'Hide' : 'Show'} per-quarter capability pipeline
+      </button>
+      {open && quarters.map(rec => <CapabilityQuarterDetail key={rec.quarter} rec={rec} />)}
+    </div>
+  );
+};
+
 export const V2FinancialLedgerTest: React.FC = () => {
   const [scenarioResults, setScenarioResults] = useState<V2ScenarioResult[] | null>(null);
   const [strategyId, setStrategyId] = useState('balanced');
   const [opMode, setOpMode] = useState<V2OperatingMode>('carried-forward');
   const [run, setRun] = useState<V2StrategyRun | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [capResults, setCapResults] = useState<V2CapabilityScenarioResult[] | null>(null);
+
+  const runCapabilityScenarios = () => {
+    try {
+      setError(null);
+      setCapResults(runAllV2CapabilityScenarios());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const runScenarios = () => {
     try {
@@ -122,7 +277,7 @@ export const V2FinancialLedgerTest: React.FC = () => {
 
   return (
     <div className="testlab-form">
-      <h2>Mode 5: V2 Financial Ledger (Phase 2A)</h2>
+      <h2>Mode 5: V2 Engine: Financial Ledger (2A) + Capability Pipeline (2B)</h2>
       <p>
         V2 accounting core, running in parallel to the frozen V1 engine. Every quarter exposes its full ledger and
         re-checks the identity:
@@ -132,9 +287,10 @@ export const V2FinancialLedgerTest: React.FC = () => {
 Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − Event Costs + Financing`}
       </pre>
       <div className="testlab-warning">
-        <strong>Phase 2A scope:</strong> ledger and state only. Revenue/opex are carried forward (or injected by a
-        test). There are no capability or revenue effects, no financing choices (financing = $0), no Q1–Q8 event
-        rebalance, no scoring and no Q4 destination effects. Negative cash is shown in red and is never floored.
+        <strong>Scope (Phase 2A + 2B):</strong> financial ledger plus the capability and investment pipeline. Revenue and
+        operating cost are still carried forward (or injected by a test): capability gains have <em>no</em> revenue
+        effect yet. There are no financing choices (financing = $0), no Q1–Q8 event rebalance, no scoring and no Q4
+        destination effects. Negative cash is shown in red and is never floored.
       </div>
 
       {error && <div className="error-message">⚠️ {error}</div>}
@@ -185,7 +341,7 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
       {run && (
         <div style={{ marginTop: '16px' }}>
           <div className={run.passed ? 'success-message' : 'error-message'}>
-            {run.passed ? '✅ Accounting identity held in all 8 quarters' : '🚨 Ledger check failures, see table'}
+            {run.passed ? '✅ Accounting identity and capability checks held in all 8 quarters' : '🚨 Check failures, see tables'}
             {' · '}Final cash: <span style={cashStyle(run.finalState.cash)}>{money(run.finalState.cash)}</span>
           </div>
           {run.notes.length > 0 && (
@@ -194,10 +350,29 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
               <ul>{run.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
             </div>
           )}
+          <h4 style={{ marginBottom: 0 }}>Financial consequence (Phase 2A)</h4>
           <LedgerTable quarters={run.quarters} />
+          <CapabilityPipeline quarters={run.quarters} />
           <QuarterCheckDetails quarters={run.quarters} />
         </div>
       )}
+
+      <h3 style={{ marginTop: '30px' }}>C. Capability pipeline scenarios (Phase 2B)</h3>
+      <p style={{ fontSize: '13px' }}>
+        Maturation, Org Capacity growth, absorption under heavy load (synthetic $90M envelope) and saturation at 100.
+        No revenue effects exist yet: capability gains do not change revenue, costs or cash.
+      </p>
+      <div className="button-group">
+        <button className="btn btn-primary" onClick={runCapabilityScenarios}>Run capability scenarios</button>
+      </div>
+      {capResults && capResults.map(r => (
+        <div key={r.scenario.id} className="audit-card" style={{ padding: '12px' }}>
+          <h4>{r.passed ? '✅' : '🚨'} {r.scenario.name}</h4>
+          <p style={{ fontSize: '13px' }}>{r.scenario.description}</p>
+          <CapabilityPipeline quarters={r.quarters} />
+          <QuarterCheckDetails quarters={r.quarters} />
+        </div>
+      ))}
     </div>
   );
 };

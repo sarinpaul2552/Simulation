@@ -5,8 +5,15 @@ import {
   V2OperatingInputs,
   V2TeamState,
   calculateV2QuarterConsequence,
+  getV2Baseline,
   V2_IDENTITY_TOLERANCE,
 } from '../../simulation/engineV2';
+import {
+  calculateAbsorptionFactor,
+  readTarget,
+  V2_ABSORPTION_FLOOR,
+  V2_CAPABILITY_MAX,
+} from '../../simulation/engineV2Capabilities';
 import { applyV2, getV2StartingState, v1AllocationToV2 } from './v2StateBuilder';
 import { AllocationStrategy, weightsToAllocation } from './testPresets';
 import gameplayContent from '../../content/gameplay.json';
@@ -107,6 +114,90 @@ export function checkV2Quarter(
     message: 'All ledger values finite',
     passed: [L.openingCash, L.revenue, L.operatingCost, L.operatingProfit, L.strategicInvestment, L.eventCosts, L.financing, L.closingCash].every(Number.isFinite),
     details: '',
+  });
+
+  checks.push(...checkV2CapabilityQuarter(opening, consequence, ending));
+
+  return checks;
+}
+
+/** Phase 2B capability-consequence invariants (audited separately from the ledger). */
+export function checkV2CapabilityQuarter(
+  opening: V2TeamState,
+  consequence: V2Consequence,
+  ending: V2TeamState
+): V2LedgerCheck[] {
+  const C = consequence.capability;
+  const tol = 1e-9;
+  const checks: V2LedgerCheck[] = [];
+
+  const loadSum = C.buckets.reduce((s, b) => s + b.transformationLoad, 0);
+  checks.push({
+    id: 'cap_load_aggregates',
+    message: 'Transformation Load = Σ bucket loads',
+    passed: near(C.transformationLoad, loadSum, tol),
+    details: `load ${C.transformationLoad.toFixed(3)} vs Σ ${loadSum.toFixed(3)}`,
+  });
+
+  const expectedFactor = calculateAbsorptionFactor(C.transformationLoad / opening.organizationalCapacity);
+  checks.push({
+    id: 'cap_absorption_factor',
+    message: 'Absorption factor from Load ÷ opening Org Capacity, within [0.40, 1.00]',
+    passed: near(C.absorptionFactor, expectedFactor, tol) && C.absorptionFactor >= V2_ABSORPTION_FLOOR - tol && C.absorptionFactor <= 1 + tol &&
+      near(C.openingOrganizationalCapacity, opening.organizationalCapacity, tol),
+    details: `ratio ${(C.loadToCapacityRatio * 100).toFixed(1)}% → factor ${C.absorptionFactor.toFixed(4)}`,
+  });
+
+  const badNew = C.newCohorts.flatMap(c => c.gains.filter(g => !near(g.effectiveGain, g.nominalGain * c.absorptionFactor, tol)).map(g => `${c.id}/${g.target}`));
+  checks.push({
+    id: 'cap_effective_equals_nominal_x_factor',
+    message: 'New cohorts: effective gain = nominal gain × absorption factor',
+    passed: badNew.length === 0,
+    details: badNew.join(', '),
+  });
+
+  const allCohorts = [...C.pendingCohortsAfter, ...C.completedCohorts];
+  const badConservation = allCohorts.flatMap(c => c.gains.filter(g => !near(g.maturedToDate + g.remaining, g.effectiveGain, 1e-9) || g.remaining < -tol).map(g => `${c.id}/${g.target}`));
+  checks.push({
+    id: 'cap_cohort_conservation',
+    message: 'Every cohort: matured to date + remaining = effective gain',
+    passed: badConservation.length === 0,
+    details: badConservation.join(', '),
+  });
+
+  const badTargets = C.targets.filter(t =>
+    !near(t.closing, t.opening + t.realized, tol) ||
+    !near(t.realized + t.wastedSaturation, t.maturedThisQuarter, tol) ||
+    t.realized < -tol || t.wastedSaturation < -tol);
+  checks.push({
+    id: 'cap_target_reconciliation',
+    message: 'Per target: closing = opening + realized; realized + wasted = matured',
+    passed: badTargets.length === 0,
+    details: badTargets.map(t => t.target).join(', '),
+  });
+
+  const reduced = C.targets.filter(t => t.closing < t.opening - tol);
+  checks.push({
+    id: 'cap_existing_stock_never_reduced',
+    message: 'Existing capability stock is never reduced by the pipeline',
+    passed: reduced.length === 0,
+    details: reduced.map(t => `${t.target} ${t.opening.toFixed(2)}→${t.closing.toFixed(2)}`).join(', '),
+  });
+
+  const overCap = C.targets.filter(t => t.closing > V2_CAPABILITY_MAX + tol && t.closing > t.opening + tol);
+  checks.push({
+    id: 'cap_bounded_at_100',
+    message: 'No capability pushed above 100',
+    passed: overCap.length === 0,
+    details: overCap.map(t => `${t.target} ${t.closing.toFixed(2)}`).join(', '),
+  });
+
+  const mismatched = C.targets.filter(t => !near(readTarget(ending, t.target), t.closing, tol));
+  checks.push({
+    id: 'cap_state_matches_consequence',
+    message: 'Ending state equals capability consequence closing values',
+    passed: mismatched.length === 0 && ending.pendingCohorts.length === C.pendingCohortsAfter.length,
+    details: mismatched.map(t => t.target).join(', '),
   });
 
   return checks;
@@ -362,4 +453,90 @@ export function runV2Strategy(strategy: AllocationStrategy, operatingMode: V2Ope
     passed: quarters.every(r => r.passed),
     notes,
   };
+}
+
+
+// ============ PHASE 2B CAPABILITY DEMO SCENARIOS (Test Lab section C) ============
+
+export interface V2CapabilityScenario {
+  id: string;
+  name: string;
+  description: string;
+  opening: () => V2TeamState;
+  steps: { allocation: V2Allocation; strategicEnvelope: number }[];
+}
+
+export interface V2CapabilityScenarioResult {
+  scenario: V2CapabilityScenario;
+  quarters: V2QuarterRecord[];
+  passed: boolean;
+}
+
+export const V2_CAPABILITY_SCENARIOS: V2CapabilityScenario[] = [
+  {
+    id: 'consumer-maturation',
+    name: 'Consumer $10M in Q1, then nothing',
+    description: 'Nominal +9 matures 50/35/15%: Consumer 55 → 59.5 → 62.65 → 64.0, then flat.',
+    opening: getV2Baseline,
+    steps: [
+      { allocation: alloc({ consumer: 10, cashReserve: 20 }), strategicEnvelope: 30 },
+      { allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 },
+      { allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 },
+      { allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 },
+    ],
+  },
+  {
+    id: 'people-org-capacity',
+    name: 'People $10M in Q1 → Org Capacity',
+    description: 'Org Capacity +6 matures 50/35/15%: 60 → 63 → 65.1 → 66. Talent +7 and Product Quality +1.0 on the same schedule.',
+    opening: getV2Baseline,
+    steps: [
+      { allocation: alloc({ people: 10, cashReserve: 20 }), strategicEnvelope: 30 },
+      { allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 },
+      { allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 },
+    ],
+  },
+  {
+    id: 'overload-cap60',
+    name: 'Synthetic overload: $90M envelope, capacity 60',
+    description: '$30M each Consumer/Enterprise/AI → load 86, 143% of capacity 60 → absorption 60.3%. Synthetic envelope to exercise absorption.',
+    opening: getV2Baseline,
+    steps: [{ allocation: alloc({ consumer: 30, enterprise: 30, aiProduct: 30 }), strategicEnvelope: 90 }],
+  },
+  {
+    id: 'overload-cap100',
+    name: 'Same overload, capacity 100',
+    description: 'Identical allocation with Org Capacity 100 → 86% → absorption 94.7%. Higher capacity absorbs more.',
+    opening: () => ({ ...getV2Baseline(), organizationalCapacity: 100 }),
+    steps: [{ allocation: alloc({ consumer: 30, enterprise: 30, aiProduct: 30 }), strategicEnvelope: 90 }],
+  },
+  {
+    id: 'saturation',
+    name: 'Saturation: Consumer at 98, $30M Consumer',
+    description: 'Nominal +17; first tranche 8.5 → only +2 realized, 6.5 wasted; later tranches fully wasted.',
+    opening: () => {
+      const b = getV2Baseline();
+      return { ...b, capabilities: { ...b.capabilities, consumer: 98 } };
+    },
+    steps: [
+      { allocation: alloc({ consumer: 30 }), strategicEnvelope: 30 },
+      { allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 },
+      { allocation: alloc({ cashReserve: 30 }), strategicEnvelope: 30 },
+    ],
+  },
+];
+
+export function runV2CapabilityScenario(scenario: V2CapabilityScenario): V2CapabilityScenarioResult {
+  let state = scenario.opening();
+  const quarters: V2QuarterRecord[] = [];
+  scenario.steps.forEach((step, i) => {
+    const rec = runV2Quarter(state, i + 1, step.allocation, step.strategicEnvelope);
+    quarters.push(rec);
+    state = rec.ending;
+  });
+  return { scenario, quarters, passed: quarters.every(q => q.passed) };
+}
+
+export function runAllV2CapabilityScenarios(): V2CapabilityScenarioResult[] {
+  return V2_CAPABILITY_SCENARIOS.map(runV2CapabilityScenario);
 }
