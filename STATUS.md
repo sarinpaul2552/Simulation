@@ -14,12 +14,15 @@ Organizational absorption (smooth, 100% ≤70% of capacity … 40% floor) → in
   pending cohorts, capability history; `V2Consequence.capability` separate from the financial `ledger`),
   `engineV2.test.ts` (self-containment test now "V2 modules only, never V1"), `v2Diagnostics.ts`, Mode 5 page, Test Lab tile.
 - Capability gains have NO revenue/cost/cash effect yet. Financial ledger unchanged from 2A.
-- Interpretations for review: absorption continues the 125–150% slope past 150% to the 40% floor at 168.75%;
-  absorption uses opening Org Capacity; absorption applies to all new gains (incl. People/University support lines).
+- Absorption uses opening Org Capacity and applies to all new gains (incl. People/University support lines); existing
+  cohorts mature on their original schedule.
+- **Phase 2B calibration adjustment (approved direction):** absorption recalibrated to ≤0.30→1.00, 0.50→0.95, 0.70→0.85,
+  0.90→0.70, 1.10→0.50, ≥1.30→0.40 (continuous). Added coordination load for initiative breadth (active initiative =
+  non-reserve bucket ≥ $2M; 0–1→0, 2→1, 3→3, 4→6, 5→10). Total load = bucket load + coordination load; all three exposed.
 - Carried unchanged (no approved curve): Customer Success, Execution, Culture, Innovation Velocity, Technical Debt;
   People recurring opex commitment not implemented.
-- Calibration finding: with a $30M envelope the maximum possible load is 34 (56.7% of capacity 60), so absorption never
-  penalizes in current gameplay. It only bites if capacity < 48.6, the envelope grows, or load curves change.
+- Legal $30M allocations at capacity 60 now range 1.00 ($30M People) → 0.87 ($6M × 5); worst on a $1M grid is
+  5/2/19/2/2 (load 42.8) → 0.84. Capacity 75 improves absorption by 0–6.5 points.
 
 NOT done (by design): segment revenue, pipeline/win rate, AI-native/University revenue, CAC/retention, events,
 Q4 destinations, financing, insolvency, scoring, switching penalties, Q7 crises.

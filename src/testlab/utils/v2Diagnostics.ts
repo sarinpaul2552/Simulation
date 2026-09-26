@@ -10,7 +10,9 @@ import {
 } from '../../simulation/engineV2';
 import {
   calculateAbsorptionFactor,
+  coordinationLoad,
   readTarget,
+  V2_ACTIVE_INITIATIVE_THRESHOLD,
   V2_ABSORPTION_FLOOR,
   V2_CAPABILITY_MAX,
 } from '../../simulation/engineV2Capabilities';
@@ -131,18 +133,22 @@ export function checkV2CapabilityQuarter(
   const tol = 1e-9;
   const checks: V2LedgerCheck[] = [];
 
-  const loadSum = C.buckets.reduce((s, b) => s + b.transformationLoad, 0);
+  const bucketSum = C.buckets.reduce((s, b) => s + b.transformationLoad, 0);
+  const expectedActive = C.buckets.filter(b => b.amount >= V2_ACTIVE_INITIATIVE_THRESHOLD).map(b => b.bucket);
   checks.push({
     id: 'cap_load_aggregates',
-    message: 'Transformation Load = Σ bucket loads',
-    passed: near(C.transformationLoad, loadSum, tol),
-    details: `load ${C.transformationLoad.toFixed(3)} vs Σ ${loadSum.toFixed(3)}`,
+    message: 'Total load = Σ bucket loads + coordination load (Cash Reserve never an initiative)',
+    passed: near(C.bucketLoad, bucketSum, tol) &&
+      JSON.stringify(C.activeInitiatives) === JSON.stringify(expectedActive) &&
+      near(C.coordinationLoad, coordinationLoad(expectedActive.length), tol) &&
+      near(C.transformationLoad, C.bucketLoad + C.coordinationLoad, tol),
+    details: `bucket ${C.bucketLoad.toFixed(3)} + coordination ${C.coordinationLoad} (${C.activeInitiatives.length} active) = ${C.transformationLoad.toFixed(3)}`,
   });
 
   const expectedFactor = calculateAbsorptionFactor(C.transformationLoad / opening.organizationalCapacity);
   checks.push({
     id: 'cap_absorption_factor',
-    message: 'Absorption factor from Load ÷ opening Org Capacity, within [0.40, 1.00]',
+    message: 'Absorption factor from total Load ÷ opening Org Capacity, within [0.40, 1.00]',
     passed: near(C.absorptionFactor, expectedFactor, tol) && C.absorptionFactor >= V2_ABSORPTION_FLOOR - tol && C.absorptionFactor <= 1 + tol &&
       near(C.openingOrganizationalCapacity, opening.organizationalCapacity, tol),
     details: `ratio ${(C.loadToCapacityRatio * 100).toFixed(1)}% → factor ${C.absorptionFactor.toFixed(4)}`,
@@ -497,23 +503,30 @@ export const V2_CAPABILITY_SCENARIOS: V2CapabilityScenario[] = [
     ],
   },
   {
-    id: 'overload-cap60',
-    name: 'Synthetic overload: $90M envelope, capacity 60',
-    description: '$30M each Consumer/Enterprise/AI → load 86, 143% of capacity 60 → absorption 60.3%. Synthetic envelope to exercise absorption.',
+    id: 'three-initiatives-cap60',
+    name: '$10M Consumer + $10M Enterprise + $10M AI, capacity 60',
+    description: 'Bucket load 34 + coordination 3 (3 initiatives) = 37 → 61.7% of capacity 60 → absorption 89.2%.',
     opening: getV2Baseline,
-    steps: [{ allocation: alloc({ consumer: 30, enterprise: 30, aiProduct: 30 }), strategicEnvelope: 90 }],
+    steps: [{ allocation: alloc({ consumer: 10, enterprise: 10, aiProduct: 10 }), strategicEnvelope: 30 }],
   },
   {
-    id: 'overload-cap100',
-    name: 'Same overload, capacity 100',
-    description: 'Identical allocation with Org Capacity 100 → 86% → absorption 94.7%. Higher capacity absorbs more.',
-    opening: () => ({ ...getV2Baseline(), organizationalCapacity: 100 }),
-    steps: [{ allocation: alloc({ consumer: 30, enterprise: 30, aiProduct: 30 }), strategicEnvelope: 90 }],
+    id: 'three-initiatives-cap75',
+    name: 'Same allocation, capacity 75',
+    description: 'Identical allocation with Org Capacity 75 → 49.3% → absorption 95.2%. Prior organizational investment absorbs more.',
+    opening: () => ({ ...getV2Baseline(), organizationalCapacity: 75 }),
+    steps: [{ allocation: alloc({ consumer: 10, enterprise: 10, aiProduct: 10 }), strategicEnvelope: 30 }],
+  },
+  {
+    id: 'broad-five-cap60',
+    name: '$6M in each of the five strategic buckets, capacity 60',
+    description: 'Bucket load 29.6 + coordination 10 (5 initiatives) = 39.6 → 66% → absorption 87.0%. Five active initiatives pay the full +10 coordination load.',
+    opening: getV2Baseline,
+    steps: [{ allocation: alloc({ consumer: 6, enterprise: 6, aiProduct: 6, people: 6, universityCredentials: 6 }), strategicEnvelope: 30 }],
   },
   {
     id: 'saturation',
     name: 'Saturation: Consumer at 98, $30M Consumer',
-    description: 'Nominal +17; first tranche 8.5 → only +2 realized, 6.5 wasted; later tranches fully wasted.',
+    description: 'Load 28 (46.7%) → absorption 95.8% → effective +16.29; first tranche 8.15 → only +2 realized, 6.15 wasted; later tranches fully wasted.',
     opening: () => {
       const b = getV2Baseline();
       return { ...b, capabilities: { ...b.capabilities, consumer: 98 } };

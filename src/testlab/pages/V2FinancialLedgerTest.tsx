@@ -112,7 +112,7 @@ const CapabilityOverview: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarter
     <table className="comparison-table">
       <thead>
         <tr>
-          <th>Q</th><th>Transformation Load</th><th>Opening Org Cap</th><th>Load / Cap</th><th>Absorption</th>
+          <th>Q</th><th>Active initiatives</th><th>Bucket load</th><th>Coordination load</th><th>Total load</th><th>Opening Org Cap</th><th>Load / Cap</th><th>Absorption</th>
           <th>Consumer</th><th>Enterprise</th><th>AI</th><th>Talent</th><th>Credential</th><th>Org Cap</th><th>PQ</th><th>Trust</th>
           <th>Pending cohorts</th><th>Cap. checks</th>
         </tr>
@@ -125,7 +125,10 @@ const CapabilityOverview: React.FC<{ quarters: V2QuarterRecord[] }> = ({ quarter
           return (
             <tr key={rec.quarter} style={C.absorptionFactor < 1 ? { background: '#fff8e1' } : undefined}>
               <td>Q{rec.quarter}</td>
-              <td>{n2(C.transformationLoad)}</td>
+              <td>{C.activeInitiatives.length}</td>
+              <td>{n2(C.bucketLoad)}</td>
+              <td>{n2(C.coordinationLoad)}</td>
+              <td><strong>{n2(C.transformationLoad)}</strong></td>
               <td>{n2(C.openingOrganizationalCapacity)}</td>
               <td>{(C.loadToCapacityRatio * 100).toFixed(1)}%</td>
               <td style={C.absorptionFactor < 1 ? { color: '#b26a00', fontWeight: 700 } : {}}>{(C.absorptionFactor * 100).toFixed(1)}%</td>
@@ -148,24 +151,30 @@ const CapabilityQuarterDetail: React.FC<{ rec: V2QuarterRecord }> = ({ rec }) =>
   return (
     <div className="audit-section">
       <h4>
-        Q{rec.quarter} capability pipeline · Load {n2(C.transformationLoad)} ÷ Org Capacity {n2(C.openingOrganizationalCapacity)} ={' '}
+        Q{rec.quarter} capability pipeline · Load {n2(C.bucketLoad)} bucket + {n2(C.coordinationLoad)} coordination ({C.activeInitiatives.length} active)
+        {' '}= {n2(C.transformationLoad)} ÷ Org Capacity {n2(C.openingOrganizationalCapacity)} ={' '}
         {(C.loadToCapacityRatio * 100).toFixed(1)}% → absorption {(C.absorptionFactor * 100).toFixed(2)}%
         {rec.consequence.capabilityFlags.length > 0 && <span style={{ fontSize: '11px' }}> · {rec.consequence.capabilityFlags.join(', ')}</span>}
       </h4>
       <div style={{ overflowX: 'auto' }}>
         <table className="comparison-table">
-          <thead><tr><th>Bucket</th><th>Allocation</th><th>Transformation Load</th><th>Nominal capability gain (uncapped)</th></tr></thead>
+          <thead><tr><th>Bucket</th><th>Allocation</th><th>Active initiative (≥$2M)</th><th>Bucket load</th><th>Nominal capability gain (uncapped)</th></tr></thead>
           <tbody>
             {C.buckets.map(b => (
               <tr key={b.bucket}>
                 <td>{BUCKET_LABEL[b.bucket]}</td>
                 <td>{money(b.amount)}</td>
+                <td>{C.activeInitiatives.includes(b.bucket) ? 'yes' : 'no'}</td>
                 <td>{n2(b.transformationLoad)}</td>
                 <td>{b.nominalGains.map(g => `${TARGET_LABEL[g.target]} +${n2(g.nominalGain)}`).join(' · ')}</td>
               </tr>
             ))}
             <tr>
-              <td>Cash Reserve</td><td>{money(rec.allocation.cashReserve)}</td><td>0</td><td>none (unspent liquidity)</td>
+              <td colSpan={3}><em>Coordination load ({C.activeInitiatives.length} active initiatives)</em></td>
+              <td>{n2(C.coordinationLoad)}</td><td>—</td>
+            </tr>
+            <tr>
+              <td>Cash Reserve</td><td>{money(rec.allocation.cashReserve)}</td><td>never</td><td>0</td><td>none (unspent liquidity)</td>
             </tr>
           </tbody>
         </table>
@@ -359,7 +368,7 @@ Closing Cash     = Opening Cash + Operating Profit − Strategic Investment − 
 
       <h3 style={{ marginTop: '30px' }}>C. Capability pipeline scenarios (Phase 2B)</h3>
       <p style={{ fontSize: '13px' }}>
-        Maturation, Org Capacity growth, absorption under heavy load (synthetic $90M envelope) and saturation at 100.
+        Maturation, Org Capacity growth, absorption under legal $30M allocations (initiative breadth vs Org Capacity 60/75) and saturation at 100.
         No revenue effects exist yet: capability gains do not change revenue, costs or cash.
       </p>
       <div className="button-group">

@@ -60,7 +60,7 @@ export interface V2TargetCurve {
 export interface V2BucketCurve {
   bucket: V2CapabilityBucket;
   gains: readonly V2TargetCurve[];
-  /** Transformation Load at each calibration point. */
+  /** Bucket Transformation Load at each calibration point (coordination load is added separately). */
   load: readonly number[];
   /** Capability maturation schedule: share maturing in Q, Q+1, Q+2 … (sums to 1). */
   maturationSchedule: readonly number[];
@@ -85,6 +85,7 @@ export interface V2InvestmentCohort {
   quarterInvested: number;
   bucket: V2CapabilityBucket;
   amount: number;
+  /** This bucket's own calibrated load (excludes quarter-level coordination load). */
   transformationLoad: number;
   absorptionFactor: number;
   maturationSchedule: number[];
@@ -163,6 +164,13 @@ export interface V2CapabilityConsequence {
   quarter: number;
   openingOrganizationalCapacity: number;
   buckets: V2BucketInvestmentDetail[];
+  /** Σ per-bucket calibrated loads. */
+  bucketLoad: number;
+  /** Buckets (never Cash Reserve) with ≥ V2_ACTIVE_INITIATIVE_THRESHOLD this quarter. */
+  activeInitiatives: V2CapabilityBucket[];
+  /** Initiative breadth / coordination load from the active-initiative count. */
+  coordinationLoad: number;
+  /** Total Transformation Load = bucketLoad + coordinationLoad. */
   transformationLoad: number;
   loadToCapacityRatio: number;
   absorptionFactor: number;
@@ -231,21 +239,40 @@ export const V2_CAPABILITY_BUCKETS: V2CapabilityBucket[] = [
 ];
 
 /**
- * Organizational absorption curve: (load ÷ capacity) → effectiveness.
- * Draft 1 bands, interpolated continuously:
- *   ≤70% → 100%; 70–100% → 100→90%; 100–125% → 90→75%; 125–150% → 75→55%;
- *   above 150% the 125–150% slope (−0.8 per 1.0 ratio) continues until the
- *   40% floor is reached at 168.75%, then holds at 40%. (No cliff at 150%.)
+ * Organizational absorption curve: (Transformation Load ÷ opening Org Capacity) → effectiveness.
+ * Draft 1 recalibration (Phase 2B cleanup), continuous piecewise-linear:
+ *   ≤0.30 → 1.00; 0.50 → 0.95; 0.70 → 0.85; 0.90 → 0.70; 1.10 → 0.50; ≥1.30 → 0.40.
  */
 export const V2_ABSORPTION_POINTS: readonly (readonly [number, number])[] = [
   [0, 1.0],
-  [0.7, 1.0],
-  [1.0, 0.9],
-  [1.25, 0.75],
-  [1.5, 0.55],
-  [1.6875, 0.4],
+  [0.3, 1.0],
+  [0.5, 0.95],
+  [0.7, 0.85],
+  [0.9, 0.7],
+  [1.1, 0.5],
+  [1.3, 0.4],
 ];
 export const V2_ABSORPTION_FLOOR = 0.4;
+
+/** A non-Cash-Reserve bucket receiving at least this much ($M) in a quarter is an active initiative. */
+export const V2_ACTIVE_INITIATIVE_THRESHOLD = 2;
+
+/**
+ * Initiative breadth / coordination load, indexed by number of active initiatives (0–5).
+ * 0–1 → 0; 2 → 1; 3 → 3; 4 → 6; 5 → 10.
+ */
+export const V2_COORDINATION_LOAD: readonly number[] = [0, 0, 1, 3, 6, 10];
+
+export function countActiveInitiatives(investment: Record<V2CapabilityBucket, number>): V2CapabilityBucket[] {
+  return V2_CAPABILITY_BUCKETS.filter(b => investment[b] >= V2_ACTIVE_INITIATIVE_THRESHOLD);
+}
+
+export function coordinationLoad(activeInitiatives: number): number {
+  if (!Number.isInteger(activeInitiatives) || activeInitiatives < 0 || activeInitiatives >= V2_COORDINATION_LOAD.length) {
+    throw new Error(`Active initiative count must be an integer 0–${V2_COORDINATION_LOAD.length - 1}, got ${activeInitiatives}`);
+  }
+  return V2_COORDINATION_LOAD[activeInitiatives];
+}
 
 // ============ CURVES ============
 
@@ -351,7 +378,7 @@ export interface V2CapabilityInvestment {
  * Capability consequence for one quarter. Pure: does not mutate `opening`.
  *
  * 1. Nominal gain and load per bucket from calibrated curves (interpolated).
- * 2. Transformation Load = Σ bucket loads (this quarter's simultaneous initiatives).
+ * 2. Transformation Load = Σ bucket loads + coordination load (active-initiative breadth).
  * 3. Absorption factor from Load ÷ opening Organizational Capacity.
  * 4. New cohorts: effectiveGain = nominalGain × factor (existing stock untouched).
  * 5. All cohorts (pending + new) mature their scheduled tranche this quarter.
@@ -373,8 +400,11 @@ export function calculateV2CapabilityConsequence(
     };
   });
 
-  // 2–3. Aggregate load and absorption
-  const transformationLoad = buckets.reduce((s, b) => s + b.transformationLoad, 0);
+  // 2–3. Aggregate load (bucket + coordination) and absorption
+  const bucketLoad = buckets.reduce((s, b) => s + b.transformationLoad, 0);
+  const activeInitiatives = countActiveInitiatives(investment);
+  const coordination = coordinationLoad(activeInitiatives.length);
+  const transformationLoad = bucketLoad + coordination;
   const openingOrganizationalCapacity = opening.organizationalCapacity;
   if (!(openingOrganizationalCapacity > 0)) {
     throw new Error(`Organizational Capacity must be positive, got ${openingOrganizationalCapacity}`);
@@ -494,6 +524,9 @@ export function calculateV2CapabilityConsequence(
     quarter,
     openingOrganizationalCapacity,
     buckets,
+    bucketLoad,
+    activeInitiatives,
+    coordinationLoad: coordination,
     transformationLoad,
     loadToCapacityRatio,
     absorptionFactor,
