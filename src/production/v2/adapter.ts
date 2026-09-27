@@ -25,7 +25,7 @@ import { V2_MANAGEMENT_CALIBRATION } from '../../simulation/engineV2Management';
 import type { V2FinancingAction, V2FinancingOptions } from '../../simulation/engineV2Financing';
 import { scoreV2Company, V2TerminalScore } from '../../simulation/engineV2Scoring';
 import {
-  V2GameSnapshot, V2_SNAPSHOT_SCHEMA, V2_SNAPSHOT_SCHEMA_VERSION, V2_ENGINE_VERSION, firstDifference, assertSnapshotContract,
+  V2GameSnapshot, V2_SNAPSHOT_SCHEMA, V2_SNAPSHOT_SCHEMA_VERSION, V2_ENGINE_VERSION, firstDifference, assertSnapshotContract, V2_REPLAY_TOLERANCE,
 } from './snapshot';
 import type {
   V2PlayerQuarterInput, V2RoleBrief, V2Signal, V2QuarterResult, V2ExplanationLine, V2Headline, V2SeverityBand,
@@ -411,12 +411,15 @@ export function replayInputs(inputs: V2PlayerQuarterInput[]): V2GameSnapshot {
   return snap;
 }
 
-/** A snapshot is trustworthy only if replaying its input log reproduces it exactly. */
+/**
+ * A snapshot is trustworthy only if replaying its input log reproduces it — exactly, up to cross-engine floating-point
+ * noise (V2_REPLAY_TOLERANCE). Batch 6: bit-exact comparison locked out games restored on a different JS engine.
+ */
 export function verifySnapshot(snap: V2GameSnapshot): { ok: boolean; difference: string | null } {
   try {
     assertSnapshotContract(snap);
     const replayed = replayInputs(snap.inputs);
-    const difference = firstDifference(replayed.state, snap.state);
+    const difference = firstDifference(replayed.state, snap.state, '', V2_REPLAY_TOLERANCE);
     return { ok: difference === null, difference };
   } catch (e) {
     return { ok: false, difference: e instanceof Error ? e.message : String(e) };

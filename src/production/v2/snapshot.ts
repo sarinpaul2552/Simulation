@@ -92,8 +92,24 @@ export function deepEqualExact(a: unknown, b: unknown): boolean {
   return firstDifference(a, b) === null;
 }
 
-export function firstDifference(a: unknown, b: unknown, path = ''): string | null {
-  if (typeof a === 'number' || typeof b === 'number') return Object.is(a, b) ? null : `${path}: ${String(a)} ≠ ${String(b)}`;
+/**
+ * Relative tolerance for comparing a replay with a stored game. JavaScript engines may differ by 1 ULP (~1e-16) in
+ * transcendental functions (Math.tanh/pow/exp), so a game stored by one browser replays on another with tiny
+ * floating-point differences. 1e-9 absorbs those while any material difference (tampering, divergence) still fails.
+ */
+export const V2_REPLAY_TOLERANCE = 1e-9;
+
+function numbersMatch(a: unknown, b: unknown, relTol: number): boolean {
+  if (Object.is(a, b)) return true;
+  if (relTol > 0 && typeof a === 'number' && typeof b === 'number' && Number.isFinite(a) && Number.isFinite(b)) {
+    return Math.abs(a - b) <= relTol * Math.max(1, Math.abs(a), Math.abs(b));
+  }
+  return false;
+}
+
+/** First structural difference (null = equal). Numbers compare exactly unless a relative tolerance is given. */
+export function firstDifference(a: unknown, b: unknown, path = '', relTol = 0): string | null {
+  if (typeof a === 'number' || typeof b === 'number') return numbersMatch(a, b, relTol) ? null : `${path}: ${String(a)} ≠ ${String(b)}`;
   if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return a === b ? null : `${path}: ${String(a)} ≠ ${String(b)}`;
   if (Array.isArray(a) !== Array.isArray(b)) return `${path}: array mismatch`;
   const ka = Object.keys(a as object).filter(k => (a as Record<string, unknown>)[k] !== undefined);
@@ -101,7 +117,7 @@ export function firstDifference(a: unknown, b: unknown, path = ''): string | nul
   if (ka.length !== kb.length) return `${path}: key count ${ka.length} ≠ ${kb.length}`;
   for (const k of ka) {
     if (!kb.includes(k)) return `${path}.${k}: missing`;
-    const d = firstDifference((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], `${path}.${k}`);
+    const d = firstDifference((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], `${path}.${k}`, relTol);
     if (d) return d;
   }
   return null;
