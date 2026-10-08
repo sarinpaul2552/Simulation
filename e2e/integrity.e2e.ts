@@ -3,7 +3,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
-import { newPage, createSession, joinTeam, expectPhase, fillDecision, ROLES } from './helpers';
+import { newPage, createSession, joinTeam, expectPhase, fillDecision, fillDiscussion, ROLES } from './helpers';
 import { createV2Api } from '../src/production/v2/api';
 
 const api = createV2Api(createClient('http://localhost:54321', process.env.V2_DB_KEY!, { auth: { persistSession: false } }));
@@ -13,10 +13,7 @@ async function toVote(page: import('@playwright/test').Page) {
   for (let i = 0; i < 5; i++) { await page.getByTestId('v2-open-brief').click(); await page.getByTestId('v2-hide-brief').click(); }
   await page.getByTestId('v2-to-decide').click();
   await fillDecision(page, Q1);
-  await page.getByTestId('v2-to-belief').click();
-  await page.getByTestId('v2-belief').fill('thesis');
-  await page.getByTestId('v2-to-risk').click();
-  await page.getByTestId('v2-risk-chip').first().click();
+  await fillDiscussion(page, 1);
   await page.getByTestId('v2-to-vote').click();
   await expectPhase(page, 'vote', 1);
 }
@@ -77,11 +74,16 @@ test('double submit: two devices committing at once (and a double click) resolve
   expect(game.game!.state_version).toBe(1);
   expect(game.game!.completed_quarter).toBe(1);
   await expect(a.page.getByTestId('v2-error')).toHaveCount(0);
-  // Double-clicking "continue" is harmless (idempotent phase change)
-  await Promise.all([a.page.getByTestId('v2-to-reflect').click(), b.page.getByTestId('v2-to-reflect').click()]);
-  await expectPhase(a.page, 'reflect', 1);
+  // Two screens finishing the reflection at once (plus a double click) are harmless: idempotent phase changes
+  for (const p of [a.page, b.page]) await p.locator('[data-testid^="v2-learn-"]').first().click();
+  await Promise.all([a.page.getByTestId('v2-next-quarter').dblclick(), b.page.getByTestId('v2-next-quarter').click()]);
+  await expectPhase(a.page, 'briefing', 2);
   await b.page.reload();
-  await expectPhase(b.page, 'reflect', 1);
+  await expectPhase(b.page, 'briefing', 2);
+  await expect(a.page.getByTestId('v2-error')).toHaveCount(0);
+  const after = await api.getGame(s.teamCodes[0]);
+  expect(after.game!.completed_quarter).toBe(1);
+  expect(after.resolutions[0].reflection).toMatch(/"learning":\[/);
 });
 
 test('security: invalid codes cannot read or write; tampered storage fails safely', async ({ browser }) => {
@@ -147,10 +149,7 @@ test('one device per player: each player sees only their own brief and casts onl
   const ceo = devices[0].page;
   await ceo.getByTestId('v2-to-decide').click();
   await fillDecision(ceo, Q1);
-  await ceo.getByTestId('v2-to-belief').click();
-  await ceo.getByTestId('v2-belief').fill('thesis');
-  await ceo.getByTestId('v2-to-risk').click();
-  await ceo.getByTestId('v2-risk-chip').first().click();
+  await fillDiscussion(ceo, 1);
   await ceo.getByTestId('v2-to-vote').click();
   for (const [i, d] of devices.entries()) {
     await expectPhase(d.page, 'vote', 1); // other devices follow the team's step

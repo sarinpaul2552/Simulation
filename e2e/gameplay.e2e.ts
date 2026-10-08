@@ -2,7 +2,7 @@
  * Batch 5 · 5F — production gameplay E2E: real browsers, real app, real PostgREST/PostgreSQL.
  */
 import { test, expect, Page } from '@playwright/test';
-import { newPage, createSession, joinTeam, playQuarter, expectPhase, openQuarter, refreshAndExpect, fillDecision } from './helpers';
+import { newPage, createSession, joinTeam, playQuarter, expectPhase, openQuarter, refreshAndExpect, fillDecision, choice } from './helpers';
 import { replayInputs, getDecisionSpec, getFinalOutcome, V2_BASE_ENVELOPE } from '../src/production/v2/adapter';
 import type { V2PlayerQuarterInput } from '../src/production/v2/types';
 import type { V2FinalOptionId } from '../src/simulation/engineV2Final';
@@ -72,14 +72,14 @@ test('Q1→Q8: two teams, facilitator pacing, refresh at every phase, facilitato
           await expect(page.getByTestId('v2-crisis-band')).toHaveText(spec.crisis!.band);
           await page.waitForTimeout(700);
           await refreshAndExpect(page, 'decide', 7);
-          await expect(page.getByTestId('v2-crisis-contain')).toBeChecked();
+          await expect(choice(page, 'v2-crisis-choice-contain')).toBeChecked();
           await expect(page.getByTestId('v2-crisis-band')).toHaveText(spec.crisis!.band);
         }
         if (q === 8) {
           const spec = getDecisionSpec(replayInputs(alphaInputs))!;
           for (const o of spec.final!.options) {
-            if (o.available) await expect(page.getByTestId(`v2-final-${o.id}`)).toBeEnabled();
-            else await expect(page.getByTestId(`v2-final-${o.id}`)).toBeDisabled();
+            if (o.available) await expect(choice(page, `v2-final-choice-${o.id}`)).toBeEnabled();
+            else await expect(choice(page, `v2-final-choice-${o.id}`)).toBeDisabled();
           }
         }
       },
@@ -91,8 +91,8 @@ test('Q1→Q8: two teams, facilitator pacing, refresh at every phase, facilitato
         if (q === 8) {
           const spec = getDecisionSpec(replayInputs(betaInputs))!;
           for (const o of spec.final!.options) {
-            if (o.available) await expect(page.getByTestId(`v2-final-${o.id}`)).toBeEnabled();
-            else await expect(page.getByTestId(`v2-final-${o.id}`)).toBeDisabled();
+            if (o.available) await expect(choice(page, `v2-final-choice-${o.id}`)).toBeEnabled();
+            else await expect(choice(page, `v2-final-choice-${o.id}`)).toBeDisabled();
           }
           expect(spec.final!.options.find(o => o.id === 'stabilize-restructure')!.available).toBe(true);
         }
@@ -136,7 +136,7 @@ test('Q1→Q8: two teams, facilitator pacing, refresh at every phase, facilitato
     }
     // Facilitator view never leaks private information
     const facText = await fac.locator('body').innerText();
-    for (const leak of ['private brief', 'our thesis', 'Support', 'Oppose', 'Concern', 'Measured (our own data', 'Engineering:', 'Finance:']) expect(facText).not.toContain(leak);
+    for (const leak of ['private brief', 'what we learned', 'Support', 'Oppose', 'Concern', 'Leaders recommend', 'What you know', 'Your responsibility', 'Engineering:', 'Finance:']) expect(facText).not.toContain(leak);
     // Teams never see each other
     expect(await alpha.locator('body').innerText()).not.toContain('Beta');
     expect(await beta.locator('body').innerText()).not.toContain('Alpha');

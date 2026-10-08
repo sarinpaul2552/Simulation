@@ -10,7 +10,7 @@ export async function newPage(browser: Browser): Promise<{ ctx: BrowserContext; 
   return { ctx, page };
 }
 
-export async function createSession(page: Page, teams: string[], opts: { mode?: string; pacing?: string } = {}) {
+export async function createSession(page: Page, teams: string[], opts: { mode?: string; pacing?: string; presentation?: 'undergraduate' | 'mba' } = {}) {
   await page.goto('/');
   await page.getByTestId('v2-home-facilitator').click();
   await page.getByTestId('v2-setup-email').fill('facilitator@school.edu');
@@ -18,8 +18,10 @@ export async function createSession(page: Page, teams: string[], opts: { mode?: 
   for (const [i, t] of teams.entries()) await page.getByTestId(`v2-setup-team-${i}`).fill(t);
   if (opts.mode) await page.getByTestId('v2-setup-mode').selectOption(opts.mode);
   if (opts.pacing) await page.getByTestId('v2-setup-pacing').selectOption(opts.pacing);
+  if (opts.presentation) await page.getByTestId(`v2-setup-presentation-${opts.presentation}`).click();
   await page.getByTestId('v2-setup-create').click();
   await expect(page.getByTestId('v2-fac-created')).toBeVisible();
+  if (opts.presentation === 'undergraduate' && process.env.V2_COMPAT === '1') await expect(page.getByTestId('v2-created-warning')).toBeVisible();
   const sessionCode = (await page.getByTestId('v2-created-session-code').textContent())!.trim();
   const adminPin = (await page.getByTestId('v2-created-pin').textContent())!.trim();
   const teamCodes = (await page.getByTestId('v2-created-team-code').allTextContents()).map(s => s.trim());
@@ -56,18 +58,23 @@ export async function refreshAndExpect(page: Page, phase: string, quarter: numbe
 export interface PlayOptions {
   refreshEveryPhase?: boolean;
   votes?: Partial<Record<V2Role, V2VoteValue>>;
-  /** Called on the decide screen after the decision is entered (extra assertions). */
+  /** Called on the decision screen after the decision is entered (extra assertions). */
   onDecide?: (page: Page) => Promise<void>;
+  /** Called on the results screen before reflecting. */
+  onResults?: (page: Page) => Promise<void>;
   reflection?: string;
 }
 
+/** A ChoiceList card (label wrapping a radio/checkbox). */
+export const choice = (page: Page, id: string) => page.getByTestId(id).locator('input');
+
 export async function fillDecision(page: Page, input: V2PlayerQuarterInput) {
-  if (input.finalOption) await page.getByTestId(`v2-final-${input.finalOption}`).check();
+  if (input.finalOption) await page.getByTestId(`v2-final-choice-${input.finalOption}`).click();
   for (const b of ['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const) {
     await page.getByTestId(`v2-alloc-${b}`).fill(String(input.allocation[b]));
   }
-  if (input.destination) await page.getByTestId(`v2-dest-${input.destination}`).check();
-  if (input.opportunity) await page.getByTestId(input.opportunity.accept ? 'v2-opp-accept' : 'v2-opp-decline').check();
+  if (input.destination) await page.getByTestId(`v2-dest-choice-${input.destination}`).click();
+  if (input.opportunity) await page.getByTestId(input.opportunity.accept ? 'v2-opp-choice-accept' : 'v2-opp-choice-decline').click();
   const m = input.management;
   if (m?.workforceReduction) {
     await page.getByTestId('v2-mgmt-workforce').selectOption(m.workforceReduction.depth);
@@ -76,7 +83,9 @@ export async function fillDecision(page: Page, input: V2PlayerQuarterInput) {
   if (m?.hiringFreeze) await page.getByTestId('v2-mgmt-freeze').check();
   if (m?.pricing) await page.getByTestId('v2-mgmt-pricing').selectOption(m.pricing);
   if (m?.closeWeakOfferings) await page.getByTestId('v2-mgmt-close').check();
-  if (input.crisisResponse) await page.getByTestId(`v2-crisis-${input.crisisResponse}`).check();
+  if (input.crisisResponse) await page.getByTestId(`v2-crisis-choice-${input.crisisResponse}`).click();
+  const toggle = page.getByTestId('v2-fin-toggle');
+  if (input.financing?.length && await toggle.count() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
   for (const f of input.financing ?? []) {
     if (f.kind === 'debt') await page.getByTestId('v2-fin-debt').fill(String(f.amount));
     if (f.kind === 'equity') await page.getByTestId('v2-fin-equity').fill(String(f.amount));
@@ -86,46 +95,61 @@ export async function fillDecision(page: Page, input: V2PlayerQuarterInput) {
   }
 }
 
-/** Play one quarter through the full classroom loop on a shared team device. Ends on the next quarter's briefing, the waiting screen, or 'final'. */
-export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts: PlayOptions = {}) {
-  const q = input.quarter;
-  const r = async (phase: string, quarter = q) => { if (opts.refreshEveryPhase) await refreshAndExpect(page, phase, quarter); };
-  await expectPhase(page, 'briefing', q);
-  await r('briefing');
+/** The structured leadership discussion: one belief, a confidence level, two risks. Returns the chosen ids. */
+export async function fillDiscussion(page: Page, q: number) {
+  const beliefId = `q${q}`;
+  await page.locator(`[data-testid^="v2-belief-${beliefId}"]`).first().click();
+  await page.getByTestId('v2-confidence-3').click();
+  const risks = page.locator('[data-testid^="v2-risk-"]');
+  await risks.nth(0).click();
+  await risks.nth(1).click();
+  // max two risks: the third is blocked
+  await expect(risks.nth(2).locator('input')).toBeDisabled();
+}
+
+/** Walk through the five private briefings on the shared device. */
+export async function readBriefings(page: Page, opts: { refreshAt?: V2Role; quarter?: number; stance?: boolean } = {}) {
   for (const role of ROLES) {
     await expect(page.getByTestId('v2-next-role')).toHaveText(role);
     await expect(page.getByTestId('v2-role-brief')).toHaveCount(0);
     await page.getByTestId('v2-open-brief').click();
     await expect(page.getByTestId('v2-role-brief')).toHaveAttribute('data-role', role);
+    if (opts.stance) await page.locator('[data-testid^="v2-stance-"]:not([data-testid="v2-stance-options"])').first().click();
     await page.getByTestId('v2-hide-brief').click();
     await expect(page.getByTestId('v2-role-brief')).toHaveCount(0);
-    if (opts.refreshEveryPhase && role === 'Product') await refreshAndExpect(page, 'briefing', q); // mid-briefing refresh keeps progress
+    if (opts.refreshAt === role) await refreshAndExpect(page, 'briefing', opts.quarter!);
   }
+}
+
+/** Play one quarter through the four stages on a shared team device. Ends on the next quarter's challenge, the waiting screen, or 'final'. */
+export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts: PlayOptions = {}) {
+  const q = input.quarter;
+  const r = async (phase: string, quarter = q) => { if (opts.refreshEveryPhase) await refreshAndExpect(page, phase, quarter); };
+  await expectPhase(page, 'briefing', q);
+  await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '0');
+  await r('briefing');
+  await readBriefings(page, { refreshAt: opts.refreshEveryPhase ? 'Product' : undefined, quarter: q, stance: true });
   await page.getByTestId('v2-to-decide').click();
   await expectPhase(page, 'decide', q);
+  await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '1');
   await r('decide');
   await fillDecision(page, input);
+  await expect(page.getByTestId('v2-to-vote')).toBeDisabled(); // discussion still required
+  await fillDiscussion(page, q);
   if (opts.onDecide) await opts.onDecide(page);
   if (opts.refreshEveryPhase) {
-    await page.waitForTimeout(700); // debounced draft save
+    await page.waitForTimeout(800); // debounced draft save
     await refreshAndExpect(page, 'decide', q);
     await expect(page.getByTestId('v2-alloc-consumer')).toHaveValue(String(input.allocation.consumer));
+    await expect(page.locator('[data-testid^="v2-belief-"] input:checked')).toHaveCount(1);
+    await expect(page.locator('[data-testid^="v2-risk-"] input:checked')).toHaveCount(2);
+    await expect(page.getByTestId('v2-confidence-3')).toHaveAttribute('aria-checked', 'true');
   }
-  await expect(page.getByTestId('v2-to-belief')).toBeEnabled();
-  await page.getByTestId('v2-to-belief').click();
-  await expectPhase(page, 'belief', q);
-  await page.getByTestId('v2-belief').fill(`Q${q}: our thesis`);
-  if (opts.refreshEveryPhase) {
-    await page.waitForTimeout(700);
-    await refreshAndExpect(page, 'belief', q);
-    await expect(page.getByTestId('v2-belief')).toHaveValue(`Q${q}: our thesis`);
-  }
-  await page.getByTestId('v2-to-risk').click();
-  await expectPhase(page, 'risk', q);
-  await r('risk');
-  await page.getByTestId('v2-risk-chip').first().click();
+  try { await expect(page.getByTestId('v2-to-vote')).toBeEnabled({ timeout: 8000 }); }
+  catch (e) { const v = page.getByTestId('v2-validation'); throw new Error(`Q${q} not ready: ${await v.count() ? await v.innerText() : '(no validation shown)'} / mode=${await page.getByTestId('v2-team-game').getAttribute('data-mode')}`); }
   await page.getByTestId('v2-to-vote').click();
   await expectPhase(page, 'vote', q);
+  await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '2');
   await r('vote');
   for (const [i, role] of ROLES.entries()) {
     await expect(page.getByTestId('v2-next-voter')).toHaveText(role);
@@ -140,12 +164,16 @@ export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts:
   await r('commit');
   await page.getByTestId('v2-commit').click();
   await expectPhase(page, 'results', q);
+  await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '3');
   await r('results');
   await expect(page.getByTestId('v2-explanation')).toBeVisible();
-  await page.getByTestId('v2-to-reflect').click();
-  await expectPhase(page, 'reflect', q);
-  await r('reflect');
-  await page.getByTestId('v2-reflection').fill(opts.reflection ?? `Q${q}: what we learned`);
+  await expect(page.getByTestId('v2-kpis')).toBeVisible();
+  await expect(page.getByTestId('v2-expected')).not.toHaveText('No belief was recorded.');
+  if (opts.onResults) await opts.onResults(page);
+  await expect(page.getByTestId('v2-next-quarter')).toBeDisabled(); // a learning choice is required
+  await page.locator('[data-testid^="v2-learn-"]').first().click();
+  const note = page.getByTestId('v2-reflection');
+  if (await note.count()) await note.fill(opts.reflection ?? `Q${q}: what we learned`);
   await page.getByTestId('v2-next-quarter').click();
 }
 
