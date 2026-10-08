@@ -10,6 +10,18 @@ import type { V2PresentationMode } from './content/modes';
 
 export type V2ParticipationMode = 'team_device' | 'individual_device' | 'voting_disabled';
 export type V2Pacing = 'facilitator' | 'self';
+/** Batch 7.5: how a team commits a quarter. 'none' = legacy no-vote sessions (participation 'voting_disabled'). */
+export type V2CommitmentMode = 'team_commitment' | 'private_vote' | 'none';
+export type V2Agreement = 'agreed' | 'discussed' | 'leader';
+
+/**
+ * The effective commitment mode. Databases without MIGRATION_V2_BATCH7_5_COMMITMENT.sql have no commitment_mode:
+ * they keep the original behaviour (private votes, or none for 'voting_disabled').
+ */
+export function commitmentModeOf(s: { commitment_mode?: V2CommitmentMode | null; participation_mode: V2ParticipationMode }): V2CommitmentMode {
+  if (s.commitment_mode === 'team_commitment' || s.commitment_mode === 'private_vote' || s.commitment_mode === 'none') return s.commitment_mode;
+  return s.participation_mode === 'voting_disabled' ? 'none' : 'private_vote';
+}
 
 export interface V2SessionInfo {
   session_code: string;
@@ -19,6 +31,8 @@ export interface V2SessionInfo {
   open_quarter: number;
   /** Batch 7 (absent before MIGRATION_V2_BATCH7_EXPERIENCE.sql — treat as 'mba'). */
   presentation_mode?: V2PresentationMode;
+  /** Batch 7.5 (absent before MIGRATION_V2_BATCH7_5_COMMITMENT.sql — see commitmentModeOf). */
+  commitment_mode?: V2CommitmentMode;
 }
 
 /** The working-quarter draft persisted for refresh/reconnect. */
@@ -37,6 +51,8 @@ export interface V2GameRecord {
   snapshot: unknown;
   draft: V2Draft | null;
   updated_at: string;
+  /** Batch 7.5: the working quarter's team commitment, once confirmed. */
+  commitment?: { agreement: V2Agreement; committed_by: V2Role | null } | null;
 }
 
 export interface V2ResolutionRecord {
@@ -45,6 +61,8 @@ export interface V2ResolutionRecord {
   deliberation: V2Deliberation | null;
   reflection: string | null;
   state_version_after: number;
+  /** Batch 7.5: the team agreement statement (team-commitment quarters only). */
+  agreement?: V2Agreement | null;
 }
 
 export interface V2TeamGameResponse {
@@ -69,6 +87,7 @@ export interface V2CreatedSession {
   engine_version: 'v2';
   participation_mode: V2ParticipationMode;
   pacing: V2Pacing;
+  commitment_mode?: V2CommitmentMode;
   teams: { team_id: string; team_code: string; team_name: string }[];
 }
 
@@ -92,6 +111,7 @@ export interface V2FacilitatorOverview {
   pacing: V2Pacing;
   open_quarter: number;
   presentation_mode?: V2PresentationMode;
+  commitment_mode?: V2CommitmentMode;
   teams: V2FacilitatorTeam[];
 }
 
@@ -103,6 +123,8 @@ export interface V2DebriefRow {
   deliberations: (V2Deliberation | null)[];
   reflections: (string | null)[];
   votes: Record<string, Partial<Record<V2Role, V2VoteValue>>>;
+  /** Batch 7.5: team agreement statements of resolved quarters (absent before the migration). */
+  agreements?: Record<string, { agreement: V2Agreement; committed_by: V2Role | null }>;
 }
 
 export class V2ApiError extends Error {
@@ -128,6 +150,10 @@ export function createV2Api(client: SupabaseClient) {
       call<{ team_id: string; completed_quarter: number; headline: V2Headline; inputs: V2PlayerQuarterInput[] }[]>('v2_facilitator_audit', { p_session_code: sessionCode, p_admin_pin: adminPin }),
     setPresentationMode: (sessionCode: string, adminPin: string, mode: V2PresentationMode) =>
       call<{ presentation_mode: V2PresentationMode }>('v2_facilitator_set_presentation_mode', { p_session_code: sessionCode, p_admin_pin: adminPin, p_mode: mode }),
+    setCommitmentMode: (sessionCode: string, adminPin: string, mode: Exclude<V2CommitmentMode, 'none'>) =>
+      call<{ commitment_mode: V2CommitmentMode }>('v2_facilitator_set_commitment_mode', { p_session_code: sessionCode, p_admin_pin: adminPin, p_mode: mode }),
+    confirmCommitment: (teamCode: string, quarter: number, agreement: V2Agreement, role?: V2Role) =>
+      call<{ phase: V2Phase; changed: boolean }>('v2_confirm_commitment', { p_team_code: teamCode, p_quarter: quarter, p_agreement: agreement, p_role: role ?? null }),
     facilitatorDebrief: (sessionCode: string, adminPin: string) =>
       call<V2DebriefRow[]>('v2_facilitator_debrief', { p_session_code: sessionCode, p_admin_pin: adminPin }),
     join: (sessionCode: string, teamCode: string) =>

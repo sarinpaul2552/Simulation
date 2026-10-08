@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { V2Api, V2Draft, V2VotesResponse } from '../api';
+import type { V2Agreement, V2Api, V2Draft, V2VotesResponse } from '../api';
 import { V2ApiError } from '../api';
 import { loadTeamGame, saveDecisionDraft, commitQuarter, V2LoadedGame, V2IntegrityError } from '../gameService';
 import { workingQuarter, envelopeFor } from '../adapter';
@@ -85,7 +85,7 @@ export function useV2Team(api: V2Api, teamCode: string) {
       await fn();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      if (e instanceof V2ApiError && /Phase conflict|Wrong quarter|working quarter|locked in phase|Voting is not open|not ready to commit/.test(e.message)) await reload();
+      if (e instanceof V2ApiError && /Phase conflict|Wrong quarter|working quarter|locked in phase|Voting is not open|not ready to commit|team commitment|has not confirmed/.test(e.message)) await reload();
     } finally {
       setBusy(false);
     }
@@ -150,12 +150,28 @@ export function useV2Team(api: V2Api, teamCode: string) {
     adopt(out.game);
   }), [api, game, draft, adopt, run]);
 
+  /**
+   * Batch 7.5 Team Commitment: one authorized participant confirms the agreement (server: risk|vote → commit, stores
+   * the agreement, creates no votes), then the quarter is resolved exactly once. A retry after a dropped response
+   * is harmless: the confirmation and the resolution are both idempotent on the server.
+   */
+  const commitTeam = useCallback((agreement: V2Agreement, role?: V2Role) => run(async () => {
+    if (!game || !draft?.input) return;
+    const q = workingQuarter(game.snapshot);
+    if (q === null) return;
+    if (game.record.phase !== 'commit' || !game.record.commitment) await api.confirmCommitment(teamCode, q, agreement, role);
+    const fresh = await loadTeamGame(api, teamCode);
+    if (fresh.record.completed_quarter >= q) { adopt(fresh); return; }
+    const out = await commitQuarter(api, fresh, draft.input as V2PlayerQuarterInput);
+    adopt(out.game);
+  }), [api, game, draft, teamCode, adopt, run]);
+
   const saveReflection = useCallback((text: string) => run(async () => {
     if (!game) return;
     await api.saveReflection(teamCode, game.record.completed_quarter, text);
   }), [api, game, teamCode, run]);
 
-  return { status, game, draft, error, busy, reload, updateDraft, flushDraft, go, advance, submitVote, getVotes, commit, saveReflection, setError };
+  return { status, game, draft, error, busy, reload, updateDraft, flushDraft, go, advance, submitVote, getVotes, commit, commitTeam, saveReflection, setError };
 }
 
 export type V2TeamController = ReturnType<typeof useV2Team>;

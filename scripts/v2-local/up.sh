@@ -19,6 +19,10 @@ $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_PRODUCTION.sql"   # idempotency che
 if [ "${V2_SKIP_BATCH7:-0}" != "1" ]; then
   $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_BATCH7_EXPERIENCE.sql"
   $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_BATCH7_EXPERIENCE.sql"   # idempotent
+  if [ "${V2_SKIP_BATCH75:-0}" != "1" ]; then
+    $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_BATCH7_5_COMMITMENT.sql"
+    $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_BATCH7_5_COMMITMENT.sql"   # idempotent
+  fi
 fi
 SECRET="local-dev-jwt-secret-at-least-32-characters-long"
 cat > /tmp/v2pg/postgrest.conf <<CONF
@@ -29,6 +33,8 @@ jwt-secret = "$SECRET"
 server-port = $PGRST_PORT
 CONF
 for f in /tmp/v2pg/postgrest.pid /tmp/v2pg/proxy.pid; do [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null || true; done
+fuser -k -n tcp $PGRST_PORT >/dev/null 2>&1 || true; fuser -k -n tcp $PROXY_PORT >/dev/null 2>&1 || true
+for i in $(seq 1 50); do (exec 3<>/dev/tcp/127.0.0.1/$PGRST_PORT) 2>/dev/null || break; sleep 0.1; done
 nohup /tmp/postgrest /tmp/v2pg/postgrest.conf > /tmp/v2pg/postgrest.log 2>&1 & echo $! > /tmp/v2pg/postgrest.pid
 nohup node "$HERE/proxy.mjs" $PROXY_PORT $PGRST_PORT > /tmp/v2pg/proxy.log 2>&1 & echo $! > /tmp/v2pg/proxy.pid
 for i in $(seq 1 50); do curl -s "http://localhost:$PROXY_PORT/rest/v1/" >/dev/null 2>&1 && break; sleep 0.2; done

@@ -31,6 +31,12 @@ function inputsOf(run: V2ArcRun): V2PlayerQuarterInput[] {
   });
 }
 
+/** Batch 7.5: sessions default to Team Commitment; tests of the private-vote flow opt into it (no-op on older schemas). */
+async function privateVoting(api: V2Api, s: { session_code: string; admin_pin: string }) {
+  try { await api.setCommitmentMode(s.session_code, s.admin_pin, 'private_vote'); }
+  catch (e) { if (!/Could not find the function|does not exist|schema cache/i.test(String((e as Error).message))) throw e; }
+}
+
 async function expectRpcError(p: Promise<unknown>, re: RegExp) {
   await expect(p).rejects.toThrow(re);
 }
@@ -62,6 +68,7 @@ describe.skipIf(!URL || !KEY)('Batch 5 · 5B persistence, RPC and RLS (live Post
     client = createClient(URL!, KEY!, { auth: { persistSession: false } });
     api = createV2Api(client);
     s = await api.createSession('facilitator@school.edu', ['Alpha', 'Beta', 'Gamma'], 'team_device', 'facilitator');
+    await privateVoting(api, s);
   });
 
   it('anon key cannot read or write any table directly (strict RLS preserved)', async () => {
@@ -294,6 +301,7 @@ describe.skipIf(!URL || !KEY)('Batch 7 · presentation mode and facilitator debr
   it('debrief returns decisions, deliberation and votes for RESOLVED quarters only; PIN required', async () => {
     const api = createV2Api(createClient(URL!, KEY!, { auth: { persistSession: false } }));
     const s = await api.createSession('f@school.edu', ['DebriefA', 'DebriefB'], 'team_device', 'self');
+    await privateVoting(api, s);
     const tc = s.teams[0].team_code;
     const run = runArc(ARC_STRATEGIES.find(x => x.id === 'balanced')!, 2);
     const [q1, q2] = inputsOf(run);
@@ -324,6 +332,115 @@ describe.skipIf(!URL || !KEY)('Batch 7 · presentation mode and facilitator debr
     // another session's PIN cannot read this session
     const other = await api.createSession('f2@school.edu', ['X'], 'team_device', 'self');
     await expectRpcError(api.facilitatorDebrief(s.session_code, other.admin_pin), /Invalid admin PIN/);
+  });
+});
+
+describe.skipIf(!URL || !KEY)('Batch 7.5 · Team Commitment (live DB)', () => {
+  const run = runArc(ARC_STRATEGIES.find(x => x.id === 'balanced')!, 3);
+  const [q1, q2, q3] = inputsOf(run);
+  const newApi = () => createV2Api(createClient(URL!, KEY!, { auth: { persistSession: false } }));
+  async function toRisk(api: V2Api, tc: string, input: V2PlayerQuarterInput) {
+    await loadTeamGame(api, tc); // initializes the game on first use
+    await api.setPhase(tc, input.quarter, 'briefing', 'decide');
+    await saveDecisionDraft(api, await loadTeamGame(api, tc), { input, deliberation: { beliefId: `q${input.quarter}-x`, riskIds: ['a', 'b'], confidence: 3 } });
+    await api.setPhase(tc, input.quarter, 'decide', 'belief');
+    await api.setPhase(tc, input.quarter, 'belief', 'risk');
+  }
+
+  it('new sessions default to team commitment; the server enforces it and creates no votes', async () => {
+    const api = newApi();
+    const s = await api.createSession('f@school.edu', ['Commit'], 'team_device', 'self');
+    expect(s.commitment_mode).toBe('team_commitment');
+    const tc = s.teams[0].team_code;
+    expect((await api.getGame(tc)).session.commitment_mode).toBe('team_commitment');
+    expect((await api.facilitatorOverview(s.session_code, s.admin_pin)).commitment_mode).toBe('team_commitment');
+    await toRisk(api, tc, q1);
+    await expectRpcError(api.setPhase(tc, 1, 'risk', 'vote'), /not allowed/);
+    await expectRpcError(api.setPhase(tc, 1, 'risk', 'commit'), /team commitment/);
+    await expectRpcError(api.submitVote(tc, 1, 'CEO', 'support'), /Voting is not open/);
+    await expectRpcError(api.confirmCommitment(tc, 1, 'maybe' as never), /Invalid agreement/);
+    await expectRpcError(api.confirmCommitment(tc, 2, 'agreed'), /Wrong quarter/);
+    // resolving before the confirmation is impossible (phase is not commit)
+    const g0 = await loadTeamGame(api, tc);
+    await expectRpcError(commitQuarter(api, g0, q1), /not ready to commit/);
+    // one authorized participant confirms; a repeat (second device / double click) is harmless
+    const [c1, c2] = await Promise.all([api.confirmCommitment(tc, 1, 'discussed', 'CEO'), api.confirmCommitment(tc, 1, 'discussed', 'CEO')]);
+    expect([c1.changed, c2.changed].filter(Boolean)).toHaveLength(1);
+    const g1 = await loadTeamGame(api, tc);
+    expect(g1.record.phase).toBe('commit');
+    expect(g1.record.commitment).toEqual({ agreement: 'discussed', committed_by: 'CEO' });
+    expect((await api.getVotes(tc, 1)).submitted_roles).toHaveLength(0);       // no fabricated votes
+    // the decision is locked while committing
+    await expectRpcError(api.saveDraft(tc, 1, { quarter: 1, input: q2 }), /locked/);
+    // exactly one resolution even when two devices commit at once
+    const [r1, r2] = await Promise.all([commitQuarter(api, g1, q1), commitQuarter(api, g1, q1)].map(p => p.catch(e => e)));
+    const statuses = [r1, r2].map(r => (r instanceof Error ? 'error' : r.status));
+    expect(statuses.filter(x => x === 'resolved')).toHaveLength(1);
+    const after = await api.getGame(tc);
+    expect(after.resolutions).toHaveLength(1);
+    expect(after.game!.state_version).toBe(1);
+    expect(after.resolutions[0].agreement).toBe('discussed');
+    // economics identical to the engine for the same input
+    expect(firstDifference(toStorable((await loadTeamGame(api, tc)).snapshot), toStorable(resolveQuarter(g0.snapshot, q1).snapshot))).toBeNull();
+  });
+
+  it('revising after confirming clears the commitment; the facilitator can switch modes; private voting still works', async () => {
+    const api = newApi();
+    const s = await api.createSession('f@school.edu', ['Switch'], 'team_device', 'self');
+    const tc = s.teams[0].team_code;
+    await toRisk(api, tc, q1);
+    await api.confirmCommitment(tc, 1, 'agreed');
+    await api.setPhase(tc, 1, 'commit', 'decide');
+    expect((await loadTeamGame(api, tc)).record.commitment ?? null).toBeNull();
+    // facilitator switches to private voting: the commitment RPC is refused and the vote path is required
+    await expectRpcError(api.setCommitmentMode(s.session_code, 'wrong', 'private_vote'), /Invalid admin PIN/);
+    await expectRpcError(api.setCommitmentMode(s.session_code, s.admin_pin, 'none' as never), /Invalid commitment mode/);
+    await expectRpcError(api.setCommitmentMode(tc, s.admin_pin, 'private_vote'), /Invalid|expired/);
+    await api.setCommitmentMode(s.session_code, s.admin_pin, 'private_vote');
+    await api.setPhase(tc, 1, 'decide', 'belief');
+    await api.setPhase(tc, 1, 'belief', 'risk');
+    await expectRpcError(api.confirmCommitment(tc, 1, 'agreed'), /team commitment is not enabled/);
+    await api.setPhase(tc, 1, 'risk', 'vote');
+    for (const r of ROLES.slice(0, 2)) await api.submitVote(tc, 1, r, 'oppose');
+    // switched back mid-vote: the team commits collectively; the two partial votes are discarded unrevealed
+    await api.setCommitmentMode(s.session_code, s.admin_pin, 'team_commitment');
+    await api.confirmCommitment(tc, 1, 'leader');
+    expect((await api.getVotes(tc, 1)).submitted_roles).toHaveLength(0);
+    await commitQuarter(api, await loadTeamGame(api, tc), q1);
+    const rows = await api.facilitatorDebrief(s.session_code, s.admin_pin);
+    expect(rows[0].agreements).toEqual({ 1: { agreement: 'leader', committed_by: null } });
+    expect(rows[0].votes).toEqual({});
+    // Q2 under private voting: all five votes, revealed, then commit
+    await api.setCommitmentMode(s.session_code, s.admin_pin, 'private_vote');
+    await api.setPhase(tc, 1, 'results', 'reflect');
+    await api.setPhase(tc, 1, 'reflect', 'briefing');
+    await toRisk(api, tc, q2);
+    await api.setPhase(tc, 2, 'risk', 'vote');
+    for (const r of ROLES) await api.submitVote(tc, 2, r, 'support');
+    await api.setPhase(tc, 2, 'vote', 'commit');
+    await commitQuarter(api, await loadTeamGame(api, tc), q2);
+    // Q3 in progress with a team commitment recorded but unresolved: never in the debrief
+    await api.setCommitmentMode(s.session_code, s.admin_pin, 'team_commitment');
+    await api.setPhase(tc, 2, 'results', 'reflect');
+    await api.setPhase(tc, 2, 'reflect', 'briefing');
+    await toRisk(api, tc, q3);
+    await api.confirmCommitment(tc, 3, 'agreed');
+    const d2 = (await api.facilitatorDebrief(s.session_code, s.admin_pin))[0];
+    expect(Object.keys(d2.agreements!)).toEqual(['1']);
+    expect(Object.keys(d2.votes)).toEqual(['2']);
+    // resolving under a mode whose requirement is not met is refused (private voting needs five votes)
+    await api.setCommitmentMode(s.session_code, s.admin_pin, 'private_vote');
+    await expectRpcError(commitQuarter(api, await loadTeamGame(api, tc), q3), /five roles must vote/);
+  });
+
+  it('commitments are not readable or writable directly with the public key', async () => {
+    const c = createClient(URL!, KEY!, { auth: { persistSession: false } });
+    const r = await c.from('v2_commitments').select('*');
+    expect(r.error !== null || (Array.isArray(r.data) && r.data.length === 0)).toBe(true);
+    const ins = await c.from('v2_commitments').insert({ team_id: '00000000-0000-0000-0000-000000000000', quarter: 1, agreement: 'agreed' });
+    expect(ins.error).not.toBeNull();
+    const upd = await c.from('sessions').update({ commitment_mode: 'none' }).neq('id', '00000000-0000-0000-0000-000000000000').select();
+    expect(upd.error !== null || (upd.data ?? []).length === 0).toBe(true);
   });
 });
 
