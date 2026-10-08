@@ -13,10 +13,14 @@ test('pre-migration database: MBA fallback, full quarter loop, debrief falls bac
   // Choosing Undergraduate on an old database still creates the session and shows the codes, with a warning
   await fac.goto('/');
   const s = await createSession(fac, ['Compat'], { pacing: 'self', presentation: 'undergraduate' }).catch(async e => { throw e; });
-  await expect(fac.getByTestId('v2-fac-mode-unavailable')).toBeVisible();
+  const pre7 = process.env.V2_COMPAT_LEVEL !== '7';   // '7' = Batch 7 migration applied, Batch 7.5 not
+  if (pre7) await expect(fac.getByTestId('v2-fac-mode-unavailable')).toBeVisible();
+  // Team Commitment is unavailable before the Batch 7.5 migration: teams keep private voting
+  await expect(fac.getByTestId('v2-fac-commit-unavailable')).toBeVisible();
   const { page } = await newPage(browser);
   await joinTeam(page, s.sessionCode, s.teamCodes[0]);
-  await expect(page.getByTestId('v2-team-game')).toHaveAttribute('data-mode', 'mba');
+  await expect(page.getByTestId('v2-team-game')).toHaveAttribute('data-mode', pre7 ? 'mba' : 'undergraduate');
+  await expect(page.getByTestId('v2-team-game')).toHaveAttribute('data-commitment', 'private_vote');
   const alloc = { consumer: 6, enterprise: 8, aiProduct: 10, people: 6, universityCredentials: 0, cashReserve: 0 };
   await playQuarter(page, { quarter: 1, allocation: alloc });
   await expectPhase(page, 'briefing', 2);

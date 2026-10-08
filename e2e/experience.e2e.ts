@@ -56,14 +56,25 @@ test('Undergraduate and MBA teams playing identical decisions get identical econ
     await playQuarter(u, inp, {
       onResults: async page => {
         // Undergraduate dashboard: fewer KPI tiles, no formulas / benchmarks
+        // Undergraduate: levels 1–2 lead; deep analysis is collapsed and has no benchmarks/formulas
         await expect(page.getByTestId('v2-benchmarks')).toHaveCount(0);
-        await expect(page.getByTestId('v2-chart-op')).toHaveCount(0);
+        await expect(page.getByTestId('v2-formulas')).toHaveCount(0);
+        await expect(page.getByTestId('v2-deep')).not.toHaveAttribute('open', '');
+        await expect(page.getByTestId('v2-explore')).toBeVisible();
         if (q === 2) await shot(page, 'ug-q2-results');
       },
     });
     await playQuarter(m, inp, {
+      onDecide: async page => {
+        if (q === 4) await shot(page, 'q4-strategic-commitment');
+        if (q === 7) await shot(page, 'q7-crisis');
+        if (q === 8) await shot(page, 'q8-final-decision');
+      },
       onResults: async page => {
+        // MBA: deep analysis open on wide screens, with benchmarks and formulas
+        await expect(page.getByTestId('v2-deep')).toHaveAttribute('open', '');
         await expect(page.getByTestId('v2-benchmarks')).toBeVisible();
+        await expect(page.getByTestId('v2-formulas')).toBeVisible();
         await expect(page.getByTestId('v2-chart-op')).toBeVisible();
         if (q === 2) await shot(page, 'mba-q2-results');
       },
@@ -85,7 +96,13 @@ test('Undergraduate and MBA teams playing identical decisions get identical econ
     await expect(p.getByTestId('v2-tradeoffs')).toBeVisible();
   }
   await shot(u, 'ug-final');
-  await shot(m, 'mba-final');
+  await shot(m, 'q8-final-learning-report');
+  for (const p of [u, m]) {
+    await expect(p.getByTestId('v2-conclusion')).toContainText('You built a');
+    await expect(p.getByTestId('v2-vulnerabilities')).toBeVisible();
+    await expect(p.getByTestId('v2-not-pursued')).toBeVisible();
+    await expect(p.getByTestId('v2-questions')).toBeVisible();
+  }
   // Stored state is identical in both sessions (server-side snapshots verified by the facilitator audit)
   for (const [fac, name] of [[facUg, 'UG Team'], [facMba, 'MBA Team']] as const) {
     await fac.reload();
@@ -154,24 +171,38 @@ test('responsive: Q2 reference screens at laptop, tablet, mobile and projector w
     await expect(page.getByTestId('v2-to-vote')).toBeVisible();
     await shot(page, `q2-decision-${sz.name}`);
   }
-  await page.setViewportSize({ width: 375, height: 760 });
+  // the capacity estimate reacts to the plan
+  await expect(page.getByTestId('v2-capacity')).toHaveAttribute('data-level', /comfortable|busy|stretched|overloaded/);
+  await page.setViewportSize({ width: 1366, height: 820 });
   await page.getByTestId('v2-to-vote').click();
-  await expectPhase(page, 'vote', 2);
-  await page.getByTestId('v2-start-vote').click();
-  await expect(page.getByTestId('v2-vote-private')).toBeVisible();
+  await expectPhase(page, 'risk', 2);
+  await page.getByTestId('v2-agreement-discussed').click();
+  for (const sz of sizes) {
+    await page.setViewportSize(sz);
+    await noHorizontalScroll(page);
+    await expect(page.getByTestId('v2-commit-team')).toBeVisible();
+    await shot(page, `q2-team-commitment-${sz.name}`);
+  }
+  await page.setViewportSize({ width: 375, height: 760 });
+  await page.getByTestId('v2-commit-team').click();
+  await expect(page.getByTestId('v2-confirm')).toBeVisible();
   await noHorizontalScroll(page);
-  await shot(page, 'q2-vote-private-mobile');
-  // the private vote screen shows nothing about other votes
-  expect(await page.getByTestId('v2-vote-private').innerText()).not.toMatch(/Support:|Oppose:|Concern:/);
-  await page.getByTestId('v2-vote-support').click();
-  for (let i = 0; i < 4; i++) { await page.getByTestId('v2-start-vote').click(); await page.getByTestId('v2-vote-support').click(); }
-  await page.getByTestId('v2-to-commit').click();
-  await page.getByTestId('v2-commit').click();
+  await shot(page, 'q2-commit-confirm-mobile');
+  await page.getByTestId('v2-confirm-confirm').click();
   await expectPhase(page, 'results', 2);
+  await expect(page.getByTestId('v2-cash-bridge')).toHaveAttribute('data-reconciles', 'true');
   for (const sz of sizes) {
     await page.setViewportSize(sz);
     await noHorizontalScroll(page);
     await shot(page, `q2-results-${sz.name}`);
+  }
+  await page.setViewportSize({ width: 1366, height: 820 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/q2-executive-summary.png` });
+  if (SHOTS) await page.getByTestId('v2-cash-bridge').screenshot({ path: `${SHOTS}/q2-cash-bridge.png` });
+  for (const t of ['segments', 'customer', 'product', 'organization', 'strategy', 'financial'] as const) {
+    await page.getByTestId(`v2-tab-${t}`).click();
+    await expect(page.getByTestId(`v2-tab-${t}`)).toHaveAttribute('aria-selected', 'true');
   }
   // Facilitator projector view
   await fac.setViewportSize({ width: 1920, height: 1080 });

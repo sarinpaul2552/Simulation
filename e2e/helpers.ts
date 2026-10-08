@@ -10,7 +10,7 @@ export async function newPage(browser: Browser): Promise<{ ctx: BrowserContext; 
   return { ctx, page };
 }
 
-export async function createSession(page: Page, teams: string[], opts: { mode?: string; pacing?: string; presentation?: 'undergraduate' | 'mba' } = {}) {
+export async function createSession(page: Page, teams: string[], opts: { mode?: string; pacing?: string; presentation?: 'undergraduate' | 'mba'; commitment?: 'team_commitment' | 'private_vote' } = {}) {
   await page.goto('/');
   await page.getByTestId('v2-home-facilitator').click();
   await page.getByTestId('v2-setup-email').fill('facilitator@school.edu');
@@ -19,9 +19,11 @@ export async function createSession(page: Page, teams: string[], opts: { mode?: 
   if (opts.mode) await page.getByTestId('v2-setup-mode').selectOption(opts.mode);
   if (opts.pacing) await page.getByTestId('v2-setup-pacing').selectOption(opts.pacing);
   if (opts.presentation) await page.getByTestId(`v2-setup-presentation-${opts.presentation}`).click();
+  if (opts.commitment) await page.getByTestId(`v2-setup-commitment-${opts.commitment}`).click();
   await page.getByTestId('v2-setup-create').click();
   await expect(page.getByTestId('v2-fac-created')).toBeVisible();
-  if (opts.presentation === 'undergraduate' && process.env.V2_COMPAT === '1') await expect(page.getByTestId('v2-created-warning')).toBeVisible();
+  // On an older schema, requesting a mode it lacks (Undergraduate, or Team Commitment — the default) shows a warning
+  if (process.env.V2_COMPAT === '1' && (opts.presentation === 'undergraduate' || opts.commitment !== 'private_vote')) await expect(page.getByTestId('v2-created-warning')).toBeVisible();
   const sessionCode = (await page.getByTestId('v2-created-session-code').textContent())!.trim();
   const adminPin = (await page.getByTestId('v2-created-pin').textContent())!.trim();
   const teamCodes = (await page.getByTestId('v2-created-team-code').allTextContents()).map(s => s.trim());
@@ -62,6 +64,10 @@ export interface PlayOptions {
   onDecide?: (page: Page) => Promise<void>;
   /** Called on the results screen before reflecting. */
   onResults?: (page: Page) => Promise<void>;
+  /** Team Commitment agreement (default 'agreed'). Ignored when the session uses private voting. */
+  agreement?: 'agreed' | 'discussed' | 'leader';
+  /** Called on the commit screen (team commitment) before committing. */
+  onCommit?: (page: Page) => Promise<void>;
   reflection?: string;
 }
 
@@ -147,27 +153,43 @@ export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts:
   }
   try { await expect(page.getByTestId('v2-to-vote')).toBeEnabled({ timeout: 8000 }); }
   catch (e) { const v = page.getByTestId('v2-validation'); throw new Error(`Q${q} not ready: ${await v.count() ? await v.innerText() : '(no validation shown)'} / mode=${await page.getByTestId('v2-team-game').getAttribute('data-mode')}`); }
+  const commitment = await page.getByTestId('v2-team-game').getAttribute('data-commitment');
   await page.getByTestId('v2-to-vote').click();
-  await expectPhase(page, 'vote', q);
-  await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '2');
-  await r('vote');
-  for (const [i, role] of ROLES.entries()) {
-    await expect(page.getByTestId('v2-next-voter')).toHaveText(role);
-    await expect(page.getByTestId('v2-votes-revealed')).toHaveCount(0);
-    await page.getByTestId('v2-start-vote').click();
-    await page.getByTestId(`v2-vote-${opts.votes?.[role] ?? 'support'}`).click();
-    if (opts.refreshEveryPhase && i === 2) await refreshAndExpect(page, 'vote', q); // mid-vote refresh: 3 votes kept, still hidden
+  if (commitment === 'team_commitment') {
+    await expectPhase(page, 'risk', q);
+    await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '2');
+    await expect(page.getByTestId('v2-team-commitment')).toBeVisible();
+    await r('risk');
+    await expect(page.getByTestId('v2-commit-team')).toBeDisabled(); // an agreement statement is required
+    await page.getByTestId(`v2-agreement-${opts.agreement ?? 'agreed'}`).click();
+    if (opts.onCommit) await opts.onCommit(page);
+    await page.getByTestId('v2-commit-team').click();
+    await expect(page.getByTestId('v2-confirm')).toBeVisible();
+    await page.getByTestId('v2-confirm-confirm').click();
+  } else {
+    await expectPhase(page, 'vote', q);
+    await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '2');
+    await r('vote');
+    for (const [i, role] of ROLES.entries()) {
+      await expect(page.getByTestId('v2-next-voter')).toHaveText(role);
+      await expect(page.getByTestId('v2-votes-revealed')).toHaveCount(0);
+      await page.getByTestId('v2-start-vote').click();
+      await page.getByTestId(`v2-vote-${opts.votes?.[role] ?? 'support'}`).click();
+      if (opts.refreshEveryPhase && i === 2) await refreshAndExpect(page, 'vote', q); // mid-vote refresh: 3 votes kept, still hidden
+    }
+    await expect(page.getByTestId('v2-votes-revealed')).toBeVisible();
+    await page.getByTestId('v2-to-commit').click();
+    await expectPhase(page, 'commit', q);
+    await r('commit');
+    await page.getByTestId('v2-commit').click();
   }
-  await expect(page.getByTestId('v2-votes-revealed')).toBeVisible();
-  await page.getByTestId('v2-to-commit').click();
-  await expectPhase(page, 'commit', q);
-  await r('commit');
-  await page.getByTestId('v2-commit').click();
   await expectPhase(page, 'results', q);
   await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '3');
   await r('results');
   await expect(page.getByTestId('v2-explanation')).toBeVisible();
-  await expect(page.getByTestId('v2-kpis')).toBeVisible();
+  await expect(page.getByTestId('v2-figures')).toBeVisible();
+  await expect(page.getByTestId('v2-cash-bridge')).toHaveAttribute('data-reconciles', 'true');
+  await expect(page.getByTestId('v2-consequence')).toBeVisible();
   await expect(page.getByTestId('v2-expected')).not.toHaveText('No belief was recorded.');
   if (opts.onResults) await opts.onResults(page);
   await expect(page.getByTestId('v2-next-quarter')).toBeDisabled(); // a learning choice is required

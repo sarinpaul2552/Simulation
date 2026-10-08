@@ -86,7 +86,7 @@ test('Q1→Q8: two teams, facilitator pacing, refresh at every phase, facilitato
     });
     alphaInputs.push(ai);
     await playQuarter(beta, bi, {
-      votes: { CEO: 'support', CFO: 'oppose', Product: 'concern', People: 'support', Growth: 'oppose' },
+      agreement: 'discussed',
       onDecide: async page => {
         if (q === 8) {
           const spec = getDecisionSpec(replayInputs(betaInputs))!;

@@ -20,7 +20,7 @@ async function toVote(page: import('@playwright/test').Page) {
 
 test('votes stay hidden until all five are in (UI, second device and API), then reveal together; revising clears them', async ({ browser }) => {
   const { page: fac } = await newPage(browser);
-  const s = await createSession(fac, ['Voters'], { pacing: 'self' });
+  const s = await createSession(fac, ['Voters'], { pacing: 'self', commitment: 'private_vote' });
   const a = await newPage(browser);
   await joinTeam(a.page, s.sessionCode, s.teamCodes[0]);
   await toVote(a.page);
@@ -54,7 +54,7 @@ test('votes stay hidden until all five are in (UI, second device and API), then 
 
 test('double submit: two devices committing at once (and a double click) resolve the quarter exactly once', async ({ browser }) => {
   const { page: fac } = await newPage(browser);
-  const s = await createSession(fac, ['Twice'], { pacing: 'self' });
+  const s = await createSession(fac, ['Twice'], { pacing: 'self', commitment: 'private_vote' });
   const a = await newPage(browser);
   await joinTeam(a.page, s.sessionCode, s.teamCodes[0]);
   await toVote(a.page);
@@ -137,7 +137,7 @@ test('V1 fallback is hidden by default and reachable behind the developer flag; 
 
 test('one device per player: each player sees only their own brief and casts only their own vote', async ({ browser }) => {
   const { page: fac } = await newPage(browser);
-  const s = await createSession(fac, ['Devices'], { pacing: 'self', mode: 'individual_device' });
+  const s = await createSession(fac, ['Devices'], { pacing: 'self', mode: 'individual_device', commitment: 'private_vote' });
   const devices = [];
   for (const role of ROLES) {
     const d = await newPage(browser);
@@ -159,4 +159,81 @@ test('one device per player: each player sees only their own brief and casts onl
   }
   for (const d of devices) await expect(d.page.getByTestId('v2-votes-revealed')).toBeVisible();
   await expect(ceo.getByTestId('v2-vote-CFO')).toContainText('Oppose');
+});
+
+test('team commitment: one device commits; a second device and a double click cannot resolve twice; no votes are created', async ({ browser }) => {
+  const { page: fac } = await newPage(browser);
+  const s = await createSession(fac, ['Together'], { pacing: 'self' });
+  const a = await newPage(browser);
+  await joinTeam(a.page, s.sessionCode, s.teamCodes[0]);
+  await expect(a.page.getByTestId('v2-team-game')).toHaveAttribute('data-commitment', 'team_commitment');
+  for (let i = 0; i < 5; i++) { await a.page.getByTestId('v2-open-brief').click(); await a.page.getByTestId('v2-hide-brief').click(); }
+  await a.page.getByTestId('v2-to-decide').click();
+  await fillDecision(a.page, Q1);
+  await fillDiscussion(a.page, 1);
+  await a.page.getByTestId('v2-to-vote').click();
+  await expectPhase(a.page, 'risk', 1);
+  const b = await newPage(browser);
+  await joinTeam(b.page, s.sessionCode, s.teamCodes[0]);
+  await expectPhase(b.page, 'risk', 1);
+  for (const p of [a.page, b.page]) await p.getByTestId('v2-agreement-discussed').click();
+  // Cancelling the confirmation changes nothing
+  await a.page.getByTestId('v2-commit-team').click();
+  await a.page.getByTestId('v2-confirm-cancel').click();
+  await expectPhase(a.page, 'risk', 1);
+  await a.page.getByTestId('v2-commit-team').click();
+  await b.page.getByTestId('v2-commit-team').click();
+  await Promise.all([a.page.getByTestId('v2-confirm-confirm').dblclick(), b.page.getByTestId('v2-confirm-confirm').click()]);
+  await expectPhase(a.page, 'results', 1);
+  await b.page.reload();
+  await expectPhase(b.page, 'results', 1);
+  const game = await api.getGame(s.teamCodes[0]);
+  expect(game.resolutions).toHaveLength(1);
+  expect(game.game!.state_version).toBe(1);
+  expect(game.resolutions[0].agreement).toBe('discussed');
+  expect((await api.getVotes(s.teamCodes[0], 1)).submitted_roles).toHaveLength(0);
+  await expect(a.page.getByTestId('v2-reflect-agreement')).toContainText('different opinions');
+});
+
+test('team commitment on individual devices: only the team leader commits; the others follow', async ({ browser }) => {
+  const { page: fac } = await newPage(browser);
+  const s = await createSession(fac, ['Leaders'], { pacing: 'self', mode: 'individual_device' });
+  const devices: { role: (typeof ROLES)[number]; page: import('@playwright/test').Page }[] = [];
+  for (const role of ['CEO', 'CFO'] as const) { const d = await newPage(browser); await joinTeam(d.page, s.sessionCode, s.teamCodes[0], role); devices.push({ role, page: d.page }); }
+  const [ceo, cfo] = devices.map(d => d.page);
+  await cfo.getByTestId('v2-to-decide').click();
+  await fillDecision(cfo, Q1);
+  await fillDiscussion(cfo, 1);
+  await cfo.getByTestId('v2-to-vote').click();
+  await expectPhase(cfo, 'risk', 1);
+  await expect(cfo.getByTestId('v2-waiting-commit')).toBeVisible();
+  await expect(cfo.getByTestId('v2-commit-team')).toBeDisabled();
+  await expectPhase(ceo, 'risk', 1); // follows the team's step by polling
+  await ceo.getByTestId('v2-agreement-leader').click();
+  await ceo.getByTestId('v2-commit-team').click();
+  await ceo.getByTestId('v2-confirm-confirm').click();
+  await expectPhase(ceo, 'results', 1);
+  await expectPhase(cfo, 'results', 1);
+  expect((await api.getGame(s.teamCodes[0])).resolutions[0].agreement).toBe('leader');
+});
+
+test('facilitator switches a live session to private voting and back; existing teams follow the new rule', async ({ browser }) => {
+  const { page: fac } = await newPage(browser);
+  const s = await createSession(fac, ['Flex'], { pacing: 'self' });
+  await expect(fac.getByTestId('v2-fac-commit-team_commitment')).toHaveAttribute('aria-checked', 'true');
+  await fac.getByTestId('v2-fac-commit-private_vote').click();
+  await expect(fac.getByTestId('v2-fac-commit-private_vote')).toHaveAttribute('aria-checked', 'true');
+  const t = await newPage(browser);
+  await joinTeam(t.page, s.sessionCode, s.teamCodes[0]);
+  await expect(t.page.getByTestId('v2-team-game')).toHaveAttribute('data-commitment', 'private_vote');
+  await toVote(t.page);
+  await expect(t.page.getByTestId('v2-vote-panel')).toBeVisible();
+  await fac.getByTestId('v2-fac-commit-team_commitment').click();
+  await t.page.reload();
+  await expect(t.page.getByTestId('v2-team-game')).toHaveAttribute('data-commitment', 'team_commitment');
+  await expect(t.page.getByTestId('v2-team-commitment')).toBeVisible();
+  await t.page.getByTestId('v2-agreement-agreed').click();
+  await t.page.getByTestId('v2-commit-team').click();
+  await t.page.getByTestId('v2-confirm-confirm').click();
+  await expectPhase(t.page, 'results', 1);
 });
