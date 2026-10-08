@@ -269,6 +269,64 @@ describe.skipIf(!URL || !KEY)('Batch 5 · 5B voting-disabled mode and facilitato
   });
 });
 
+describe.skipIf(!URL || !KEY)('Batch 7 · presentation mode and facilitator debrief (live DB)', () => {
+  it('presentation mode defaults to MBA, is facilitator-only (PIN), validated, and persists across reloads', async () => {
+    const api = createV2Api(createClient(URL!, KEY!, { auth: { persistSession: false } }));
+    const s = await api.createSession('f@school.edu', ['ModeTeam'], 'team_device', 'self');
+    const tc = s.teams[0].team_code;
+    expect((await api.getGame(tc)).session.presentation_mode).toBe('mba');
+    expect((await api.facilitatorOverview(s.session_code, s.admin_pin)).presentation_mode).toBe('mba');
+    await expectRpcError(api.setPresentationMode(s.session_code, 'wrong', 'undergraduate'), /Invalid admin PIN/);
+    await expectRpcError(api.setPresentationMode(s.session_code, s.admin_pin, 'kindergarten' as never), /presentation mode/i);
+    await api.setPresentationMode(s.session_code, s.admin_pin, 'undergraduate');
+    expect((await api.getGame(tc)).session.presentation_mode).toBe('undergraduate');
+    expect((await api.join(s.session_code, tc)).session.presentation_mode).toBe('undergraduate');
+    expect((await api.facilitatorOverview(s.session_code, s.admin_pin)).presentation_mode).toBe('undergraduate');
+    // a team code cannot change the mode
+    await expectRpcError(api.setPresentationMode(tc, s.admin_pin, 'mba'), /Invalid|expired/);
+    // the anon key cannot write the column directly
+    const c = createClient(URL!, KEY!, { auth: { persistSession: false } });
+    const upd = await c.from('sessions').update({ presentation_mode: 'mba' }).eq('id', s.session_id).select();
+    expect(upd.error !== null || (upd.data ?? []).length === 0).toBe(true);
+    expect((await api.getGame(tc)).session.presentation_mode).toBe('undergraduate');
+  });
+
+  it('debrief returns decisions, deliberation and votes for RESOLVED quarters only; PIN required', async () => {
+    const api = createV2Api(createClient(URL!, KEY!, { auth: { persistSession: false } }));
+    const s = await api.createSession('f@school.edu', ['DebriefA', 'DebriefB'], 'team_device', 'self');
+    const tc = s.teams[0].team_code;
+    const run = runArc(ARC_STRATEGIES.find(x => x.id === 'balanced')!, 2);
+    const [q1, q2] = inputsOf(run);
+    let g = await loadTeamGame(api, tc);
+    g = (await playQuarter(api, g, q1, { CEO: 'support', CFO: 'oppose', Product: 'concern', People: 'support', Growth: 'support' })).game;
+    await api.setPhase(tc, 1, 'results', 'reflect');
+    await api.saveReflection(tc, 1, JSON.stringify({ v: 1, learning: ['evidence'], note: 'n' }));
+    await api.setPhase(tc, 1, 'reflect', 'briefing');
+    // Q2: votes cast but the quarter is not resolved → must not appear
+    await api.setPhase(tc, 2, 'briefing', 'decide');
+    await saveDecisionDraft(api, await loadTeamGame(api, tc), { input: q2, deliberation: { beliefId: 'q2-hedge', riskIds: ['q2-r1'], confidence: 3 } });
+    await api.setPhase(tc, 2, 'decide', 'belief');
+    await api.setPhase(tc, 2, 'belief', 'risk');
+    await api.setPhase(tc, 2, 'risk', 'vote');
+    await api.submitVote(tc, 2, 'CFO', 'oppose');
+    await expectRpcError(api.facilitatorDebrief(s.session_code, 'nope'), /Invalid admin PIN/);
+    const rows = await api.facilitatorDebrief(s.session_code, s.admin_pin);
+    const a1 = rows.find(r => r.team_id === s.teams[0].team_id)!;
+    expect(a1.completed_quarter).toBe(1);
+    expect(a1.inputs).toHaveLength(1);
+    expect(a1.deliberations).toHaveLength(1);
+    expect(a1.reflections[0]).toMatch(/evidence/);
+    expect(Object.keys(a1.votes)).toEqual(['1']);
+    expect(a1.votes['1']).toEqual({ CEO: 'support', CFO: 'oppose', Product: 'concern', People: 'support', Growth: 'support' });
+    expect(JSON.stringify(rows)).not.toMatch(/q2-hedge|snapshot|admin_pin|access_code/);
+    const b = rows.find(r => r.team_id === s.teams[1].team_id)!;
+    expect(b.inputs).toHaveLength(0);
+    // another session's PIN cannot read this session
+    const other = await api.createSession('f2@school.edu', ['X'], 'team_device', 'self');
+    await expectRpcError(api.facilitatorDebrief(s.session_code, other.admin_pin), /Invalid admin PIN/);
+  });
+});
+
 async function initSnap() {
   const { initializeGame } = await import('./adapter');
   return initializeGame();

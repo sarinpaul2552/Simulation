@@ -41,6 +41,12 @@ export interface V2Deliberation {
   confidence?: number;
   /** Named risks (free text / chips). */
   risks?: string[];
+  /** Batch 7: structured leadership discussion (reflection inputs only — never read by the engine). */
+  beliefId?: string;
+  riskIds?: string[];
+  note?: string;
+  /** Each role's recommendation chosen from its private briefing (shared with the team in the discussion). */
+  stances?: Partial<Record<V2Role, string>>;
 }
 
 export type V2VoteValue = 'support' | 'concern' | 'oppose';

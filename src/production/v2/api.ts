@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { V2Phase, V2VoteValue, V2Headline, V2PlayerQuarterInput, V2Deliberation, V2Role } from './types';
+import type { V2PresentationMode } from './content/modes';
 
 export type V2ParticipationMode = 'team_device' | 'individual_device' | 'voting_disabled';
 export type V2Pacing = 'facilitator' | 'self';
@@ -16,6 +17,8 @@ export interface V2SessionInfo {
   participation_mode: V2ParticipationMode;
   pacing: V2Pacing;
   open_quarter: number;
+  /** Batch 7 (absent before MIGRATION_V2_BATCH7_EXPERIENCE.sql — treat as 'mba'). */
+  presentation_mode?: V2PresentationMode;
 }
 
 /** The working-quarter draft persisted for refresh/reconnect. */
@@ -88,7 +91,18 @@ export interface V2FacilitatorOverview {
   participation_mode: V2ParticipationMode;
   pacing: V2Pacing;
   open_quarter: number;
+  presentation_mode?: V2PresentationMode;
   teams: V2FacilitatorTeam[];
+}
+
+export interface V2DebriefRow {
+  team_id: string;
+  team_name: string;
+  completed_quarter: number;
+  inputs: V2PlayerQuarterInput[];
+  deliberations: (V2Deliberation | null)[];
+  reflections: (string | null)[];
+  votes: Record<string, Partial<Record<V2Role, V2VoteValue>>>;
 }
 
 export class V2ApiError extends Error {
@@ -112,6 +126,10 @@ export function createV2Api(client: SupabaseClient) {
       call<{ pacing: V2Pacing }>('v2_facilitator_set_pacing', { p_session_code: sessionCode, p_admin_pin: adminPin, p_pacing: pacing }),
     facilitatorAudit: (sessionCode: string, adminPin: string) =>
       call<{ team_id: string; completed_quarter: number; headline: V2Headline; inputs: V2PlayerQuarterInput[] }[]>('v2_facilitator_audit', { p_session_code: sessionCode, p_admin_pin: adminPin }),
+    setPresentationMode: (sessionCode: string, adminPin: string, mode: V2PresentationMode) =>
+      call<{ presentation_mode: V2PresentationMode }>('v2_facilitator_set_presentation_mode', { p_session_code: sessionCode, p_admin_pin: adminPin, p_mode: mode }),
+    facilitatorDebrief: (sessionCode: string, adminPin: string) =>
+      call<V2DebriefRow[]>('v2_facilitator_debrief', { p_session_code: sessionCode, p_admin_pin: adminPin }),
     join: (sessionCode: string, teamCode: string) =>
       call<V2TeamGameResponse>('v2_join', { p_session_code: sessionCode, p_team_code: teamCode }),
     getGame: (teamCode: string) => call<V2TeamGameResponse>('v2_get_game', { p_team_code: teamCode }),

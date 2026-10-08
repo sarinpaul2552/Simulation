@@ -16,6 +16,10 @@ $PSQL -d sim -f "$ROOT/database/schema.sql"
 $PSQL -d sim -f "$ROOT/database/MIGRATION_STRICT_RLS_RPC_ARCHITECTURE.sql"
 $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_PRODUCTION.sql"
 $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_PRODUCTION.sql"   # idempotency check: second run must succeed
+if [ "${V2_SKIP_BATCH7:-0}" != "1" ]; then
+  $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_BATCH7_EXPERIENCE.sql"
+  $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_BATCH7_EXPERIENCE.sql"   # idempotent
+fi
 SECRET="local-dev-jwt-secret-at-least-32-characters-long"
 cat > /tmp/v2pg/postgrest.conf <<CONF
 db-uri = "postgres://authenticator:authenticator@localhost:$PGPORT/sim"
