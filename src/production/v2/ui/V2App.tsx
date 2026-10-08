@@ -1,18 +1,19 @@
-import { useMemo, useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { supabase } from '../../../services/supabase';
 import { createV2Api, V2ParticipationMode, V2Pacing, V2CreatedSession } from '../api';
 import { V2_ROLES } from '../adapter';
 import type { V2Role } from '../types';
+import type { V2PresentationMode } from '../content/modes';
 import { teamSession, facilitatorSession } from './storage';
 import { V2TeamGame } from './V2TeamGame';
 import { V2Facilitator } from './V2Facilitator';
-import { ErrorBox } from './common';
-import './v2.css';
+import { ErrorBanner, Icon, Segmented } from './ds/components';
+import './ds/ds.css';
 
 type Screen =
   | { kind: 'home' }
   | { kind: 'fac-setup' }
-  | { kind: 'fac-created'; created: V2CreatedSession }
+  | { kind: 'fac-created'; created: V2CreatedSession; warning?: string }
   | { kind: 'fac-resume' }
   | { kind: 'fac-dashboard'; sessionCode: string; adminPin: string }
   | { kind: 'team-join' }
@@ -26,7 +27,19 @@ function initialScreen(): Screen {
   return { kind: 'home' };
 }
 
-/** Production classroom app (V2 engine). */
+function Page({ title, children, testId, narrow = true }: { title?: string; children: ReactNode; testId?: string; narrow?: boolean }) {
+  return (
+    <div className="ds-root">
+      <header className="ds-topbar"><div className="ds-topbar-inner"><span className="ds-company">Business Simulation</span><span className="ds-meta">Strategy under disruption</span></div></header>
+      <main className="ds-shell" style={narrow ? { maxWidth: 680 } : undefined} data-testid={testId}>
+        {title && <h1 style={{ margin: '8px 0 16px' }}>{title}</h1>}
+        {children}
+      </main>
+    </div>
+  );
+}
+
+/** Production classroom app (V2 engine, Batch 7 experience). */
 export default function V2App({ onOpenLegacy }: { onOpenLegacy?: () => void }) {
   const api = useMemo(() => createV2Api(supabase), []);
   const [screen, setScreen] = useState<Screen>(initialScreen);
@@ -35,49 +48,46 @@ export default function V2App({ onOpenLegacy }: { onOpenLegacy?: () => void }) {
   switch (screen.kind) {
     case 'home':
       return (
-        <div className="mode-select-screen">
-          <div className="card" data-testid="v2-home">
-            <h1>Business Simulation</h1>
-            <p>Strategic decision-making under disruption · eight quarters</p>
-            <div className="button-group">
-              <button className="btn-primary" data-testid="v2-home-facilitator" onClick={() => setScreen({ kind: 'fac-setup' })}>Facilitator: new session</button>
-              <button className="btn-secondary" data-testid="v2-home-resume" onClick={() => setScreen({ kind: 'fac-resume' })}>Facilitator: resume session</button>
-              <button className="btn-secondary" data-testid="v2-home-team" onClick={() => setScreen({ kind: 'team-join' })}>Join as a team</button>
+        <div className="ds-root" data-testid="v2-home">
+          <section className="ds-hero ds-card" style={{ borderRadius: 0, padding: '48px 16px' }}>
+            <div className="ds-shell" style={{ paddingBottom: 0 }}>
+              <span className="ds-kicker">Business Simulation · eight quarters</span>
+              <h1 style={{ fontSize: '2.2em' }}>Lead a learning company through disruption</h1>
+              <p style={{ maxWidth: 640 }}>Five leaders. One company. Every quarter brings new evidence, hard trade-offs and real consequences.</p>
             </div>
-            {onOpenLegacy && <button className="v2-link" data-testid="v2-open-legacy" onClick={onOpenLegacy}>Legacy V1 engine (developer fallback)</button>}
-          </div>
+          </section>
+          <main className="ds-shell">
+            <div className="ds-grid ds-grid-3">
+              <button className="ds-card ds-choice" data-testid="v2-home-team" onClick={() => setScreen({ kind: 'team-join' })}><Icon name="users" size={22} /><span><span className="ds-choice-title">Join as a team</span><span className="ds-muted" style={{ display: 'block' }}>Enter your session and team codes.</span></span></button>
+              <button className="ds-card ds-choice" data-testid="v2-home-facilitator" onClick={() => setScreen({ kind: 'fac-setup' })}><Icon name="flag" size={22} /><span><span className="ds-choice-title">Facilitator: new session</span><span className="ds-muted" style={{ display: 'block' }}>Create teams and choose the class mode.</span></span></button>
+              <button className="ds-card ds-choice" data-testid="v2-home-resume" onClick={() => setScreen({ kind: 'fac-resume' })}><Icon name="clock" size={22} /><span><span className="ds-choice-title">Facilitator: resume</span><span className="ds-muted" style={{ display: 'block' }}>Session code and admin PIN.</span></span></button>
+            </div>
+            {onOpenLegacy && <p style={{ marginTop: 24 }}><button className="ds-btn ds-btn-ghost" data-testid="v2-open-legacy" onClick={onOpenLegacy}>Legacy V1 engine (developer fallback)</button></p>}
+          </main>
         </div>
       );
     case 'fac-setup':
-      return <FacilitatorSetup api={api} onCancel={home} onCreated={c => {
-        facilitatorSession.save({ sessionCode: c.session_code, adminPin: c.admin_pin });
-        setScreen({ kind: 'fac-created', created: c });
-      }} />;
+      return <FacilitatorSetup api={api} onCancel={home} onCreated={(c, warning) => { facilitatorSession.save({ sessionCode: c.session_code, adminPin: c.admin_pin }); setScreen({ kind: 'fac-created', created: c, warning }); }} />;
     case 'fac-created':
-      return <SessionCreated created={screen.created} onContinue={() => setScreen({ kind: 'fac-dashboard', sessionCode: screen.created.session_code, adminPin: screen.created.admin_pin })} />;
+      return <SessionCreated created={screen.created} warning={screen.warning} onContinue={() => setScreen({ kind: 'fac-dashboard', sessionCode: screen.created.session_code, adminPin: screen.created.admin_pin })} />;
     case 'fac-resume':
-      return <FacilitatorResume api={api} onCancel={home} onResumed={(sessionCode, adminPin) => {
-        facilitatorSession.save({ sessionCode, adminPin });
-        setScreen({ kind: 'fac-dashboard', sessionCode, adminPin });
-      }} />;
+      return <FacilitatorResume api={api} onCancel={home} onResumed={(sessionCode, adminPin) => { facilitatorSession.save({ sessionCode, adminPin }); setScreen({ kind: 'fac-dashboard', sessionCode, adminPin }); }} />;
     case 'fac-dashboard':
       return <V2Facilitator api={api} sessionCode={screen.sessionCode} adminPin={screen.adminPin} onExit={() => { facilitatorSession.clear(); home(); }} />;
     case 'team-join':
-      return <TeamJoin api={api} onCancel={home} onJoined={(sessionCode, teamCode, role) => {
-        teamSession.save({ sessionCode, teamCode, role });
-        setScreen({ kind: 'team-game', teamCode, role });
-      }} />;
+      return <TeamJoin api={api} onCancel={home} onJoined={(sessionCode, teamCode, role) => { teamSession.save({ sessionCode, teamCode, role }); setScreen({ kind: 'team-game', teamCode, role }); }} />;
     case 'team-game':
       return <V2TeamGame api={api} teamCode={screen.teamCode} deviceRole={screen.role} onExit={() => { teamSession.clear(); home(); }} />;
   }
 }
 
-function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof createV2Api>; onCancel: () => void; onCreated: (c: V2CreatedSession) => void }) {
+function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof createV2Api>; onCancel: () => void; onCreated: (c: V2CreatedSession, warning?: string) => void }) {
   const [email, setEmail] = useState('');
   const [count, setCount] = useState(3);
   const [names, setNames] = useState<string[]>(['Team A', 'Team B', 'Team C']);
   const [mode, setMode] = useState<V2ParticipationMode>('team_device');
   const [pacing, setPacing] = useState<V2Pacing>('facilitator');
+  const [presentation, setPresentation] = useState<V2PresentationMode>('mba');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setTeamCount = (n: number) => {
@@ -87,56 +97,66 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
   };
   const create = async () => {
     setBusy(true); setError(null);
-    try { onCreated(await api.createSession(email.trim(), names.map(n => n.trim() || 'Team'), mode, pacing)); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try {
+      const created = await api.createSession(email.trim(), names.map(n => n.trim() || 'Team'), mode, pacing);
+      let warning: string | undefined;
+      try { await api.setPresentationMode(created.session_code, created.admin_pin, presentation); }
+      catch { if (presentation !== 'mba') warning = 'Presentation modes are not available on this database yet, so this session uses MBA mode.'; }
+      onCreated(created, warning);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <div className="v2-screen v2-narrow" data-testid="v2-fac-setup">
-      <h1>New session</h1>
-      <ErrorBox error={error} />
-      <div className="v2-panel">
-        <label>Your email <input data-testid="v2-setup-email" type="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
-        <label>Number of teams <input data-testid="v2-setup-count" type="number" min={1} max={30} value={count} onChange={e => setTeamCount(parseInt(e.target.value, 10))} /></label>
-        {names.map((n, i) => (
-          <label key={i}>Team {i + 1} name <input data-testid={`v2-setup-team-${i}`} value={n} onChange={e => setNames(names.map((x, k) => (k === i ? e.target.value : x)))} /></label>
-        ))}
-        <label>Participation
-          <select data-testid="v2-setup-mode" value={mode} onChange={e => setMode(e.target.value as V2ParticipationMode)}>
+    <Page title="New session" testId="v2-fac-setup">
+      <ErrorBanner error={error} />
+      <div className="ds-card ds-stack">
+        <label className="ds-stack" style={{ gap: 4 }}><b>Your email</b><input className="ds-input" data-testid="v2-setup-email" type="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
+        <div className="ds-stack" style={{ gap: 4 }}><b>Class mode</b>
+          <Segmented testIdPrefix="v2-setup-presentation" value={presentation} onChange={setPresentation} options={[{ id: 'undergraduate', label: 'Undergraduate' }, { id: 'mba', label: 'MBA' }]} />
+          <span className="ds-muted">{presentation === 'undergraduate' ? 'Simpler language, more guidance, fewer metrics.' : 'Full evidence, deeper analysis, more metrics.'} Both use the same simulation and scoring.</span>
+        </div>
+        <label className="ds-stack" style={{ gap: 4 }}><b>Number of teams</b><input className="ds-input" style={{ width: 100 }} data-testid="v2-setup-count" type="number" min={1} max={30} value={count} onChange={e => setTeamCount(parseInt(e.target.value, 10))} /></label>
+        <div className="ds-grid ds-grid-2">
+          {names.map((n, i) => <label key={i} className="ds-stack" style={{ gap: 4 }}><span className="ds-small">Team {i + 1}</span><input className="ds-input" data-testid={`v2-setup-team-${i}`} value={n} onChange={e => setNames(names.map((x, k) => (k === i ? e.target.value : x)))} /></label>)}
+        </div>
+        <label className="ds-stack" style={{ gap: 4 }}><b>Devices</b>
+          <select className="ds-input" style={{ width: '100%' }} data-testid="v2-setup-mode" value={mode} onChange={e => setMode(e.target.value as V2ParticipationMode)}>
             <option value="team_device">One shared device per team (five roles vote in turn)</option>
             <option value="individual_device">One device per player (each picks a role)</option>
             <option value="voting_disabled">Shared device, no leadership vote</option>
           </select>
         </label>
-        <label>Pacing
-          <select data-testid="v2-setup-pacing" value={pacing} onChange={e => setPacing(e.target.value as V2Pacing)}>
+        <label className="ds-stack" style={{ gap: 4 }}><b>Pacing</b>
+          <select className="ds-input" style={{ width: '100%' }} data-testid="v2-setup-pacing" value={pacing} onChange={e => setPacing(e.target.value as V2Pacing)}>
             <option value="facilitator">Facilitator opens each quarter</option>
             <option value="self">Teams proceed at their own pace</option>
           </select>
         </label>
       </div>
-      <div className="v2-actions">
-        <button className="btn-secondary" onClick={onCancel}>Cancel</button>
-        <button className="btn-primary" data-testid="v2-setup-create" disabled={busy || !email.includes('@')} onClick={() => void create()}>{busy ? 'Creating…' : 'Create session'}</button>
+      <div className="ds-actions">
+        <button className="ds-btn ds-btn-secondary" onClick={onCancel}>Cancel</button>
+        <button className="ds-btn ds-btn-primary" data-testid="v2-setup-create" disabled={busy || !email.includes('@')} onClick={() => void create()}>{busy ? 'Creating…' : 'Create session'}</button>
       </div>
-    </div>
+    </Page>
   );
 }
 
-function SessionCreated({ created, onContinue }: { created: V2CreatedSession; onContinue: () => void }) {
+function SessionCreated({ created, warning, onContinue }: { created: V2CreatedSession; warning?: string; onContinue: () => void }) {
   return (
-    <div className="v2-screen v2-narrow" data-testid="v2-fac-created">
-      <h1>Session created</h1>
-      <div className="v2-panel">
-        <p>Session code: <b data-testid="v2-created-session-code">{created.session_code}</b></p>
-        <p>Admin PIN (keep private): <b data-testid="v2-created-pin">{created.admin_pin}</b></p>
-        <table className="v2-table">
+    <Page title="Session created" testId="v2-fac-created">
+      {warning && <div className="ds-callout" data-testid="v2-created-warning"><Icon name="alert" />{warning}</div>}
+      <div className="ds-card ds-stack">
+        <div className="ds-grid ds-grid-2">
+          <div><div className="ds-muted">Session code</div><div className="ds-kpi-value" data-testid="v2-created-session-code">{created.session_code}</div></div>
+          <div><div className="ds-muted">Admin PIN (keep private)</div><div className="ds-kpi-value" data-testid="v2-created-pin">{created.admin_pin}</div></div>
+        </div>
+        <table className="ds-table">
           <thead><tr><th>Team</th><th>Team code</th></tr></thead>
           <tbody>{created.teams.map(t => <tr key={t.team_id} data-testid="v2-created-team"><td>{t.team_name}</td><td><code data-testid="v2-created-team-code">{t.team_code}</code></td></tr>)}</tbody>
         </table>
-        <p className="v2-muted">Give each team the session code and its own team code. You can reopen this dashboard from any device with the session code and admin PIN.</p>
+        <p className="ds-muted" style={{ margin: 0 }}>Give each team the session code and its own team code. You can reopen the dashboard from any device with the session code and admin PIN.</p>
       </div>
-      <button className="btn-primary" data-testid="v2-created-continue" onClick={onContinue}>Go to the facilitator dashboard</button>
-    </div>
+      <div className="ds-actions"><button className="ds-btn ds-btn-primary" data-testid="v2-created-continue" onClick={onContinue}>Go to the facilitator dashboard <Icon name="arrow" /></button></div>
+    </Page>
   );
 }
 
@@ -154,18 +174,17 @@ function FacilitatorResume({ api, onCancel, onResumed }: { api: ReturnType<typeo
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <div className="v2-screen v2-narrow" data-testid="v2-fac-resume">
-      <h1>Resume a session</h1>
-      <ErrorBox error={error} />
-      <div className="v2-panel">
-        <label>Session code <input data-testid="v2-resume-code" value={code} onChange={e => setCode(e.target.value)} placeholder="ISB-XXXXXX" /></label>
-        <label>Admin PIN <input data-testid="v2-resume-pin" value={pin} onChange={e => setPin(e.target.value)} /></label>
+    <Page title="Resume a session" testId="v2-fac-resume">
+      <ErrorBanner error={error} />
+      <div className="ds-card ds-stack">
+        <label className="ds-stack" style={{ gap: 4 }}><b>Session code</b><input className="ds-input" data-testid="v2-resume-code" value={code} onChange={e => setCode(e.target.value)} placeholder="ISB-XXXXXX" /></label>
+        <label className="ds-stack" style={{ gap: 4 }}><b>Admin PIN</b><input className="ds-input" data-testid="v2-resume-pin" value={pin} onChange={e => setPin(e.target.value)} /></label>
       </div>
-      <div className="v2-actions">
-        <button className="btn-secondary" onClick={onCancel}>Cancel</button>
-        <button className="btn-primary" data-testid="v2-resume-go" disabled={busy || !code || !pin} onClick={() => void resume()}>Resume</button>
+      <div className="ds-actions">
+        <button className="ds-btn ds-btn-secondary" onClick={onCancel}>Cancel</button>
+        <button className="ds-btn ds-btn-primary" data-testid="v2-resume-go" disabled={busy || !code || !pin} onClick={() => void resume()}>Resume</button>
       </div>
-    </div>
+    </Page>
   );
 }
 
@@ -187,25 +206,24 @@ function TeamJoin({ api, onCancel, onJoined }: { api: ReturnType<typeof createV2
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <div className="v2-screen v2-narrow" data-testid="v2-team-join">
-      <h1>Join your team</h1>
-      <ErrorBox error={error} />
-      <div className="v2-panel">
-        <label>Session code <input data-testid="v2-join-session" value={sessionCode} onChange={e => setSessionCode(e.target.value)} placeholder="ISB-XXXXXX" /></label>
-        <label>Team code <input data-testid="v2-join-team" value={teamCode} onChange={e => setTeamCode(e.target.value)} placeholder="TEAM-XXXXXX" /></label>
+    <Page title="Join your team" testId="v2-team-join">
+      <ErrorBanner error={error} />
+      <div className="ds-card ds-stack">
+        <label className="ds-stack" style={{ gap: 4 }}><b>Session code</b><input className="ds-input" data-testid="v2-join-session" value={sessionCode} onChange={e => setSessionCode(e.target.value)} placeholder="ISB-XXXXXX" autoCapitalize="characters" /></label>
+        <label className="ds-stack" style={{ gap: 4 }}><b>Team code</b><input className="ds-input" data-testid="v2-join-team" value={teamCode} onChange={e => setTeamCode(e.target.value)} placeholder="TEAM-XXXXXX" autoCapitalize="characters" /></label>
         {needsRole && (
-          <label>Your role on this device
-            <select data-testid="v2-join-role" value={role} onChange={e => setRole(e.target.value as V2Role)}>
+          <label className="ds-stack" style={{ gap: 4 }}><b>Your role on this device</b>
+            <select className="ds-input" data-testid="v2-join-role" value={role} onChange={e => setRole(e.target.value as V2Role)}>
               <option value="">Choose…</option>
               {V2_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
         )}
       </div>
-      <div className="v2-actions">
-        <button className="btn-secondary" onClick={onCancel}>Cancel</button>
-        <button className="btn-primary" data-testid="v2-join-go" disabled={busy || !sessionCode || !teamCode || (needsRole && !role)} onClick={() => void join()}>Join</button>
+      <div className="ds-actions">
+        <button className="ds-btn ds-btn-secondary" onClick={onCancel}>Cancel</button>
+        <button className="ds-btn ds-btn-primary" data-testid="v2-join-go" disabled={busy || !sessionCode || !teamCode || (needsRole && !role)} onClick={() => void join()}>Join <Icon name="arrow" /></button>
       </div>
-    </div>
+    </Page>
   );
 }

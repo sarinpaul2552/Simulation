@@ -73,10 +73,10 @@ export function useV2Team(api: V2Api, teamCode: string) {
     setDraft(next);
     pendingDraft.current = next;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    const save = () => { void flushDraft().catch(err => setError(String(err?.message ?? err))); };
+    const save = () => { void flushDraft().catch(err => { const msg = String(err?.message ?? err); setError(msg); if (/locked in phase/.test(msg)) { pendingDraft.current = null; void reload(); } }); };
     if (opts.immediate) save();
     else saveTimer.current = setTimeout(save, 400);
-  }, [flushDraft]);
+  }, [flushDraft, reload]);
 
   const run = useCallback(async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -85,7 +85,7 @@ export function useV2Team(api: V2Api, teamCode: string) {
       await fn();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      if (e instanceof V2ApiError && /Phase conflict|Wrong quarter|working quarter/.test(e.message)) await reload();
+      if (e instanceof V2ApiError && /Phase conflict|Wrong quarter|working quarter|locked in phase|Voting is not open|not ready to commit/.test(e.message)) await reload();
     } finally {
       setBusy(false);
     }
@@ -104,6 +104,35 @@ export function useV2Team(api: V2Api, teamCode: string) {
     await api.setPhase(teamCode, phaseQuarter(game), from, to);
     await reload();
   }), [api, game, draft, teamCode, reload, run]);
+
+  /**
+   * Batch 7: walk the server's loop through several phases in order (e.g. decide → belief → risk → vote), saving the
+   * draft first. Every step is still a validated server transition, so no required phase or input is bypassed.
+   * Resumes correctly when a refresh lands part-way (steps already reached are skipped).
+   */
+  const advance = useCallback((path: V2Phase[], opts: { reflection?: string } = {}) => run(async () => {
+    if (!game) return;
+    let from = game.record.phase;
+    if (EDITABLE.includes(from)) {
+      if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+      pendingDraft.current = null;
+      const d = draftRef.current;
+      if (d) await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed });
+    }
+    const start = path.indexOf(from);
+    const steps = start >= 0 ? path.slice(start + 1) : path;
+    try {
+      for (const to of steps) {
+        if (to === from) continue;
+        if (from === 'reflect' && opts.reflection !== undefined) await api.saveReflection(teamCode, game.record.completed_quarter, opts.reflection);
+        const quarter = ['results', 'reflect'].includes(from) ? game.record.completed_quarter : game.record.completed_quarter + 1;
+        await api.setPhase(teamCode, quarter, from, to);
+        from = to;
+      }
+    } finally {
+      await reload();
+    }
+  }), [api, game, teamCode, reload, run]);
 
   const submitVote = useCallback((role: V2Role, vote: V2VoteValue) => run(async () => {
     if (!game) return;
@@ -126,7 +155,7 @@ export function useV2Team(api: V2Api, teamCode: string) {
     await api.saveReflection(teamCode, game.record.completed_quarter, text);
   }), [api, game, teamCode, run]);
 
-  return { status, game, draft, error, busy, reload, updateDraft, flushDraft, go, submitVote, getVotes, commit, saveReflection, setError };
+  return { status, game, draft, error, busy, reload, updateDraft, flushDraft, go, advance, submitVote, getVotes, commit, saveReflection, setError };
 }
 
 export type V2TeamController = ReturnType<typeof useV2Team>;
