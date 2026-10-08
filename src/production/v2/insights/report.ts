@@ -17,6 +17,7 @@ import { QUARTER_CARDS } from '../content/scenarioContent';
 import { V2PresentationMode, pick, mt } from '../content/modes';
 import { gameHistory, startingCompany } from './history';
 import { quarterImpacts } from './explain';
+import { V2_DESTINATION_IDS, destinationReadiness } from '../../../simulation/engineV2Destination';
 
 const moved = (label: string, a: number, b: number) => Math.abs(a - b) < 0.5 ? `${label} held at ${b.toFixed(0)}` : `${label} moved from ${a.toFixed(0)} to ${b.toFixed(0)}`;
 const fmtM = (x: number) => `${x < 0 ? '−' : ''}$${Math.abs(x).toFixed(1)}M`;
@@ -39,6 +40,14 @@ export interface LearningReport {
   struggles: Finding[];
   pivotal: PivotalDecision[];
   tradeoffs: { title: string; text: string }[];
+  /** Batch 7.5: risks arising from the chosen strategy and the observed final company. */
+  vulnerabilities: Finding[];
+  /** Batch 7.5: alternatives the team explicitly declined or under-funded (no invented outcomes). */
+  notPursued: Finding[];
+  /** Batch 7.5: "What kind of company did your team build?" */
+  conclusion: string;
+  /** Batch 7.5: discussion questions for every team, including high performers. */
+  questions: string[];
 }
 
 function managementText(m: NonNullable<V2PlayerQuarterInput['management']>): string {
@@ -219,8 +228,110 @@ export function buildLearningReport(snap: V2GameSnapshot, mode: V2PresentationMo
       consequence: top ? top.text : `Revenue ${fmtM(x.after.revenue)}, cash ${fmtM(x.after.cash)}.`,
     };
   });
-  return { score, dimensions: dims, timeline, ...findings(s, h), pivotal: pivotalDecisions(snap, mode), tradeoffs: tradeoffs(snap, mode) };
+  const vulnerabilities = strategicVulnerabilities(s);
+  const notPursued = alternativesNotPursued(snap);
+  return {
+    score, dimensions: dims, timeline, ...findings(s, h), pivotal: pivotalDecisions(snap, mode), tradeoffs: tradeoffs(snap, mode),
+    vulnerabilities, notPursued, conclusion: companyConclusion(snap, mode), questions: discussionQuestions(score, vulnerabilities, notPursued),
+  };
 }
 
 /** Sanity: the report never recomputes economics — it reads the replayed game (identical to the stored one). */
 export const reportUsesReplay = (snap: V2GameSnapshot) => replayInputs(snap.inputs);
+
+// ------------------------------------------------------------------------------------------------------------------ //
+// Batch 7.5 interpretation
+// ------------------------------------------------------------------------------------------------------------------ //
+
+const SEGMENT_LABEL: Record<string, string> = { consumer: 'Consumer', enterprise: 'Enterprise', university: 'University', aiNative: 'AI-native products' };
+const BUCKET_CAP: Record<string, keyof V2TeamState['capabilities']> = { consumer: 'consumer', enterprise: 'enterprise', aiProduct: 'ai', people: 'talent', universityCredentials: 'credential' };
+
+/** Risks visible in the final company, tied to the chosen strategy. Only reported when the data shows them. */
+export function strategicVulnerabilities(s: V2TeamState): Finding[] {
+  const out: (Finding & { w: number })[] = [];
+  const seg = Object.entries(s.segmentRevenue).sort((a, b) => b[1] - a[1]);
+  const total = seg.reduce((t, [, v]) => t + v, 0);
+  if (total > 0 && seg[0][1] / total >= 0.65) out.push({ w: seg[0][1] / total * 10, title: `Revenue depends on ${SEGMENT_LABEL[seg[0][0]] ?? seg[0][0]}`, evidence: `${((seg[0][1] / total) * 100).toFixed(0)}% of Q8 revenue comes from one business (${fmtM(seg[0][1])} of ${fmtM(total)}).` });
+  if (s.destination) {
+    const def = V2_DESTINATIONS[s.destination.id];
+    for (const b of def.alignedBuckets) {
+      const key = BUCKET_CAP[b];
+      const v = s.capabilities[key];
+      if (v < 50) out.push({ w: (50 - v) / 3 + 4, title: `${def.name} relies on a weak capability`, evidence: `The strategy depends on ${CAP_LABEL[key] ?? key}, which ended at ${v.toFixed(0)}/100.` });
+    }
+    if ((s.destination.id === 'consumer-ai' || s.destination.id === 'enterprise-ai') && s.commercial.aiCommercialReadiness < 50) out.push({ w: 7, title: 'An AI strategy with limited AI readiness', evidence: `AI commercial readiness ended at ${s.commercial.aiCommercialReadiness.toFixed(0)}/100.` });
+  }
+  if (s.cash < 40) out.push({ w: (40 - s.cash) / 4 + 4, title: 'Thin cash buffer', evidence: `Q8 cash of ${fmtM(s.cash)} is below the ${fmtM(40)} comfort level; a further shock would need new financing.` });
+  if (s.financing.debt > 0) out.push({ w: 3 + s.financing.debt / 10, title: 'Carrying debt', evidence: `${fmtM(s.financing.debt)} of debt at ${(s.financing.interestRate * 100).toFixed(1)}% per quarter.` });
+  if (s.financing.ownership < 0.85) out.push({ w: 4, title: 'Diluted ownership', evidence: `Original shareholders own ${(s.financing.ownership * 100).toFixed(0)}% of the company.` });
+  if (s.culture < 65) out.push({ w: (65 - s.culture) / 2 + 3, title: 'Fragile culture', evidence: `Culture ended at ${s.culture.toFixed(0)} (started 72): less capacity to absorb the next change.` });
+  if (s.capabilities.talent < 50) out.push({ w: 4, title: 'Thin talent bench', evidence: `Talent ended at ${s.capabilities.talent.toFixed(0)}/100.` });
+  if (s.trust < 60) out.push({ w: 5, title: 'Low customer trust', evidence: `Trust ended at ${s.trust.toFixed(0)}/100.` });
+  if (s.commercial.consumerRetention < 80) out.push({ w: 4, title: 'Customers are leaving faster', evidence: `Consumer retention ended at ${s.commercial.consumerRetention.toFixed(1)}%.` });
+  if (!out.length) {
+    // No acute exposure: name the least-developed capability, which is where a market shift would hurt first.
+    const weakest = Object.entries(s.capabilities).sort((a, b) => a[1] - b[1])[0];
+    if (weakest && weakest[1] < 60) out.push({ w: 1, title: `${CAP_LABEL[weakest[0]] ?? weakest[0]} is your least-developed capability`, evidence: `${CAP_LABEL[weakest[0]] ?? weakest[0]} ended at ${weakest[1].toFixed(0)}/100 — the area least able to respond if the market moved toward it.` });
+  }
+  return out.sort((a, b) => b.w - a.w).slice(0, 3).map(({ title, evidence }) => ({ title, evidence }));
+}
+
+/** Alternatives the team declined or barely funded — described, never valued. */
+export function alternativesNotPursued(snap: V2GameSnapshot): Finding[] {
+  const h = gameHistory(snap);
+  const s = snap.state;
+  const out: Finding[] = [];
+  const q5 = h[4];
+  if (q5?.input.opportunity && !q5.input.opportunity.accept && q5.consequence.opportunityTerms) {
+    const t = q5.consequence.opportunityTerms;
+    out.push({ title: `Declined the ${fmtM(t.acv)} contract`, evidence: `The offer fitted your company at ${(t.fit.fit * 100).toFixed(0)}% and would have needed ${fmtM(t.upfrontCash)} upfront.` });
+  }
+  const q4 = h[3];
+  if (q4?.input.destination) {
+    const ranked = V2_DESTINATION_IDS.map(id => ({ id, r: destinationReadiness(id, q4.before).readiness })).sort((a, b) => b.r - a.r);
+    const chosen = ranked.find(x => x.id === q4.input.destination)!;
+    if (ranked[0].id !== chosen.id && ranked[0].r - chosen.r >= 0.1) out.push({ title: `Did not choose ${V2_DESTINATIONS[ranked[0].id].name}`, evidence: `At Q4 your skills fitted it best (${(ranked[0].r * 100).toFixed(0)}% ready); you chose ${V2_DESTINATIONS[chosen.id].name} (${(chosen.r * 100).toFixed(0)}%).` });
+  }
+  const totals: Record<string, number> = { consumer: 0, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0 };
+  for (const x of h) for (const k of Object.keys(totals)) totals[k] += (x.input.allocation as unknown as Record<string, number>)[k];
+  const invested = Object.values(totals).reduce((a, b) => a + b, 0);
+  const low = Object.entries(totals).filter(([, v]) => invested > 0 && v / invested < 0.05).sort((a, b) => a[1] - b[1]);
+  for (const [k, v] of low.slice(0, 2)) out.push({ title: `Little investment in ${BUCKETS[k]}`, evidence: `${fmtM(v)} over eight quarters (${((v / invested) * 100).toFixed(0)}% of your investment); ${CAP_LABEL[BUCKET_CAP[k]] ?? k} ended at ${s.capabilities[BUCKET_CAP[k]].toFixed(0)}.` });
+  const rec = s.final.record;
+  if (rec) {
+    const others = rec.availability.filter(o => o.available && o.id !== rec.option).map(o => FINAL[o.id] ?? o.id);
+    if (others.length) out.push({ title: 'Other Q8 options you had earned', evidence: `You could also have chosen to ${others.join(', ')}.` });
+  }
+  return out.slice(0, 4);
+}
+
+/** "What kind of company did your team build?" — from the final state and the eight-quarter record. */
+export function companyConclusion(snap: V2GameSnapshot, mode: V2PresentationMode): string {
+  const s = snap.state;
+  const s0 = startingCompany();
+  const growth = s.revenue / s0.revenue - 1;
+  const margin = s.revenue > 0 ? s.operatingProfit / s.revenue : 0;
+  const caps = Object.entries(s.capabilities).sort((a, b) => b[1] - a[1]);
+  const kind = s.destination ? V2_DESTINATIONS[s.destination.id].name : 'company without a committed strategy';
+  const scale = growth >= 0.1 ? 'fast-growing' : growth >= 0.03 ? 'growing' : growth > -0.03 ? 'stable' : 'shrinking';
+  const money = s.cash >= 40 && s.financing.debt === 0 ? 'a strong balance sheet' : s.cash >= 25 ? 'an adequate cash position' : 'a thin cash position';
+  const people = s.culture >= 70 && s.capabilities.talent >= 60 ? 'a healthy, capable organization' : s.culture < 65 ? 'an organization under strain' : 'an organization that held steady';
+  const lead = `You built a ${scale} ${kind}: quarterly revenue ${growth >= 0 ? 'grew' : 'fell'} ${Math.abs(growth * 100).toFixed(0)}% to ${fmtM(s.revenue)} at a ${(margin * 100).toFixed(0)}% operating margin, with ${money}${s.financing.debt > 0 ? ` (${fmtM(s.financing.debt)} of debt)` : ''}.`;
+  const strengths = `Its strongest capabilities are ${CAP_LABEL[caps[0][0]] ?? caps[0][0]} (${caps[0][1].toFixed(0)}) and ${CAP_LABEL[caps[1][0]] ?? caps[1][0]} (${caps[1][1].toFixed(0)}), carried by ${people}.`;
+  return pick(mode, mt(`${lead} ${strengths}`, `${lead} ${strengths} Final decision: ${s.final.record ? FINAL[s.final.record.option] : '—'}.`));
+}
+
+function discussionQuestions(score: V2TerminalScore, vuln: Finding[], notPursued: Finding[]): string[] {
+  const q: string[] = [];
+  if (score.overall >= 70) {
+    q.push('Which of your advantages would a competitor find hardest to copy — and which would they copy first?');
+    q.push('Which single decision was most responsible for your result, and was it judgement or luck?');
+  } else {
+    q.push('Looking back, which quarter changed your trajectory most, and what did you know at the time?');
+    q.push('Which early signal would you weigh differently if you played again?');
+  }
+  if (vuln[0]) q.push(`${vuln[0].title}: what would you do in the next two quarters to reduce this risk?`);
+  if (notPursued[0]) q.push(`${notPursued[0].title}: under what conditions would that have been the better choice?`);
+  q.push('If a new CEO took over tomorrow, what would you tell them is the company’s biggest unresolved question?');
+  return q.slice(0, 5);
+}

@@ -108,9 +108,14 @@ export function healthIndicators(s: V2TeamState): HealthIndicator[] {
   let strat: number; let stratSummary: string; let stratDrivers: HealthIndicator['drivers'];
   if (s.destination) {
     const str = destinationStrength(s.destination, s.quarter + 1);
-    strat = 100 * str;
-    stratSummary = `${V2_DESTINATIONS[s.destination.id].name}: ${(str * 100).toFixed(0)}% of full strategic strength.`;
-    stratDrivers = [{ label: 'Readiness when committed', value: `${(s.destination.readinessAtCommit * 100).toFixed(0)}%` }, { label: 'Strength now', value: `${(str * 100).toFixed(0)}%` }];
+    // Batch 7.5: strategy strength ramps to 100% with time alone, so readiness also weighs the capabilities the
+    // strategy actually depends on (its aligned buckets; all five for a balanced strategy).
+    const BUCKET_CAP = { consumer: 'consumer', enterprise: 'enterprise', aiProduct: 'ai', people: 'talent', universityCredentials: 'credential' } as const;
+    const aligned = V2_DESTINATIONS[s.destination.id].alignedBuckets.length ? V2_DESTINATIONS[s.destination.id].alignedBuckets : (Object.keys(BUCKET_CAP) as (keyof typeof BUCKET_CAP)[]);
+    const capFit = mean(aligned.map(b => clamp01(s.capabilities[BUCKET_CAP[b as keyof typeof BUCKET_CAP]] / 100)));
+    strat = 100 * (0.5 * str + 0.5 * capFit);
+    stratSummary = `${V2_DESTINATIONS[s.destination.id].name}: strategy ${(str * 100).toFixed(0)}% established; the capabilities it relies on average ${(capFit * 100).toFixed(0)}/100.`;
+    stratDrivers = [{ label: 'Readiness when committed', value: `${(s.destination.readinessAtCommit * 100).toFixed(0)}%` }, { label: 'Strategy established', value: `${(str * 100).toFixed(0)}%` }, { label: 'Key capabilities', value: `${(capFit * 100).toFixed(0)}/100` }];
   } else {
     const best = V2_DESTINATION_IDS.map(id => ({ id, r: destinationReadiness(id, s).readiness })).sort((a, b) => b.r - a.r)[0];
     strat = 100 * best.r;
@@ -131,7 +136,7 @@ export function healthIndicators(s: V2TeamState): HealthIndicator[] {
       drivers: [{ label: 'Culture', value: s.culture.toFixed(0) }, { label: 'Talent', value: s.capabilities.talent.toFixed(0) }, { label: 'Capacity', value: s.organizationalCapacity.toFixed(0) }, { label: 'Change load vs capacity', value: `${(loadRatio * 100).toFixed(0)}%` }],
       formula: 'Average of culture, talent and capacity (÷100) and load headroom (1.5 − load ÷ capacity), each capped 0–1' },
     { id: 'strategy', label: 'Strategic readiness', score: strat, level: level(strat), summary: stratSummary, drivers: stratDrivers,
-      formula: 'Before Q4: best destination readiness. After Q4: destination strength (readiness ramping 25 pts/quarter, minus focus dilution)' },
+      formula: 'Before Q4: best destination readiness. After Q4: 50% strategy established (readiness ramping 25 pts/quarter, minus focus dilution) + 50% average of the capabilities the strategy relies on (÷100)' },
   ];
 }
 

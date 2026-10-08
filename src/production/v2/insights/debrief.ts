@@ -18,7 +18,15 @@ export interface DebriefTeamInput {
   inputs: V2PlayerQuarterInput[];
   deliberations?: (V2Deliberation | null)[];
   votes?: Record<string, Partial<Record<V2Role, V2VoteValue>>>;
+  /** Batch 7.5: team agreement statements (team-commitment quarters). Never converted into individual votes. */
+  agreements?: Record<string, { agreement: 'agreed' | 'discussed' | 'leader'; committed_by: V2Role | null }>;
 }
+
+export const AGREEMENT_LABEL: Record<'agreed' | 'discussed' | 'leader', string> = {
+  agreed: 'We agreed on this decision',
+  discussed: 'We discussed different opinions and reached a decision',
+  leader: 'The team leader made the final decision',
+};
 
 export interface TeamDebrief {
   teamId: string;
@@ -30,6 +38,8 @@ export interface TeamDebrief {
   strongest: string[];
   weakest: string[];
   disagreements: { quarter: number; text: string }[];
+  /** How each quarter was committed: individual private votes, a team agreement statement, or neither. */
+  commitments: { quarter: number; kind: 'votes' | 'agreement' | 'none'; text: string }[];
   pivotal: { quarter: number; text: string }[];
   questions: string[];
   final: { overall: number; financial: number; strategic: number; organizational: number } | null;
@@ -57,7 +67,9 @@ export function buildTeamDebrief(t: DebriefTeamInput): TeamDebrief {
   const strategy = `${s.destination ? V2_DESTINATIONS[s.destination.id].name : 'No destination yet'}; heaviest investment in ${topBucket ? (BUCKET_NAME[topBucket[0]] ?? topBucket[0]) : '—'}.`;
   const questions = [
     s.destination ? `Why did you choose ${V2_DESTINATIONS[s.destination.id].name}, and what evidence mattered most?` : 'What evidence will decide your Q4 commitment?',
-    disagreements.length ? `In Q${disagreements[0].quarter} some leaders opposed or raised concerns — how did the team resolve it?` : 'Did anyone disagree privately but support publicly? What did that cost?',
+    disagreements.length ? `In Q${disagreements[0].quarter} some leaders opposed or raised concerns — how did the team resolve it?`
+      : Object.entries(t.agreements ?? {}).some(([, a]) => a.agreement !== 'agreed') ? `In Q${Object.entries(t.agreements ?? {}).find(([, a]) => a.agreement !== 'agreed')![0]} the team reported different opinions — what was the disagreement, and how was it settled?`
+      : 'Did anyone disagree privately but support publicly? What did that cost?',
     s.solvency.everInsolvent || s.financing.debt > 0 ? 'How did cash constraints change what you could do later?' : 'Was your cash buffer an asset or an under-investment?',
     'Which result surprised you most, and which earlier decision caused it?',
   ];
@@ -68,6 +80,16 @@ export function buildTeamDebrief(t: DebriefTeamInput): TeamDebrief {
     strongest: caps.slice(0, 2).map(([k, v]) => `${CAP[k] ?? k} ${v.toFixed(0)}`),
     weakest: caps.slice(-2).map(([k, v]) => `${CAP[k] ?? k} ${v.toFixed(0)}`),
     disagreements,
+    commitments: t.inputs.map(i => {
+      const v = t.votes?.[String(i.quarter)];
+      const a = t.agreements?.[String(i.quarter)];
+      if (v && Object.keys(v).length) {
+        const n = (x: V2VoteValue) => Object.values(v).filter(y => y === x).length;
+        return { quarter: i.quarter, kind: 'votes' as const, text: `Private votes: ${n('support')} support, ${n('concern')} concern, ${n('oppose')} oppose` };
+      }
+      if (a) return { quarter: i.quarter, kind: 'agreement' as const, text: `Team commitment — ${AGREEMENT_LABEL[a.agreement]}${a.committed_by ? ` (confirmed by ${a.committed_by})` : ''}` };
+      return { quarter: i.quarter, kind: 'none' as const, text: 'Committed without a recorded vote or agreement' };
+    }),
     pivotal: report ? report.pivotal.map(p => ({ quarter: p.quarter, text: `${p.decision} ${p.immediate}` })) : [],
     questions,
     final: report ? { overall: report.score.overall, financial: report.score.financial, strategic: report.score.strategic, organizational: report.score.organizational } : null,
