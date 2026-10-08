@@ -3,6 +3,9 @@
  * hover tooltip, a single y-axis, recorded points only (no interpolation beyond drawing a line between real values).
  */
 import { ReactNode, useState } from 'react';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/fraunces';
+import './ds.css';
 import type { EvidenceKind } from '../../content/scenarioContent';
 import { EVIDENCE_LABEL } from '../../content/scenarioContent';
 import type { Tone, Direction } from '../../insights/dashboard';
@@ -211,7 +214,9 @@ export function LineChart({ points, label, format, color = 'var(--ds-s1)', testI
 /** Stacked bars of segment revenue per quarter (4 series, validated categorical order, 2px gaps, legend + table). */
 export function SegmentBars({ rows, testId }: { rows: { quarter: number; values: { key: string; label: string; value: number }[] }[]; testId?: string }) {
   const [hover, setHover] = useState<{ q: number; key: string } | null>(null);
-  const colors = ['var(--ds-s1)', 'var(--ds-s2)', 'var(--ds-s3)', 'var(--ds-s4)'];
+  const KEY_COLOR: Record<string, string> = { consumer: 'var(--ds-c-consumer)', enterprise: 'var(--ds-c-enterprise)', aiNative: 'var(--ds-c-ai)', university: 'var(--ds-c-university)' };
+  const fallback = ['var(--ds-s1)', 'var(--ds-s2)', 'var(--ds-s3)', 'var(--ds-s4)'];
+  const colorOf = (key: string, i: number) => KEY_COLOR[key] ?? fallback[i % 4];
   const max = Math.max(...rows.map(r => r.values.reduce((t, v) => t + v.value, 0)));
   const ticks = niceTicks(0, max);
   const yMax = ticks[ticks.length - 1];
@@ -234,7 +239,7 @@ export function SegmentBars({ rows, testId }: { rows: { quarter: number; values:
                 const y0 = sy(acc), y1 = sy(acc + v.value);
                 acc += v.value;
                 const h = Math.max(0, y0 - y1 - 2);
-                return <rect key={v.key} x={x} y={y1} width={bw * 0.6} height={h} rx={i === r.values.length - 1 ? 3 : 0} fill={colors[i]} onMouseEnter={() => setHover({ q: r.quarter, key: v.key })} />;
+                return <rect key={v.key} x={x} y={y1} width={bw * 0.6} height={h} rx={i === r.values.length - 1 ? 3 : 0} fill={colorOf(v.key, i)} onMouseEnter={() => setHover({ q: r.quarter, key: v.key })} />;
               })}
               <text x={x + bw * 0.3} y={H - 6} textAnchor="middle">{r.quarter === 0 ? 'Start' : `Q${r.quarter}`}</text>
             </g>
@@ -242,7 +247,7 @@ export function SegmentBars({ rows, testId }: { rows: { quarter: number; values:
         })}
       </svg>
       {hover && hv && <div className="ds-tooltip" style={{ left: `${((PAD.l + hover.q * bw + bw * 0.5) / W) * 100}%`, top: '10%' }}>{hover.q === 0 ? 'Start' : `Q${hover.q}`} · {hv.label}: ${hv.value.toFixed(1)}M</div>}
-      <div className="ds-legend">{keys.map((k, i) => <span key={k.key}><i style={{ background: colors[i] }} />{k.label}</span>)}</div>
+      <div className="ds-legend">{keys.map((k, i) => <span key={k.key}><i style={{ background: colorOf(k.key, i) }} />{k.label}</span>)}</div>
     </figure>
   );
 }
@@ -250,4 +255,53 @@ export function SegmentBars({ rows, testId }: { rows: { quarter: number; values:
 export function ErrorBanner({ error }: { error: string | null }) {
   if (!error) return null;
   return <div className="ds-error" role="alert" data-testid="v2-error"><Icon name="alert" />{error}</div>;
+}
+
+/** Collapsible section (native details/summary: keyboard accessible, no JS state). */
+export function Fold({ title, hint, children, open, testId }: { title: ReactNode; hint?: ReactNode; children: ReactNode; open?: boolean; testId?: string }) {
+  return (
+    <details className="ds-fold" open={open} data-testid={testId}>
+      <summary>{title}{hint && <span className="ds-fold-hint">{hint}</span>}</summary>
+      <div className="ds-fold-body">{children}</div>
+    </details>
+  );
+}
+
+/** Unboxed section with an eyebrow label and a display title. */
+export function Section({ eyebrow, title, children, testId, className = '', action }: { eyebrow?: ReactNode; title?: ReactNode; children: ReactNode; testId?: string; className?: string; action?: ReactNode }) {
+  return (
+    <section className={`ds-section ${className}`} data-testid={testId}>
+      {(eyebrow || action) && <div className="ds-row" style={{ justifyContent: 'space-between' }}>{eyebrow ? <p className="ds-eyebrow">{eyebrow}</p> : <span />}{action}</div>}
+      {title && <h2 className="ds-title">{title}</h2>}
+      {children}
+    </section>
+  );
+}
+
+/** Modal confirmation (not a browser dialog). Escape and the backdrop cancel. */
+export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCancel, busy, testId }: { title: string; children: ReactNode; confirmLabel: string; onConfirm: () => void; onCancel: () => void; busy?: boolean; testId?: string }) {
+  return (
+    <div className="ds-dialog-backdrop" onClick={e => { if (e.target === e.currentTarget) onCancel(); }} onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}>
+      <div className="ds-dialog" role="dialog" aria-modal="true" aria-labelledby="ds-dialog-title" data-testid={testId}>
+        <h2 id="ds-dialog-title">{title}</h2>
+        <div className="ds-small" style={{ color: 'var(--ds-ink-2)' }}>{children}</div>
+        <div className="ds-actions">
+          <button className="ds-btn ds-btn-secondary" onClick={onCancel} data-testid={testId ? `${testId}-cancel` : undefined} autoFocus>Go back</button>
+          <button className="ds-btn ds-btn-chapter" onClick={onConfirm} disabled={busy} data-testid={testId ? `${testId}-confirm` : undefined}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Big figure with label, value, delta and a short note. */
+export function Figure({ label, value, delta, sub, testId }: { label: string; value: string; delta?: { direction: Direction; tone: Tone; text: string }; sub?: string; testId?: string }) {
+  return (
+    <div className="ds-figure" data-testid={testId}>
+      <span className="ds-fig-label">{label}</span>
+      <span className="ds-fig-value">{value}</span>
+      {delta && <Delta {...delta} />}
+      {sub && <div className="ds-fig-sub">{sub}</div>}
+    </div>
+  );
 }

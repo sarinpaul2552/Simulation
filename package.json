@@ -14,6 +14,8 @@
     "test:e2e": "V2_DB_KEY=$(node scripts/v2-local/anon-key.mjs local-dev-jwt-secret-at-least-32-characters-long) playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
     "@supabase/supabase-js": "^2.38.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

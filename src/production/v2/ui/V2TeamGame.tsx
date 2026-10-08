@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { V2Api } from '../api';
+import { commitmentModeOf } from '../api';
 import type { V2Role } from '../types';
 import { useV2Team } from './useV2Team';
 import { normalizeMode, MODE_LABEL } from '../content/modes';
@@ -13,10 +14,18 @@ import { ResultsStage } from './stages/ResultsStage';
 import { FinalStage } from './stages/FinalStage';
 import './ds/ds.css';
 
-/** Batch 7 navigation: four student-facing stages over the unchanged server phases. */
+/** Four student-facing stages over the unchanged server phases. */
 export const STAGES = ['The Challenge', 'Leadership Decision', 'Commit', 'Results & Learning'];
-export function stageOf(phase: string): number {
-  return phase === 'briefing' ? 0 : ['decide', 'belief', 'risk'].includes(phase) ? 1 : ['vote', 'commit'].includes(phase) ? 2 : 3;
+/**
+ * Stage of a server phase. In Team Commitment sessions the team reviews and commits from the 'risk' phase (the
+ * Commit stage); with private voting or legacy no-vote sessions 'risk' is only passed through on the way to 'vote'/'commit'.
+ */
+export function stageOf(phase: string, teamCommitment = false): number {
+  if (phase === 'briefing') return 0;
+  if (phase === 'risk' && teamCommitment) return 2;
+  if (['decide', 'belief', 'risk'].includes(phase)) return 1;
+  if (['vote', 'commit'].includes(phase)) return 2;
+  return 3;
 }
 
 export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; teamCode: string; deviceRole?: V2Role; onExit: () => void }) {
@@ -25,6 +34,7 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
   const phase = game?.record.phase;
   const individual = game?.session.participation_mode === 'individual_device';
   const mode = normalizeMode(game?.session.presentation_mode);
+  const commitment = game ? commitmentModeOf(game.session) : 'private_vote';
   const { reload } = ctl;
   useEffect(() => {
     if (!individual || phase === 'final') return;
@@ -56,9 +66,9 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
   const s = game.snapshot.state;
   const completedPhases = ['results', 'reflect', 'final'];
   const quarterShown = completedPhases.includes(phase!) ? game.record.completed_quarter : game.record.completed_quarter + 1;
-  const stage = stageOf(phase!);
+  const stage = stageOf(phase!, commitment === 'team_commitment');
   return (
-    <div className="ds-root" data-testid="v2-team-game" data-phase={phase} data-quarter={quarterShown} data-mode={mode}>
+    <div className="ds-root" data-testid="v2-team-game" data-phase={phase} data-quarter={quarterShown} data-mode={mode} data-commitment={commitment} data-chapter={phase === 'final' ? 8 : quarterShown}>
       <header className="ds-topbar" data-testid="v2-company-strip">
         <div className="ds-topbar-inner">
           <span className="ds-company">{game.teamName}</span>
@@ -80,8 +90,8 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
         {phase !== 'final' && <Stepper stages={STAGES} current={stage} />}
         <ErrorBanner error={ctl.error} />
         {stage === 0 && <ChallengeStage ctl={ctl} mode={mode} deviceRole={deviceRole} />}
-        {stage === 1 && <DecisionStage ctl={ctl} mode={mode} />}
-        {stage === 2 && <CommitStage ctl={ctl} mode={mode} deviceRole={deviceRole} />}
+        {stage === 1 && <DecisionStage ctl={ctl} mode={mode} commitment={commitment} />}
+        {stage === 2 && <CommitStage ctl={ctl} mode={mode} deviceRole={deviceRole} commitment={commitment} />}
         {stage === 3 && phase !== 'final' && <ResultsStage ctl={ctl} mode={mode} />}
         {phase === 'final' && <FinalStage ctl={ctl} mode={mode} />}
       </main>

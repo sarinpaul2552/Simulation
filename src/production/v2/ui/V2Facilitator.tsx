@@ -43,7 +43,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
   const loadDebrief = () => act(async () => {
     try {
       const rows = await api.facilitatorDebrief(sessionCode, adminPin);
-      setDebrief({ teams: rows.filter(r => r.inputs.length > 0).map(r => buildTeamDebrief({ team_id: r.team_id, team_name: r.team_name, inputs: r.inputs, deliberations: r.deliberations, votes: r.votes })), votesAvailable: true });
+      setDebrief({ teams: rows.filter(r => r.inputs.length > 0).map(r => buildTeamDebrief({ team_id: r.team_id, team_name: r.team_name, inputs: r.inputs, deliberations: r.deliberations, votes: r.votes, agreements: r.agreements })), votesAvailable: true });
     } catch {
       // Older database (before the Batch 7 migration): decisions only, no votes or deliberation.
       const entries = await api.facilitatorAudit(sessionCode, adminPin);
@@ -82,7 +82,16 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
 
         {tab === 'live' && (
           <>
-            <Card title="Pacing" icon="clock">
+            <Card title="Session settings" icon="clock">
+              <div className="ds-row" style={{ marginBottom: 10 }}>
+                <span>How teams commit:</span>
+                {o.commitment_mode === undefined
+                  ? <span className="ds-small" data-testid="v2-fac-commit-unavailable"><b>Private voting</b> (Team Commitment needs a database update)</span>
+                  : <Segmented<'team_commitment' | 'private_vote'> testIdPrefix="v2-fac-commit" value={o.commitment_mode === 'none' ? undefined : o.commitment_mode}
+                      onChange={m => void act(() => api.setCommitmentMode(sessionCode, adminPin, m))}
+                      options={[{ id: 'team_commitment', label: 'Team commitment' }, { id: 'private_vote', label: 'Private voting' }]} />}
+                {o.commitment_mode === 'none' && <span className="ds-muted">Currently: commit without a vote (legacy session)</span>}
+              </div>
               <div className="ds-row">
                 <span>Pacing: <b data-testid="v2-fac-pacing">{o.pacing === 'facilitator' ? 'facilitator-led' : 'self-paced'}</b></span>
                 <button className="ds-btn ds-btn-secondary" disabled={busy} onClick={() => void act(() => api.setPacing(sessionCode, adminPin, o.pacing === 'facilitator' ? 'self' : 'facilitator'))}>Switch to {o.pacing === 'facilitator' ? 'self-paced' : 'facilitator-led'}</button>
@@ -98,7 +107,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
             <Card title="Teams" icon="users" action={<button className="ds-btn ds-btn-secondary" data-testid="v2-fac-verify" disabled={busy} onClick={() => void runAudit()}><Icon name="check" />Verify integrity</button>}>
               <div className="ds-table-wrap">
                 <table className="ds-table" data-testid="v2-fac-teams">
-                  <thead><tr><th>Team</th><th>Code</th><th>Progress</th><th>Now</th><th>Votes</th><th>Revenue</th><th>Cash</th><th>Strategy</th><th>Finance</th><th>Final</th><th>Integrity</th></tr></thead>
+                  <thead><tr><th>Team</th><th>Code</th><th>Progress</th><th>Now</th><th>Commit</th><th>Revenue</th><th>Cash</th><th>Strategy</th><th>Finance</th><th>Final</th><th>Integrity</th></tr></thead>
                   <tbody>
                     {o.teams.map(t => {
                       const h = t.headline;
@@ -110,7 +119,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
                           <td><code>{t.team_code}</code></td>
                           <td data-testid="v2-fac-progress">{t.started ? `${t.completed_quarter}/${V2_TOTAL_QUARTERS} done` : 'Not joined'}</td>
                           <td>{t.phase ? (t.phase === 'final' ? 'Finished' : waiting ? `Waiting for Q${working}` : `Q${['results', 'reflect'].includes(t.phase) ? t.completed_quarter : working} · ${PHASE_LABEL[t.phase]}`) : '—'}</td>
-                          <td data-testid="v2-fac-votes">{t.phase === 'vote' || t.phase === 'commit' ? `${t.votes_submitted}/5` : '—'}</td>
+                          <td data-testid="v2-fac-votes">{t.phase === 'vote' || (t.phase === 'commit' && o.commitment_mode !== 'team_commitment') ? `${t.votes_submitted}/5 votes` : t.phase === 'commit' ? 'committing' : t.phase === 'risk' && o.commitment_mode === 'team_commitment' ? 'reviewing' : '—'}</td>
                           <td>{h ? money(h.revenue) : '—'}</td>
                           <td>{h ? money(h.cash) : '—'}</td>
                           <td data-testid="v2-fac-destination">{h && h.completedQuarter >= 4 ? destinationName(h.destination) : '—'}</td>
@@ -190,7 +199,8 @@ function DebriefCard({ d }: { d: TeamDebrief }) {
           {d.final && <div className="ds-row"><span className="ds-badge ds-badge-accent">Overall {d.final.overall.toFixed(1)}</span><span className="ds-small">Financial {d.final.financial.toFixed(1)} · Strategic {d.final.strategic.toFixed(1)} · Organizational {d.final.organizational.toFixed(1)}</span></div>}
           <div><p className="ds-h4">Major decisions</p><ul className="ds-list ds-small">{d.decisions.map(x => <li key={x.quarter}><b>Q{x.quarter}:</b> {x.text}{x.belief ? <span className="ds-muted"> — belief: {x.belief}</span> : null}</li>)}</ul></div>
           {d.pivotal.length > 0 && <div><p className="ds-h4">Pivotal moments</p><ul className="ds-list ds-small">{d.pivotal.map(p => <li key={p.quarter}><b>Q{p.quarter}:</b> {p.text}</li>)}</ul></div>}
-          <div><p className="ds-h4">Disagreements (revealed votes)</p>{d.disagreements.length ? <ul className="ds-list ds-small">{d.disagreements.map(x => <li key={x.quarter}><b>Q{x.quarter}:</b> {x.text}</li>)}</ul> : <p className="ds-muted">No significant dissent recorded.</p>}</div>
+          <div data-testid="v2-debrief-commitments"><p className="ds-h4">How each quarter was committed</p><ul className="ds-list ds-small">{d.commitments.map(c => <li key={c.quarter} data-kind={c.kind}><b>Q{c.quarter}:</b> {c.text}</li>)}</ul></div>
+          <div><p className="ds-h4">Disagreements (revealed private votes)</p>{d.disagreements.length ? <ul className="ds-list ds-small">{d.disagreements.map(x => <li key={x.quarter}><b>Q{x.quarter}:</b> {x.text}</li>)}</ul> : <p className="ds-muted">No significant dissent recorded.</p>}</div>
           <div><p className="ds-h4">Discussion questions</p><ol className="ds-list ds-small">{d.questions.map(q => <li key={q}>{q}</li>)}</ol></div>
         </div>
         <div className="ds-stack">

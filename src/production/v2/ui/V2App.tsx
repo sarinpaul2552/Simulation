@@ -8,6 +8,7 @@ import { teamSession, facilitatorSession } from './storage';
 import { V2TeamGame } from './V2TeamGame';
 import { V2Facilitator } from './V2Facilitator';
 import { ErrorBanner, Icon, Segmented } from './ds/components';
+import { CHAPTERS } from '../content/chapters';
 import './ds/ds.css';
 
 type Screen =
@@ -49,20 +50,23 @@ export default function V2App({ onOpenLegacy }: { onOpenLegacy?: () => void }) {
     case 'home':
       return (
         <div className="ds-root" data-testid="v2-home">
-          <section className="ds-hero ds-card" style={{ borderRadius: 0, padding: '48px 16px' }}>
-            <div className="ds-shell" style={{ paddingBottom: 0 }}>
-              <span className="ds-kicker">Business Simulation · eight quarters</span>
-              <h1 style={{ fontSize: '2.2em' }}>Lead a learning company through disruption</h1>
-              <p style={{ maxWidth: 640 }}>Five leaders. One company. Every quarter brings new evidence, hard trade-offs and real consequences.</p>
-            </div>
-          </section>
-          <main className="ds-shell">
-            <div className="ds-grid ds-grid-3">
+          <main className="ds-shell ds-stack-lg">
+            <section className="ds-chapter ds-enter" data-chapter-title="home">
+              <span className="ds-chapter-num" aria-hidden="true">8</span>
+              <span className="ds-chapter-kicker">Business strategy simulation · eight quarters · five leaders</span>
+              <h1 className="ds-chapter-title" style={{ maxWidth: '16ch' }}>Lead a learning company through disruption.</h1>
+              <p className="ds-chapter-sub">Every quarter brings new evidence, hard trade-offs and real consequences. Build the company you believe in — then live with it.</p>
+              <div className="ds-chapter-rule" />
+              <ol className="ds-row" style={{ listStyle: 'none', padding: 0, margin: 0, gap: '6px 18px', color: 'var(--ds-board-muted)', fontSize: '0.86em' }}>
+                {Object.values(CHAPTERS).map(c => <li key={c.quarter}><b style={{ color: 'var(--ds-brass)' }}>Q{c.quarter}</b> {c.title}</li>)}
+              </ol>
+            </section>
+            <div className="ds-grid ds-grid-3 ds-enter-2">
               <button className="ds-card ds-choice" data-testid="v2-home-team" onClick={() => setScreen({ kind: 'team-join' })}><Icon name="users" size={22} /><span><span className="ds-choice-title">Join as a team</span><span className="ds-muted" style={{ display: 'block' }}>Enter your session and team codes.</span></span></button>
               <button className="ds-card ds-choice" data-testid="v2-home-facilitator" onClick={() => setScreen({ kind: 'fac-setup' })}><Icon name="flag" size={22} /><span><span className="ds-choice-title">Facilitator: new session</span><span className="ds-muted" style={{ display: 'block' }}>Create teams and choose the class mode.</span></span></button>
               <button className="ds-card ds-choice" data-testid="v2-home-resume" onClick={() => setScreen({ kind: 'fac-resume' })}><Icon name="clock" size={22} /><span><span className="ds-choice-title">Facilitator: resume</span><span className="ds-muted" style={{ display: 'block' }}>Session code and admin PIN.</span></span></button>
             </div>
-            {onOpenLegacy && <p style={{ marginTop: 24 }}><button className="ds-btn ds-btn-ghost" data-testid="v2-open-legacy" onClick={onOpenLegacy}>Legacy V1 engine (developer fallback)</button></p>}
+            {onOpenLegacy && <p style={{ marginTop: 0 }}><button className="ds-btn ds-btn-ghost" data-testid="v2-open-legacy" onClick={onOpenLegacy}>Legacy V1 engine (developer fallback)</button></p>}
           </main>
         </div>
       );
@@ -88,6 +92,7 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
   const [mode, setMode] = useState<V2ParticipationMode>('team_device');
   const [pacing, setPacing] = useState<V2Pacing>('facilitator');
   const [presentation, setPresentation] = useState<V2PresentationMode>('mba');
+  const [commitment, setCommitment] = useState<'team_commitment' | 'private_vote'>('team_commitment');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setTeamCount = (n: number) => {
@@ -99,10 +104,16 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
     setBusy(true); setError(null);
     try {
       const created = await api.createSession(email.trim(), names.map(n => n.trim() || 'Team'), mode, pacing);
-      let warning: string | undefined;
+      const warnings: string[] = [];
       try { await api.setPresentationMode(created.session_code, created.admin_pin, presentation); }
-      catch { if (presentation !== 'mba') warning = 'Presentation modes are not available on this database yet, so this session uses MBA mode.'; }
-      onCreated(created, warning);
+      catch { if (presentation !== 'mba') warnings.push('Presentation modes are not available on this database yet, so this session uses MBA mode.'); }
+      if (created.commitment_mode === undefined) {
+        // Database without the Batch 7.5 migration: sessions keep the original private-vote commit.
+        if (commitment === 'team_commitment') warnings.push('Team Commitment is not available on this database yet, so teams will use private voting.');
+      } else if (commitment === 'private_vote') {
+        await api.setCommitmentMode(created.session_code, created.admin_pin, 'private_vote');
+      }
+      onCreated(created, warnings.length ? warnings.join(' ') : undefined);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   return (
@@ -114,15 +125,18 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
           <Segmented testIdPrefix="v2-setup-presentation" value={presentation} onChange={setPresentation} options={[{ id: 'undergraduate', label: 'Undergraduate' }, { id: 'mba', label: 'MBA' }]} />
           <span className="ds-muted">{presentation === 'undergraduate' ? 'Simpler language, more guidance, fewer metrics.' : 'Full evidence, deeper analysis, more metrics.'} Both use the same simulation and scoring.</span>
         </div>
+        <div className="ds-stack" style={{ gap: 4 }}><b>How teams commit each quarter</b>
+          <Segmented testIdPrefix="v2-setup-commitment" value={commitment} onChange={setCommitment} options={[{ id: 'team_commitment', label: 'Team commitment' }, { id: 'private_vote', label: 'Private voting' }]} />
+          <span className="ds-muted">{commitment === 'team_commitment' ? 'The team reviews its decision, records how it agreed, and one person commits it. Fastest for a 90-minute workshop.' : 'Each of the five leaders votes privately; votes are revealed together before the team commits.'} You can change this during the session.</span>
+        </div>
         <label className="ds-stack" style={{ gap: 4 }}><b>Number of teams</b><input className="ds-input" style={{ width: 100 }} data-testid="v2-setup-count" type="number" min={1} max={30} value={count} onChange={e => setTeamCount(parseInt(e.target.value, 10))} /></label>
         <div className="ds-grid ds-grid-2">
           {names.map((n, i) => <label key={i} className="ds-stack" style={{ gap: 4 }}><span className="ds-small">Team {i + 1}</span><input className="ds-input" data-testid={`v2-setup-team-${i}`} value={n} onChange={e => setNames(names.map((x, k) => (k === i ? e.target.value : x)))} /></label>)}
         </div>
         <label className="ds-stack" style={{ gap: 4 }}><b>Devices</b>
           <select className="ds-input" style={{ width: '100%' }} data-testid="v2-setup-mode" value={mode} onChange={e => setMode(e.target.value as V2ParticipationMode)}>
-            <option value="team_device">One shared device per team (five roles vote in turn)</option>
+            <option value="team_device">One shared device per team</option>
             <option value="individual_device">One device per player (each picks a role)</option>
-            <option value="voting_disabled">Shared device, no leadership vote</option>
           </select>
         </label>
         <label className="ds-stack" style={{ gap: 4 }}><b>Pacing</b>
