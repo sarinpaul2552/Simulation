@@ -5,7 +5,7 @@
 import { calendarLabel, calendarShort } from '../../content/calendar';
 import { ReactNode, useState } from 'react';
 import '@fontsource-variable/inter';
-import '@fontsource-variable/fraunces';
+import '@fontsource-variable/source-serif-4';
 import './ds.css';
 import type { EvidenceKind } from '../../content/scenarioContent';
 import { EVIDENCE_LABEL } from '../../content/scenarioContent';
@@ -163,6 +163,7 @@ export function Segmented<T extends string | number>({ options, value, onChange,
 
 export interface SeriesPoint { x: number; y: number }
 const W = 320, H = 150, PAD = { l: 44, r: 10, t: 12, b: 24 };
+const W_SM = W, H_SM = H, PAD_SM = PAD;
 
 function niceTicks(min: number, max: number, n = 4): number[] {
   if (min === max) { min -= 1; max += 1; }
@@ -174,9 +175,10 @@ function niceTicks(min: number, max: number, n = 4): number[] {
 }
 
 /** Single-series line chart over quarters (Q0 = starting company). Recorded points only. */
-export function LineChart({ points, label, format, color = 'var(--ds-s1)', testId, zeroLine = true, maxQuarter = 8 }: { points: SeriesPoint[]; label: string; format: (v: number) => string; color?: string; testId?: string; zeroLine?: boolean; maxQuarter?: number }) {
+export function LineChart({ points, label, format, color = 'var(--ds-s1)', testId, zeroLine = true, maxQuarter = 8, reference, selected, onSelect, size = 'sm' }: { points: SeriesPoint[]; label: string; format: (v: number) => string; color?: string; testId?: string; zeroLine?: boolean; maxQuarter?: number; reference?: { y: number; label: string }; selected?: number; onSelect?: (x: number) => void; size?: 'sm' | 'lg' }) {
+  const W = size === 'lg' ? 600 : W_SM, H = size === 'lg' ? 230 : H_SM, PAD = size === 'lg' ? { l: 54, r: 14, t: 14, b: 26 } : PAD_SM;
   const [hover, setHover] = useState<number | null>(null);
-  const ys = points.map(p => p.y);
+  const ys = [...points.map(p => p.y), ...(reference ? [reference.y] : [])];
   const lo = Math.min(...ys, zeroLine && Math.min(...ys) < 0 ? 0 : Math.min(...ys)), hi = Math.max(...ys);
   // Minimum visible span (10% of the largest magnitude, at least 5 units) so a −0.5% move does not look like a crash.
   const minSpan = Math.max(Math.max(...ys.map(Math.abs)) * 0.1, 5);
@@ -197,15 +199,17 @@ export function LineChart({ points, label, format, color = 'var(--ds-s1)', testI
             <text x={PAD.l - 6} y={sy(t) + 3} textAnchor="end">{format(t)}</text>
           </g>
         ))}
-        {Array.from({ length: maxQuarter + 1 }, (_, q) => <text key={q} x={sx(q)} y={H - 6} textAnchor="middle">{calendarShort(q)}</text>)}
+        {Array.from({ length: maxQuarter + 1 }, (_, q) => q).filter(q => q % 2 === 0 || q === maxQuarter).map(q => <text key={q} x={sx(q)} y={H - 6} textAnchor="middle">{calendarShort(q)}</text>)}
+        {reference && <g><line className="ds-ref-line" x1={PAD.l} x2={W - PAD.r} y1={sy(reference.y)} y2={sy(reference.y)} /><text x={W - PAD.r} y={sy(reference.y) - 3} textAnchor="end">{reference.label}</text></g>}
+        {selected !== undefined && selected <= maxQuarter && <line x1={sx(selected)} x2={sx(selected)} y1={PAD.t} y2={H - PAD.b} stroke="var(--nx-teal)" strokeWidth={1} />}
         {points.length > 1 && <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" />}
         {points.map((p, i) => (
           <g key={p.x}>
-            <circle cx={sx(p.x)} cy={sy(p.y)} r={hover === i ? 5 : 4} fill={color} stroke="#fff" strokeWidth={2} />
-            <rect x={sx(p.x) - 14} y={PAD.t} width={28} height={H - PAD.t - PAD.b} fill="transparent" onMouseEnter={() => setHover(i)} onTouchStart={() => setHover(i)} />
+            <circle cx={sx(p.x)} cy={sy(p.y)} r={hover === i || selected === p.x ? 4.5 : 3.5} fill={selected === p.x ? 'var(--nx-teal)' : color} stroke="var(--nx-paper)" strokeWidth={2} />
+            <rect x={sx(p.x) - 14} y={PAD.t} width={28} height={H - PAD.t - PAD.b} fill="transparent" style={onSelect ? { cursor: 'pointer' } : undefined} onMouseEnter={() => setHover(i)} onTouchStart={() => setHover(i)} onClick={onSelect ? () => onSelect(p.x) : undefined} />
           </g>
         ))}
-        {hp && <line x1={sx(hp.x)} x2={sx(hp.x)} y1={PAD.t} y2={H - PAD.b} stroke="#c3c2b7" strokeDasharray="3 3" />}
+        {hp && <line x1={sx(hp.x)} x2={sx(hp.x)} y1={PAD.t} y2={H - PAD.b} stroke="var(--nx-stone-2)" strokeDasharray="3 3" />}
       </svg>
       {hp && <div className="ds-tooltip" style={{ left: `${(sx(hp.x) / W) * 100}%`, top: `${(sy(hp.y) / H) * 100}%` }}>{calendarLabel(hp.x)}: {format(hp.y)}</div>}
     </figure>
@@ -215,7 +219,7 @@ export function LineChart({ points, label, format, color = 'var(--ds-s1)', testI
 /** Stacked bars of segment revenue per quarter (4 series, validated categorical order, 2px gaps, legend + table). */
 export function SegmentBars({ rows, testId }: { rows: { quarter: number; values: { key: string; label: string; value: number }[] }[]; testId?: string }) {
   const [hover, setHover] = useState<{ q: number; key: string } | null>(null);
-  const KEY_COLOR: Record<string, string> = { consumer: 'var(--ds-c-consumer)', enterprise: 'var(--ds-c-enterprise)', aiNative: 'var(--ds-c-ai)', university: 'var(--ds-c-university)' };
+  const KEY_COLOR: Record<string, string> = { consumer: 'var(--ds-c-consumer)', enterprise: 'var(--ds-c-enterprise)', aiNative: 'var(--ds-c-ai)', university: 'var(--ds-c-university)', people: 'var(--ds-c-people)' };
   const fallback = ['var(--ds-s1)', 'var(--ds-s2)', 'var(--ds-s3)', 'var(--ds-s4)'];
   const colorOf = (key: string, i: number) => KEY_COLOR[key] ?? fallback[i % 4];
   const max = Math.max(...rows.map(r => r.values.reduce((t, v) => t + v.value, 0)));
@@ -240,9 +244,9 @@ export function SegmentBars({ rows, testId }: { rows: { quarter: number; values:
                 const y0 = sy(acc), y1 = sy(acc + v.value);
                 acc += v.value;
                 const h = Math.max(0, y0 - y1 - 2);
-                return <rect key={v.key} x={x} y={y1} width={bw * 0.6} height={h} rx={i === r.values.length - 1 ? 3 : 0} fill={colorOf(v.key, i)} onMouseEnter={() => setHover({ q: r.quarter, key: v.key })} />;
+                return <rect key={v.key} x={x} y={y1} width={bw * 0.6} height={h} fill={colorOf(v.key, i)} onMouseEnter={() => setHover({ q: r.quarter, key: v.key })} onTouchStart={() => setHover({ q: r.quarter, key: v.key })} />;
               })}
-              <text x={x + bw * 0.3} y={H - 6} textAnchor="middle">{calendarShort(r.quarter)}</text>
+              {r.quarter % 2 === 0 && <text x={x + bw * 0.3} y={H - 6} textAnchor="middle">{calendarShort(r.quarter)}</text>}
             </g>
           );
         })}

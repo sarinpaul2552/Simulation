@@ -7,6 +7,10 @@ import { buildTeamDebrief, TeamDebrief } from '../insights/debrief';
 import { normalizeMode, MODE_LABEL, V2PresentationMode } from '../content/modes';
 import { money, destinationName, FINAL_LABELS } from './format';
 import { Card, ErrorBanner, Icon, LineChart, Segmented } from './ds/components';
+import { replayInputs } from '../adapter';
+import { gameHistory } from '../insights/history';
+import { valuationSeries, fmtPrice, fmtPctDelta } from '../insights/valuation';
+import { allScorecards, computeAwards, AWARD_RULES, SCORECARD_ROLES, ROLE_SCORECARD_TITLE, type AwardTeam } from '../insights/executive';
 import './ds/ds.css';
 
 const PHASE_LABEL: Record<string, string> = {
@@ -14,7 +18,7 @@ const PHASE_LABEL: Record<string, string> = {
   results: 'Results', reflect: 'Reflecting', final: 'Finished',
 };
 
-type Tab = 'live' | 'compare' | 'debrief';
+type Tab = 'live' | 'compare' | 'leadership' | 'debrief';
 
 /**
  * Facilitator dashboard (Batch 7): live progress, peer comparison (facilitator-only) and a classroom debrief built
@@ -28,6 +32,12 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
   const [projector, setProjector] = useState(false);
   const [audit, setAudit] = useState<Record<string, { status: 'verified' | 'mismatch'; detail: string | null }> | null>(null);
   const [debrief, setDebrief] = useState<{ teams: TeamDebrief[]; votesAvailable: boolean } | null>(null);
+  const [leadership, setLeadership] = useState<AwardTeam[] | null>(null);
+  const loadLeadership = () => act(async () => {
+    const entries = await api.facilitatorAudit(sessionCode, adminPin);
+    const names = Object.fromEntries((o?.teams ?? []).map(t => [t.team_id, t.team_name]));
+    setLeadership(entries.filter(e => e.inputs.length > 0).map(e => ({ teamId: e.team_id, teamName: names[e.team_id] ?? 'Team', records: gameHistory(replayInputs(e.inputs)) })));
+  });
   const refresh = useCallback(async () => {
     try { setO(await api.facilitatorOverview(sessionCode, adminPin)); setError(null); } catch (e) { setError((e as Error).message); }
   }, [api, sessionCode, adminPin]);
@@ -73,7 +83,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
       <main className="ds-shell ds-stack">
         <ErrorBanner error={error} />
         <div className="ds-row">
-          <Segmented testIdPrefix="v2-fac-tab" value={tab} onChange={v => { setTab(v); if (v === 'debrief' && !debrief) void loadDebrief(); }} options={[{ id: 'live', label: 'Live progress' }, { id: 'compare', label: 'Compare teams' }, { id: 'debrief', label: 'Debrief' }]} />
+          <Segmented testIdPrefix="v2-fac-tab" value={tab} onChange={v => { setTab(v); if (v === 'debrief' && !debrief) void loadDebrief(); if (v === 'leadership') void loadLeadership(); }} options={[{ id: 'live', label: 'Live progress' }, { id: 'compare', label: 'Compare teams' }, { id: 'leadership', label: 'Leadership and awards' }, { id: 'debrief', label: 'Debrief' }]} />
           <span className="ds-spacer" />
           <span className="ds-small">Class mode</span>
           {o.presentation_mode === undefined
@@ -147,6 +157,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
         )}
 
         {tab === 'compare' && <Compare overview={o} />}
+        {tab === 'leadership' && (leadership ? <Leadership teams={leadership} onRefresh={() => void loadLeadership()} busy={busy} /> : <p className="ds-muted">Loading…</p>)}
 
         {tab === 'debrief' && (
           <div className="ds-stack" data-testid="v2-fac-debrief">
@@ -211,5 +222,57 @@ function DebriefCard({ d }: { d: TeamDebrief }) {
         </div>
       </div>
     </Card>
+  );
+}
+
+/** Cross-team leadership comparison and awards (facilitator only). Teams are compared at the same quarter. */
+function Leadership({ teams, onRefresh, busy }: { teams: AwardTeam[]; onRefresh: () => void; busy: boolean }) {
+  const awards = useMemo(() => computeAwards(teams), [teams]);
+  const q = awards.quarter;
+  const rows = useMemo(() => teams.map(t => {
+    const recs = t.records.slice(0, q);
+    if (!recs.length) return { t, price: null as number | null, cards: [] as ReturnType<typeof allScorecards>, s: null as null | typeof recs[number]['after'] };
+    return { t, price: valuationSeries(recs).points[q].price, cards: allScorecards(recs, q), s: recs[recs.length - 1].after };
+  }), [teams, q]);
+  return (
+    <div className="ds-stack-lg" data-testid="v2-fac-leadership">
+      <div className="ds-row"><button className="ds-btn ds-btn-secondary ds-btn-sm" disabled={busy} onClick={onRefresh}><Icon name="clock" size={14} />Refresh</button>
+        <span className="ds-muted">{q > 0 ? `All teams compared at ${calendarLabel(q)} — the latest quarter every team has completed.` : 'No team has completed a quarter yet.'}</span></div>
+      {q > 0 && (
+        <div className="ds-table-wrap">
+          <table className="ds-table" data-testid="v2-fac-leadership-table">
+            <thead><tr><th>Team</th><th className="num">Share price</th><th className="num">Revenue</th><th className="num">Op. profit</th><th className="num">Cash</th>{SCORECARD_ROLES.map(r => <th key={r} className="num">{r === 'Product' ? 'CPO' : r === 'Growth' ? 'CGO' : r === 'People' ? 'CPeO' : r}</th>)}<th className="num">Team</th></tr></thead>
+            <tbody>{rows.map(r => r.s && (
+              <tr key={r.t.teamId}>
+                <td><b>{r.t.teamName}</b></td>
+                <td className="num">{fmtPrice(r.price!)} <span className="ds-muted">{fmtPctDelta(r.price! / 100 - 1)}</span></td>
+                <td className="num">{money(r.s.revenue)}</td><td className="num">{money(r.s.operatingProfit)}</td><td className="num">{money(r.s.cash)}</td>
+                {r.cards.map(c => <td key={c.role} className="num">{c.executive.toFixed(0)}</td>)}
+                <td className="num"><b>{(r.cards.reduce((a, c) => a + c.executive, 0) / r.cards.length).toFixed(0)}</b></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+      <section data-testid="v2-fac-awards">
+        <p className="ds-eyebrow">Leadership awards</p>
+        {!awards.available ? <p className="ds-callout" data-testid="v2-fac-awards-unavailable"><Icon name="clock" />{awards.reason}</p> : (
+          <table className="ds-table">
+            <thead><tr><th>Award</th><th>Awarded to</th><th className="num">Score</th><th className="num">Next best</th><th>Basis</th></tr></thead>
+            <tbody>{awards.awards.map(a => (
+              <tr key={a.id} data-award={a.id}>
+                <td><b>{a.label}</b></td>
+                <td>{a.winners.map(w => a.id === 'team' ? w : `${w} — ${ROLE_SCORECARD_TITLE[a.id as keyof typeof ROLE_SCORECARD_TITLE]} role`).join('; ')}{a.winners.length > 1 && <span className="ds-muted"> (shared: within {AWARD_RULES.shareWithin} point)</span>}</td>
+                <td className="num">{a.score.toFixed(1)}</td>
+                <td className="num ds-muted">{a.runnerUp === null ? '—' : a.runnerUp.toFixed(1)}</td>
+                <td className="ds-small">{a.basis}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+        {awards.excluded.length > 0 && <p className="ds-small">{awards.excluded.map(e => `${e.teamName} ${e.reason}`).join('; ')}.</p>}
+        <p className="ds-method">Rules: at least {AWARD_RULES.minTeams} teams, compared at the same quarter, once every team has completed {AWARD_RULES.minQuarter} quarters; teams that became insolvent are not eligible; a lead under {AWARD_RULES.shareWithin} point is a shared award. Awards belong to the team’s executive function — the platform does not observe individual contributions, and in teams of three or four one student may hold several roles. If you wish to recognise individuals, assign the award yourself in class.</p>
+      </section>
+    </div>
   );
 }

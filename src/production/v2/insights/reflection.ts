@@ -4,6 +4,7 @@
  */
 import type { V2TeamState } from '../../../simulation/engineV2';
 import { BELIEF_TOPICS, BeliefTopic } from '../content/deliberationContent';
+import { startingCompany, type QuarterRecord } from './history';
 
 export interface EvidenceRow { label: string; before: string; after: string; direction: 'up' | 'down' | 'flat' }
 const m = (x: number) => `$${x.toFixed(1)}M`;
@@ -32,4 +33,41 @@ export function reflectionEvidence(beliefId: string | undefined, before: V2TeamS
     });
   }
   return rows;
+}
+
+// ───────────── Batch 8 · Stage 2: the four businesses in the reflection ─────────────
+
+export const SEGMENT_LINKS = [
+  { key: 'consumer', label: 'Consumer', bucket: 'consumer', capability: 'consumer', capabilityLabel: 'Consumer capability' },
+  { key: 'enterprise', label: 'Enterprise', bucket: 'enterprise', capability: 'enterprise', capabilityLabel: 'Enterprise capability' },
+  { key: 'aiNative', label: 'AI-native', bucket: 'aiProduct', capability: 'ai', capabilityLabel: 'AI capability' },
+  { key: 'university', label: 'University', bucket: 'universityCredentials', capability: 'credential', capabilityLabel: 'Credential capability' },
+] as const;
+
+export interface SegmentReflectionRow {
+  key: string; label: string;
+  start: number; current: number; quarterMove: number;
+  allocatedThisQuarter: number; allocatedTotal: number;
+  capabilityStart: number; capabilityNow: number; capabilityLabel: string;
+  neglected: string | null;
+}
+
+/** Every segment: start, current, this quarter's movement, allocation and capability movement — recorded values only. */
+export function segmentReflection(history: QuarterRecord[], quarter = history.length): SegmentReflectionRow[] {
+  const s0 = startingCompany();
+  const rec = history[quarter - 1];
+  return SEGMENT_LINKS.map(l => {
+    const start = s0.segmentRevenue[l.key], current = rec.after.segmentRevenue[l.key];
+    const allocatedTotal = history.slice(0, quarter).reduce((t, h) => t + ((h.input.allocation as unknown as Record<string, number>)[l.bucket] ?? 0), 0);
+    const capStart = (s0.capabilities as unknown as Record<string, number>)[l.capability];
+    const capNow = (rec.after.capabilities as unknown as Record<string, number>)[l.capability];
+    const neglected = allocatedTotal < 0.05 && current < start - 0.05
+      ? `No money has gone into ${l.label} since Q4 2022, and its revenue is $${(start - current).toFixed(1)}M a quarter lower than when you started.`
+      : allocatedTotal < 0.05 ? `No money has gone into ${l.label} so far.` : null;
+    return {
+      key: l.key, label: l.label, start, current, quarterMove: current - rec.before.segmentRevenue[l.key],
+      allocatedThisQuarter: (rec.input.allocation as unknown as Record<string, number>)[l.bucket] ?? 0, allocatedTotal,
+      capabilityStart: capStart, capabilityNow: capNow, capabilityLabel: l.capabilityLabel, neglected,
+    };
+  });
 }

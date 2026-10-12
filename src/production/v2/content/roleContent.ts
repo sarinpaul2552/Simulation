@@ -1,8 +1,9 @@
 /**
  * PRIVATE ROLE BRIEFINGS (Batch 8 · Stage 1 — rewritten without recommendations)
  *
- * Six parts: responsibility · current business position · what the evidence suggests · what remains uncertain ·
- * objectives · what to discuss with colleagues. Nothing tells a role which choice is best.
+ * Batch 8 · Stage 2 layout (a 60–90 second read): your mandate · your current position (three priority KPIs, full
+ * table expandable) · confidential intelligence · what concerns you · questions for your colleagues. Nothing tells a
+ * role which choice is best.
  *
  * Data sources:
  *  - current business position = the KPIs that role owns, exactly as adapter.getRoleBrief reports them, with the
@@ -26,7 +27,10 @@ export interface RoleBriefing {
   title: string;
   perspective: string;
   responsibility: string;
+  /** Full KPI table (shown in an expandable section). */
   position: PositionRow[];
+  /** The three priority KPIs shown first. */
+  priority: PositionRow[];
   evidence: RoleKnowledge[];
   suggests: string[];
   uncertain: string[];
@@ -58,6 +62,14 @@ const UG_KPIS: Record<V2Role, string[]> = {
   Product: ['product-pq', 'product-ai', 'product-ai-readiness'],
   People: ['people-talent', 'people-culture', 'people-capacity', 'people-load'],
   Growth: ['growth-consumer-revenue', 'growth-retention', 'growth-cac', 'growth-pipeline'],
+};
+/** The three KPIs each role sees first (the full table is one click away). */
+export const PRIORITY_KPIS: Record<V2Role, string[]> = {
+  CEO: ['ceo-revenue', 'ceo-pricing', 'ceo-trust'],
+  CFO: ['cfo-cash', 'cfo-op', 'cfo-margin'],
+  Product: ['product-pq', 'product-ai', 'product-ai-readiness'],
+  People: ['people-culture', 'people-talent', 'people-load'],
+  Growth: ['growth-consumer-revenue', 'growth-retention', 'growth-pipeline'],
 };
 /** Glossary entry for a KPI id (shown as a tappable definition). */
 const KPI_GLOSSARY: Record<string, string> = {
@@ -98,6 +110,18 @@ function startSignals(role: V2Role): V2Signal[] {
   return startCache.get(role)!;
 }
 
+function priorityRows(role: V2Role, position: PositionRow[]): PositionRow[] {
+  const picked = PRIORITY_KPIS[role].map(id => position.find(p => p.id === id)).filter((p): p is PositionRow => !!p);
+  for (const p of position) if (picked.length < 3 && !picked.includes(p)) picked.push(p);
+  return picked.slice(0, 3);
+}
+
+/** Words a student reads in the default (collapsed) briefing view. */
+export function briefingWords(b: RoleBriefing): number {
+  const parts = [b.responsibility, ...b.priority.map(p => `${p.label} ${p.value}`), ...b.evidence.map(e => e.text), ...b.suggests, ...b.uncertain, ...b.discuss.map(d => d.ask)];
+  return parts.join(' ').split(/\s+/).filter(Boolean).length;
+}
+
 export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2PresentationMode): RoleBriefing {
   const q = workingQuarter(snap) ?? snap.completedQuarter;
   const brief = getRoleBrief(snap, role);
@@ -121,7 +145,7 @@ export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2Pr
   const qb = QUARTER_BRIEFS[q]?.[role];
   return {
     role, title: ROLE_TITLES[role], perspective: PERSPECTIVE[role], responsibility: pick(mode, RESPONSIBILITY[role]),
-    position, evidence,
+    position, priority: priorityRows(role, position), evidence,
     suggests: (qb?.suggests ?? []).map(t => pick(mode, t)),
     uncertain: (qb?.uncertain ?? []).map(t => pick(mode, t)),
     objectives: ROLE_OBJECTIVES[role].map(t => pick(mode, t)),

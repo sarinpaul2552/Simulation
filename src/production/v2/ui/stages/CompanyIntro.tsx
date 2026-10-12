@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { BACKSTORY, COMPANY, YOUR_ROLE } from '../../content/company';
 import { pick, V2PresentationMode } from '../../content/modes';
 import { calendarLabel } from '../../content/calendar';
-import { CHAPTERS } from '../../content/chapters';
 import { startingCompany } from '../../insights/history';
 import { Icon, Section } from '../ds/components';
 import { Term } from '../ds/glossary';
@@ -19,13 +18,12 @@ export function CompanyIntro({ mode, onBegin, onClose, busy }: { mode: V2Present
   const margin = s.operatingProfit / s.revenue;
   return (
     <div className="ds-stack-lg" data-testid="v2-company-intro">
-      <section className="ds-chapter ds-enter">
-        <span className="ds-chapter-num" aria-hidden="true">{COMPANY.ticker}</span>
-        <span className="ds-chapter-kicker">Welcome to {COMPANY.name} · {calendarLabel(0)}</span>
+      <section className="ds-chapter">
+        <span className="ds-chapter-kicker">Board briefing · {COMPANY.name} ({COMPANY.ticker}) · {calendarLabel(0)}</span>
         <h1 className="ds-chapter-title" style={{ maxWidth: '18ch' }}>You are now running {COMPANY.name}.</h1>
         <p className="ds-chapter-sub">{pick(mode, YOUR_ROLE)}</p>
         <div className="ds-chapter-rule" />
-        <p className="ds-chapter-body">The simulation runs for eight quarters, from {calendarLabel(1)} to {calendarLabel(8)}: {Object.values(CHAPTERS).map(c => c.title.toLowerCase()).join(' → ')}.</p>
+        <p className="ds-chapter-body" data-testid="v2-intro-horizon">You will lead for eight quarters, from {calendarLabel(1)} to {calendarLabel(8)}. The board has set one fixed date: it expects a committed strategic direction at its {calendarLabel(4)} meeting. Everything else — the market, the economy and how your company responds — you will learn as it happens.</p>
       </section>
 
       <Section eyebrow="Starting position" title={`${COMPANY.name} at the end of ${calendarLabel(0)}`} testId="v2-intro-position">
@@ -34,6 +32,7 @@ export function CompanyIntro({ mode, onBegin, onClose, busy }: { mode: V2Present
           <div className="ds-figure"><span className="ds-fig-label">Quarterly revenue</span><span className="ds-fig-value" data-testid="v2-intro-revenue">{m(s.revenue)}</span><div className="ds-fig-sub">Operating costs {m(s.operatingCost)}</div></div>
           <div className="ds-figure"><span className="ds-fig-label"><Term id="operating-profit">Operating profit</Term></span><span className="ds-fig-value">{m(s.operatingProfit)}</span><div className="ds-fig-sub"><Term id="operating-margin">Operating margin</Term> {(margin * 100).toFixed(0)}%</div></div>
           <div className="ds-figure"><span className="ds-fig-label">Cash</span><span className="ds-fig-value">{m(s.cash)}</span><div className="ds-fig-sub">Debt {m(s.financing.debt)} · strategic budget $30M per quarter</div></div>
+          <div className="ds-figure" data-testid="v2-intro-share"><span className="ds-fig-label">Share price ({COMPANY.ticker})</span><span className="ds-fig-value">$100.00</span><div className="ds-fig-sub">Simulated; moves with the business you build</div></div>
         </div>
         <div style={{ marginTop: 18 }}>
           <p className="ds-h4">Revenue by business (per quarter)</p>

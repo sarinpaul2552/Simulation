@@ -34,8 +34,8 @@ export const BACKSTORY: BackstorySection[] = [
     body: mt('Consumer growth is slowing, AI is changing how people learn, and NexLearn has not yet decided what it wants to be best at.',
       'Maturing consumer growth, an uncertain AI transition, under-developed enterprise and AI capabilities, and no committed strategic destination.') },
   { id: 'board', title: 'What the board expects',
-    body: mt('Over the next eight quarters, grow the company’s value without running out of cash, choose a clear strategy by the end of 2023, and keep your people with you.',
-      'Over eight quarters (Q1 2023 – Q4 2024): create durable shareholder value, commit to a strategic destination by Q4 2023, protect liquidity through whatever the cycle brings, and sustain the organization’s capacity to execute.') },
+    body: mt('Over the next eight quarters, grow the company’s value (each share is worth $100 today) without running out of cash, present a clear strategy at the board meeting at the end of 2023, and keep your people with you.',
+      'Over eight quarters (Q1 2023 – Q4 2024): create durable shareholder value (the shares stand at $100), present a committed strategic destination at the Q4 2023 board meeting, protect liquidity and sustain the organization’s capacity to execute.') },
 ];
 
 export const YOUR_ROLE: ModeText = mt(

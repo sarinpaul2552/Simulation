@@ -1,141 +1,280 @@
-import { useMemo } from 'react';
-import { calendarLabel } from '../../content/calendar';
+import { useMemo, useState, Fragment } from 'react';
+import { calendarLabel, calendarShort } from '../../content/calendar';
 import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { buildLearningReport, Finding } from '../../insights/report';
 import { gameHistory } from '../../insights/history';
-import { trendSeries, fmtM } from '../../insights/dashboard';
+import { fmtM } from '../../insights/dashboard';
+import { kpiDashboard, type KpiDashboardRow } from '../../insights/intelligence';
+import { valuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, FACTOR_IDS, FACTOR_INFO } from '../../insights/valuation';
+import { allScorecards, EXECUTIVE_VERSION } from '../../insights/executive';
 import { V2_DESTINATIONS } from '../../../../simulation/engineV2Destination';
+import { COMPANY } from '../../content/company';
 import { AGREEMENTS } from './CommitStage';
 import { FINAL_LABELS } from '../format';
-import { Icon, LineChart, Meter, Section } from '../ds/components';
+import { Icon, LineChart, Meter } from '../ds/components';
+import { Term } from '../ds/glossary';
+import { ScorecardView } from '../ds/intel';
 
 const GATE_TEXT: Record<string, string> = {
-  'terminal-insolvency': 'The company ended the game insolvent, which caps the overall score.',
-  'rescued-insolvency': 'The company was insolvent at some point and had to be rescued, which caps the overall score.',
-  'organizational-collapse': 'Trust, culture or talent collapsed, which caps the overall score.',
+  'terminal-insolvency': 'The company ended the game insolvent, which caps the business performance score.',
+  'rescued-insolvency': 'The company was insolvent at some point and had to be rescued, which caps the business performance score.',
+  'organizational-collapse': 'Trust, culture or talent collapsed, which caps the business performance score.',
 };
 const lvl = (x: number): 'Strong' | 'Fair' | 'Weak' => (x >= 67 ? 'Strong' : x >= 40 ? 'Fair' : 'Weak');
+const fmtS = (x: number) => (Math.abs(x) < 0.05 ? '±$0.0M' : `${x > 0 ? '+' : '−'}$${Math.abs(x).toFixed(1)}M`);
 
-/** Q8 Final Learning Report: frozen terminal score + an interpretation of the team's own eight quarters. */
+/** Q8 board report: a board paper on eight quarters of leadership, plus the printable board defense. */
 export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2PresentationMode }) {
   const game = ctl.game!;
   const report = useMemo(() => buildLearningReport(game.snapshot, mode), [game.snapshot, mode]);
-  const trend = useMemo(() => trendSeries(gameHistory(game.snapshot)), [game.snapshot]);
+  const history = useMemo(() => gameHistory(game.snapshot), [game.snapshot]);
+  const val = useMemo(() => valuationSeries(history), [history]);
+  const kpis = useMemo(() => kpiDashboard(history), [history]);
+  const cards = useMemo(() => allScorecards(history), [history]);
   const s = game.snapshot.state;
+  const s0 = val.points[0];
+  const end = val.points[val.points.length - 1];
   const sc = report.score;
   const gates = sc.gates.filter(g => g.triggered);
   const agreementOf = (q: number) => game.resolutions.find(r => r.quarter === q)?.agreement;
+  const strategy = s.destination ? V2_DESTINATIONS[s.destination.id].name : '—';
+  const finalMove = s.final.record ? FINAL_LABELS[s.final.record.option] : '—';
+  let n = 0;
+  const sec = () => ++n;
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-final">
-      <section className="ds-verdict ds-enter" data-testid="v2-final">
-        <span className="ds-verdict-kicker">Final learning report · after eight quarters</span>
-        <div className="ds-grid ds-grid-main" style={{ alignItems: 'end', marginTop: 8 }}>
-          <div>
-            <h1 className="ds-verdict-text" style={{ maxWidth: 'none' }}>{game.teamName}</h1>
-            <p style={{ color: 'var(--ds-board-muted)', margin: '10px 0 0' }}>Strategy: <b style={{ color: 'var(--ds-board-ink)' }}>{s.destination ? V2_DESTINATIONS[s.destination.id].name : '—'}</b> · Final decision: <b style={{ color: 'var(--ds-board-ink)' }} data-testid="v2-final-option">{s.final.record ? FINAL_LABELS[s.final.record.option] : '—'}</b></p>
+      <article className="ds-report" data-testid="v2-final">
+        <header className="ds-report-head">
+          <span className="ds-verdict-kicker">Board report · {COMPANY.name} ({COMPANY.ticker}) · {calendarLabel(0)} – {calendarLabel(8)}</span>
+          <h1>{game.teamName}: eight quarters of leadership</h1>
+          <div className="ds-report-meta">
+            <span>Strategy: <b>{strategy}</b></span>
+            <span>Final decision: <b data-testid="v2-final-option">{finalMove}</b></span>
+            <span>Prepared from recorded simulation results</span>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="ds-fig-label" style={{ color: 'var(--ds-board-muted)' }}>Overall score</div>
-            <div className="ds-score-big" data-testid="v2-final-overall">{sc.overall.toFixed(1)}</div>
-            <div className="ds-small" style={{ color: 'var(--ds-board-muted)' }}>out of 100</div>
+          <div className="ds-actions ds-no-print" style={{ marginTop: 10, justifyContent: 'flex-start' }}>
+            <button className="ds-btn ds-btn-secondary ds-btn-sm" onClick={() => window.print()} data-testid="v2-print-report"><Icon name="news" size={14} /> Print or save as PDF</button>
           </div>
-        </div>
-        <div className="ds-figures" style={{ marginTop: 22 }} data-testid="v2-final-dimensions">
-          {report.dimensions.map(d => (
-            <div className="ds-figure" key={d.id}>
-              <span className="ds-fig-label">{d.label}</span>
-              <span className="ds-fig-value" data-testid={`v2-final-${d.id}`}>{d.score.toFixed(1)}</span>
-              <div className="ds-fig-sub">{lvl(d.score)} · {d.measures}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-      {gates.length > 0 && <div className="ds-error"><Icon name="alert" />{gates.map(g => GATE_TEXT[g.id] ?? g.id).join(' ')}</div>}
+        </header>
 
-      <Section eyebrow="Executive conclusion" title="What kind of company did your team build?" testId="v2-conclusion">
-        <p className="ds-conclusion">{report.conclusion}</p>
-        <p className="ds-muted" style={{ marginTop: 10 }}>The score measures the company you built — its finances, strategic position and organization — not the strategy you picked.</p>
-        {mode === 'mba' && (
-          <div className="ds-grid ds-grid-3" style={{ marginTop: 14 }}>
+        <section className="ds-report-section" data-testid="v2-report-summary">
+          <h2><span className="ds-sec-n">{sec()}</span>Executive summary</h2>
+          <div className="ds-figures" data-testid="v2-report-headline">
+            <div className="ds-figure"><span className="ds-fig-label">Share price (simulated)</span><span className="ds-fig-value" data-testid="v2-report-price">{fmtPrice(end.price)}</span><div className="ds-fig-sub">{fmtPctDelta(end.sinceStartPct)} from $100.00</div></div>
+            <div className="ds-figure"><span className="ds-fig-label">Quarterly revenue</span><span className="ds-fig-value">{fmtM(s.revenue)}</span><div className="ds-fig-sub">{fmtS(s.revenue - history[0].before.revenue)} vs {calendarShort(0)}</div></div>
+            <div className="ds-figure"><span className="ds-fig-label"><Term id="operating-profit">Operating profit</Term></span><span className="ds-fig-value">{fmtM(s.operatingProfit)}</span><div className="ds-fig-sub">{fmtS(s.operatingProfit - history[0].before.operatingProfit)} vs {calendarShort(0)}</div></div>
+            <div className="ds-figure"><span className="ds-fig-label">Cash</span><span className="ds-fig-value">{fmtM(s.cash)}</span><div className="ds-fig-sub">Debt {fmtM(s.financing.debt)}</div></div>
+          </div>
+          <p className="ds-conclusion" style={{ marginTop: 16 }} data-testid="v2-conclusion">{report.conclusion}</p>
+          {gates.length > 0 && <div className="ds-notice ds-notice-bad" style={{ marginTop: 12 }}><Icon name="alert" />{gates.map(g => GATE_TEXT[g.id] ?? g.id).join(' ')}</div>}
+          <div style={{ marginTop: 16 }}>
+            <p className="ds-h4">Three separate measures</p>
+            <table className="ds-table ds-table-compact" data-testid="v2-three-measures">
+              <tbody>
+                <tr><td><b>Business performance</b><span className="ds-method" style={{ display: 'block' }}>The simulation’s own evaluation of the company you built: finances, strategic position and organization.</span></td><td className="num"><span className="ds-score-big" data-testid="v2-final-overall">{sc.overall.toFixed(1)}</span><span className="ds-muted"> / 100</span></td></tr>
+                <tr><td><b>Shareholder value</b><span className="ds-method" style={{ display: 'block' }}>The simulated share price, from $100 at {calendarLabel(0)}.</span></td><td className="num"><b>{fmtPrice(end.price)}</b></td></tr>
+                <tr><td><b>Executive performance</b><span className="ds-method" style={{ display: 'block' }}>Average of the five executive scorecards (section 8).</span></td><td className="num"><b>{(cards.reduce((t, c) => t + c.executive, 0) / cards.length).toFixed(0)}</b><span className="ds-muted"> / 100</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="ds-figures" style={{ marginTop: 16 }} data-testid="v2-final-dimensions">
             {report.dimensions.map(d => (
-              <details key={d.id} className="ds-small"><summary><b>{d.label}</b> components</summary>
-                <div style={{ marginTop: 6 }}>{d.components.map(c => <Meter key={c.label} label={c.label} score={c.score} levelText={lvl(c.score)} />)}</div>
-              </details>
+              <div className="ds-figure" key={d.id}>
+                <span className="ds-fig-label">{d.label}</span>
+                <span className="ds-fig-value" data-testid={`v2-final-${d.id}`}>{d.score.toFixed(1)}</span>
+                <div className="ds-fig-sub">{lvl(d.score)} · {d.measures}</div>
+              </div>
             ))}
           </div>
-        )}
-      </Section>
-
-      <Section eyebrow="Interpretation" title="Strengths, struggles and what is exposed" testId="v2-interpretation">
-        <div className="ds-grid ds-grid-2" style={{ gap: 28 }}>
-          <FindingList testId="v2-strengths" title="What you did well" items={report.strengths} empty="No standout strength in the data — look at the journey for partial successes." tone="good" />
-          <FindingList testId="v2-struggles" title="Where you struggled" items={report.struggles} empty="No major weakness stands out in the data." tone="bad" />
-          <FindingList testId="v2-vulnerabilities" title="Strategic vulnerabilities" items={report.vulnerabilities} empty="No significant exposure is visible in the final company." tone="caution" />
-          <FindingList testId="v2-not-pursued" title="Opportunities you did not pursue" items={report.notPursued} empty="You funded every area and took the options in front of you." tone="neutral" />
-        </div>
-      </Section>
-
-      <Section eyebrow="Your eight-quarter journey" testId="v2-journey">
-        <div className="ds-grid ds-grid-3" style={{ marginBottom: 18 }}>
-          <div><p className="ds-h4">Revenue</p><LineChart label="Revenue" points={trend.map(t => ({ x: t.quarter, y: t.revenue }))} format={v => `$${v.toFixed(0)}M`} zeroLine={false} /></div>
-          <div><p className="ds-h4">Operating profit</p><LineChart label="Operating profit" points={trend.map(t => ({ x: t.quarter, y: t.operatingProfit }))} format={v => `$${v.toFixed(0)}M`} color="var(--ds-s2)" /></div>
-          <div><p className="ds-h4">Cash</p><LineChart label="Cash" points={trend.map(t => ({ x: t.quarter, y: t.cash }))} format={v => `$${v.toFixed(0)}M`} color="var(--ds-s4)" /></div>
-        </div>
-        <div className="ds-timeline">
-          {report.timeline.map(t => {
-            const ag = agreementOf(t.quarter);
-            return (
-              <div className="ds-tl-item" key={t.quarter} data-testid={`v2-journey-q${t.quarter}`}>
-                <div className="ds-tl-q">Q{t.quarter}<span className="ds-tl-cal">{calendarLabel(t.quarter)}</span></div>
-                <div className="ds-tl-body">
-                  <div style={{ fontWeight: 700 }}>{t.event}</div>
-                  <div className="ds-small"><b>Your decision:</b> {t.decision}{ag ? <span className="ds-muted"> · {AGREEMENTS.find(a => a.id === ag)?.label}</span> : null}</div>
-                  <div className="ds-small"><b>Key consequence:</b> {t.consequence}</div>
-                  <div className="ds-tl-metrics"><span>Revenue <b>{fmtM(t.revenue)}</b></span><span>Operating profit <b>{fmtM(t.operatingProfit)}</b></span><span>Cash <b>{fmtM(t.cash)}</b></span></div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Section>
-
-      <Section eyebrow="Decisions that mattered most" testId="v2-pivotal">
-        <div className="ds-stack">
-          {report.pivotal.map(p => (
-            <div key={p.quarter} className="ds-tl-item">
-              <div className="ds-tl-q">Q{p.quarter}<span className="ds-tl-cal">{calendarLabel(p.quarter)}</span></div>
-              <div className="ds-tl-body">
-                <div style={{ fontWeight: 700 }}>{p.decision}</div>
-                <div className="ds-small"><b>Immediate consequence:</b> {p.immediate}</div>
-                <div className="ds-small"><b>Longer-term effect:</b> {p.longerTerm}</div>
-                {p.counterfactual && <div className="ds-small ds-muted" style={{ marginTop: 4 }}><Icon name="bulb" size={12} /> {p.counterfactual}</div>}
-              </div>
+          {mode === 'mba' && (
+            <div className="ds-grid ds-grid-3" style={{ marginTop: 12 }}>
+              {report.dimensions.map(d => (
+                <details key={d.id} className="ds-perspectives"><summary>{d.label} components</summary>
+                  <div style={{ marginTop: 6 }}>{d.components.map(c => <Meter key={c.label} label={c.label} score={c.score} levelText={lvl(c.score)} />)}</div>
+                </details>
+              ))}
             </div>
-          ))}
-        </div>
-      </Section>
+          )}
+        </section>
 
-      <Section eyebrow="Trade-offs, not a winning formula" title="What could you do differently?" testId="v2-tradeoffs">
-        <ol className="ds-numbered">{report.tradeoffs.slice(0, 3).map(t => <li key={t.title}><b>{t.title}</b><br /><span className="ds-small">{t.text}</span></li>)}</ol>
-        {report.tradeoffs.length > 3 && <ol className="ds-numbered" style={{ marginTop: 20 }} start={4}>{report.tradeoffs.slice(3).map(t => <li key={t.title}><b>{t.title}</b><br /><span className="ds-small">{t.text}</span></li>)}</ol>}
-      </Section>
+        <section className="ds-report-section" data-testid="v2-report-shareholder">
+          <h2><span className="ds-sec-n">{sec()}</span>Shareholder value</h2>
+          <div className="ds-grid ds-grid-side">
+            <LineChart testId="v2-final-price-chart" label="Simulated share price by quarter" points={val.points.map(p => ({ x: p.quarter, y: p.price }))} format={v => `$${v.toFixed(0)}`} color="var(--nx-forest)" zeroLine={false} reference={{ y: 100, label: '$100 start' }} size="lg" />
+            <table className="ds-table ds-table-compact">
+              <tbody>
+                <tr><td>{calendarLabel(0)}</td><td className="num">{fmtPrice(s0.price)}</td></tr>
+                <tr><td>{calendarLabel(8)}</td><td className="num"><b>{fmtPrice(end.price)}</b></td></tr>
+                <tr><td>Change</td><td className="num">{fmtPriceDelta(end.sinceStart)} ({fmtPctDelta(end.sinceStartPct)})</td></tr>
+                <tr><td>From present performance</td><td className="num">{fmtPriceDelta(end.presentContribution)}</td></tr>
+                <tr><td>From future expectations</td><td className="num">{fmtPriceDelta(end.expectationsContribution)}</td></tr>
+                {end.ownership < 0.9995 && <tr><td>Ownership retained</td><td className="num">{(end.ownership * 100).toFixed(1)}%</td></tr>}
+                {end.distress > 0 && <tr><td>Distress discount</td><td className="num ds-tone-bad">−{(end.distress * 100).toFixed(0)}%</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <table className="ds-table ds-table-compact" style={{ marginTop: 12 }}>
+            <thead><tr><th>Valuation factor</th><th className="num">Weight</th><th className="num">{calendarShort(0)}</th><th className="num">{calendarShort(8)}</th></tr></thead>
+            <tbody>{FACTOR_IDS.map(k => <tr key={k}><td>{FACTOR_INFO[k].label} <span className="ds-muted">· {FACTOR_INFO[k].horizon === 'expectations' ? 'future expectations' : 'present performance'}</span></td><td className="num">{(val.config.weights[k] * 100).toFixed(0)}%</td><td className="num ds-muted">{(s0.factors[k] * 100).toFixed(0)}</td><td className="num">{(end.factors[k] * 100).toFixed(0)}</td></tr>)}</tbody>
+          </table>
+          <p className="ds-method">Simulated with a documented, deterministic model ({val.version}); the price does not feed back into the simulation. Present-vs-expectations split is the contribution of each factor group relative to {calendarLabel(0)}, before the distress discount, dilution and quarterly smoothing.</p>
+        </section>
 
-      <Section eyebrow="For discussion" title="Questions for your team" testId="v2-questions">
-        <ul className="ds-list" style={{ fontSize: '1.05em' }}>{report.questions.map(q => <li key={q}>{q}</li>)}</ul>
-      </Section>
+        {(['financial', 'commercial', 'product', 'organization'] as const).map(secId => (
+          <section className="ds-report-section" key={secId} data-testid={`v2-report-${secId}`}>
+            <h2><span className="ds-sec-n">{sec()}</span>{secId === 'financial' ? 'Financial performance' : secId === 'commercial' ? 'Commercial performance' : secId === 'product' ? 'Product and innovation' : 'People and organization'}</h2>
+            <KpiTable rows={kpis.filter(k => k.section === secId)} testId={`v2-report-kpis-${secId}`} />
+          </section>
+        ))}
+
+        <section className="ds-report-section" data-testid="v2-report-decisions">
+          <h2><span className="ds-sec-n">{sec()}</span>Strategic decisions</h2>
+          <DecisionHistory report={report} agreementOf={agreementOf} prices={val.points.map(p => p.price)} />
+        </section>
+
+        <section className="ds-report-section" data-testid="v2-report-scorecards">
+          <h2><span className="ds-sec-n">{sec()}</span>Executive scorecards</h2>
+          <ScorecardSummary cards={cards} mode={mode} />
+        </section>
+
+        <section className="ds-report-section" data-testid="v2-report-lessons">
+          <h2><span className="ds-sec-n">{sec()}</span>Leadership lessons</h2>
+          <div className="ds-grid ds-grid-2" data-testid="v2-interpretation">
+            <FindingList testId="v2-strengths" title="What the team did well" items={report.strengths} empty="No standout strength in the data — look at the decision history for partial successes." />
+            <FindingList testId="v2-struggles" title="Where the team struggled" items={report.struggles} empty="No major weakness stands out in the data." />
+            <FindingList testId="v2-vulnerabilities" title="Strategic vulnerabilities" items={report.vulnerabilities} empty="No significant exposure is visible in the final company." />
+            <FindingList testId="v2-not-pursued" title="Opportunities not pursued" items={report.notPursued} empty="The team funded every area and took the options in front of it." />
+          </div>
+          <div style={{ marginTop: 18 }} data-testid="v2-pivotal">
+            <p className="ds-h4">Decisions that mattered most</p>
+            <ul className="ds-list-plain">{report.pivotal.map(p => (
+              <li key={p.quarter}><b>{calendarLabel(p.quarter)} — {p.decision}</b>
+                <div className="ds-small">Immediately: {p.immediate} Longer term: {p.longerTerm}</div>
+                {p.counterfactual && <div className="ds-small ds-muted">{p.counterfactual}</div>}</li>
+            ))}</ul>
+          </div>
+          <div style={{ marginTop: 18 }} data-testid="v2-tradeoffs">
+            <p className="ds-h4">Trade-offs, not a winning formula</p>
+            <ol className="ds-numbered">{report.tradeoffs.map(t => <li key={t.title}><span><b>{t.title}.</b> <span className="ds-small">{t.text}</span></span></li>)}</ol>
+          </div>
+          <div style={{ marginTop: 18 }} data-testid="v2-questions">
+            <p className="ds-h4">Questions for the team</p>
+            <ul className="ds-list">{report.questions.map(q => <li key={q}>{q}</li>)}</ul>
+          </div>
+        </section>
+      </article>
+
+      <BoardDefense teamName={game.teamName} price={end.price} />
     </div>
   );
 }
 
-function FindingList({ title, items, empty, tone, testId }: { title: string; items: Finding[]; empty: string; tone: 'good' | 'bad' | 'caution' | 'neutral'; testId: string }) {
-  const icon = tone === 'good' ? 'check' : tone === 'neutral' ? 'flag' : 'alert';
+function KpiTable({ rows, testId }: { rows: KpiDashboardRow[]; testId: string }) {
+  return (
+    <div className="ds-table-wrap">
+      <table className="ds-table" data-testid={testId}>
+        <thead><tr><th>KPI</th><th className="num">{calendarShort(0)}</th><th className="num">{calendarShort(8)}</th><th className="num">Change</th><th className="num">%</th><th>Interpretation</th></tr></thead>
+        <tbody>{rows.map(r => (
+          <tr key={r.id}>
+            <td>{r.glossary ? <Term id={r.glossary}>{r.label}</Term> : r.label}</td>
+            <td className="num ds-muted">{r.start}</td>
+            <td className="num"><b>{r.end}</b></td>
+            <td className="num"><span className={`ds-tone-${r.tone}`}><span aria-hidden>{r.direction === 'up' ? '▲ ' : r.direction === 'down' ? '▼ ' : ''}</span>{r.change}</span></td>
+            <td className="num ds-muted">{r.pct}</td>
+            <td className="ds-small">{r.interpretation}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function DecisionHistory({ report, agreementOf, prices }: { report: ReturnType<typeof buildLearningReport>; agreementOf: (q: number) => string | null | undefined; prices: number[] }) {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <div className="ds-table-wrap" data-testid="v2-decision-history">
+      <table className="ds-table">
+        <thead><tr><th>Quarter</th><th>Decision</th><th className="num">Revenue</th><th className="num">Op. profit</th><th className="num">Cash</th><th className="num">Share price</th><th className="ds-sr">Detail</th></tr></thead>
+        <tbody>{report.timeline.map(t => {
+          const ag = agreementOf(t.quarter);
+          const isOpen = open === t.quarter;
+          return (
+            <Fragment key={t.quarter}>
+              <tr data-testid={`v2-journey-q${t.quarter}`}>
+                <td style={{ whiteSpace: 'nowrap' }}><b>{calendarLabel(t.quarter)}</b></td>
+                <td className="ds-small">{t.decision}</td>
+                <td className="num">{fmtM(t.revenue)}</td>
+                <td className="num">{fmtM(t.operatingProfit)}</td>
+                <td className="num">{fmtM(t.cash)}</td>
+                <td className="num">{fmtPrice(prices[t.quarter])}</td>
+                <td><button className="ds-btn ds-btn-ghost ds-no-print" style={{ fontSize: 'var(--fs-note)' }} aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : t.quarter)}>{isOpen ? 'Hide' : 'More'}</button></td>
+              </tr>
+              {isOpen && (
+                <tr><td colSpan={7} style={{ background: 'var(--ds-surface-2)' }} className="ds-small">
+                  <div><b>Situation:</b> {t.event}</div>
+                  <div><b>Major consequence:</b> {t.consequence}</div>
+                  {ag && <div><b>How the team decided:</b> {AGREEMENTS.find(a => a.id === ag)?.label}</div>}
+                </td></tr>
+              )}
+            </Fragment>
+          );
+        })}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function ScorecardSummary({ cards, mode }: { cards: ReturnType<typeof allScorecards>; mode: V2PresentationMode }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <div className="ds-stack">
+      <table className="ds-table" data-testid="v2-scorecard-summary">
+        <thead><tr><th>Executive function</th><th className="num">Functional</th><th className="num">Company</th><th className="num">Executive score</th><th>Main challenge</th><th className="ds-sr">Detail</th></tr></thead>
+        <tbody>{cards.map(c => (
+          <tr key={c.role} data-role={c.role}>
+            <td><b>{c.title}</b></td>
+            <td className="num">{c.functional.toFixed(0)}</td>
+            <td className="num">{c.company.toFixed(0)}</td>
+            <td className="num"><b>{c.executive.toFixed(0)}</b></td>
+            <td className="ds-small">{c.challenges[0] ?? <span className="ds-muted">None material</span>}</td>
+            <td><button className="ds-btn ds-btn-ghost ds-no-print" style={{ fontSize: 'var(--fs-note)' }} onClick={() => setOpen(open === c.role ? null : c.role)} aria-expanded={open === c.role}>{open === c.role ? 'Hide' : 'Scorecard'}</button></td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {open && <ScorecardView card={cards.find(c => c.role === open)!} mode={mode} />}
+      <p className="ds-method" style={{ margin: 0 }}>Scorecards rate how the team handled each function, not individual students; in a smaller team one person may have held several roles. Model {EXECUTIVE_VERSION}.</p>
+    </div>
+  );
+}
+
+function FindingList({ title, items, empty, testId }: { title: string; items: Finding[]; empty: string; testId: string }) {
   return (
     <div data-testid={testId}>
-      <p className={`ds-h4 ds-tone-${tone}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Icon name={icon} size={13} />{title}</p>
+      <p className="ds-h4">{title}</p>
       {items.length
-        ? <div className="ds-stack" style={{ gap: 10 }}>{items.map(f => <div key={f.title} style={{ borderTop: '1px solid var(--ds-line)', paddingTop: 8 }}><b>{f.title}.</b> <span className="ds-muted">{f.evidence}</span></div>)}</div>
+        ? <ul className="ds-list-plain">{items.map(f => <li key={f.title}><b>{f.title}.</b> <span className="ds-small" style={{ color: 'var(--ds-ink-2)' }}>{f.evidence}</span></li>)}</ul>
         : <p className="ds-muted">{empty}</p>}
     </div>
+  );
+}
+
+/** Printable board defense: the board's question and a three-minute framework. */
+function BoardDefense({ teamName, price }: { teamName: string; price: number }) {
+  return (
+    <section className="ds-defense" data-testid="v2-board-defense">
+      <p className="ds-verdict-kicker">Board defense · {teamName}</p>
+      <blockquote>“Your board gave you {COMPANY.name} at $100 per share. You had eight quarters to lead it. What value did you create — and was it sustainable?”</blockquote>
+      <p className="ds-small" style={{ marginTop: 0 }}>Closing share price: <b>{fmtPrice(price)}</b>. Prepare a three-minute answer, as a leadership team:</p>
+      <ol>
+        <li><b>The value created (30 seconds).</b> Where the company stands against {calendarLabel(0)}: share price, revenue, profit and cash. State the number, then what it means.</li>
+        <li><b>The strategy and why (45 seconds).</b> The direction you committed to, the evidence you had, and the trade-off you accepted.</li>
+        <li><b>The decisive moments (45 seconds).</b> Two decisions that shaped the result — one that worked and one you would revisit — and what drove each outcome.</li>
+        <li><b>Is it sustainable? (45 seconds).</b> Capabilities, customers, people and finances: what will carry the company forward, and what is exposed.</li>
+        <li><b>What the board should expect next (15 seconds).</b> One commitment and one risk you would put before the board.</li>
+      </ol>
+      <div className="ds-stack" style={{ marginTop: 14, gap: 0 }} aria-hidden>{Array.from({ length: 5 }, (_, i) => <div key={i} className="ds-lines" />)}</div>
+      <div className="ds-actions ds-no-print"><button className="ds-btn ds-btn-secondary" onClick={() => window.print()} data-testid="v2-print-defense">Print the board pack</button></div>
+    </section>
   );
 }

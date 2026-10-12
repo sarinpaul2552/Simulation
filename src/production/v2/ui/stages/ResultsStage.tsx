@@ -5,15 +5,23 @@ import { V2_TOTAL_QUARTERS } from '../../adapter';
 import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { pick } from '../../content/modes';
-import { CHAPTERS } from '../../content/chapters';
 import { gameHistory, QuarterRecord } from '../../insights/history';
 import { financialCards, healthIndicators, trendSeries, benchmarks, fmtM, KpiCard } from '../../insights/dashboard';
+import { valuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, type PricePoint } from '../../insights/valuation';
+import { quarterAttribution, type AttributionRow } from '../../insights/attribution';
+import { dashboardData, healthMovements } from '../../insights/intelligence';
+import { allScorecards, SCORECARD_ROLES, ROLE_SCORECARD_TITLE } from '../../insights/executive';
+import { BUCKETS, BUCKET_INFO } from '../../insights/consequences';
+import { AttributionTable, HealthTable, MetricExplorer, Move, ScorecardView, SegmentMix, SharePricePanel, ValuationBridgeView } from '../ds/intel';
+import { Term } from '../ds/glossary';
+import { calendarShort } from '../../content/calendar';
+import type { V2Role } from '../../types';
 import { quarterStory, whatToWatch, Impact } from '../../insights/explain';
 import { cashBridge, decisionConsequences, executiveHeadline, CashBridge, DecisionConsequence } from '../../insights/consequences';
-import { reflectionEvidence } from '../../insights/reflection';
+import { reflectionEvidence, segmentReflection } from '../../insights/reflection';
 import { BELIEFS, LEARNING_OPTIONS, encodeReflection, decodeReflection } from '../../content/deliberationContent';
 import { AGREEMENTS } from './CommitStage';
-import { Card, ChoiceList, Figure, Icon, KpiTile, LineChart, Meter, Section, SegmentBars } from '../ds/components';
+import { Card, ChoiceList, Figure, Icon, KpiTile, LineChart, Section, Segmented } from '../ds/components';
 
 const KIND_LABEL: Record<Impact['kind'], { title: string; ug: string; icon: string }> = {
   market: { title: 'Market impact', ug: 'What the market did', icon: 'globe' },
@@ -30,7 +38,7 @@ export function ResultsStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Pre
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-results" data-results-quarter={q}>
       <QuarterDashboard history={history} quarter={q} mode={mode} />
-      <ReflectionCard ctl={ctl} mode={mode} rec={rec} />
+      <ReflectionCard ctl={ctl} mode={mode} rec={rec} history={history} />
     </div>
   );
 }
@@ -46,12 +54,15 @@ export function QuarterDashboard({ history, quarter, mode }: { history: QuarterR
   const top = consequences[0];
   const watch = whatToWatch(rec.after, mode);
   const bridge = cashBridge(rec);
+  const val = useMemo(() => valuationSeries(history.slice(0, quarter)), [history, quarter]);
+  const pp = val.points[quarter];
+  const attribution = useMemo(() => quarterAttribution(rec), [rec]);
   const wide = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 960px)').matches;
   return (
     <div className="ds-stack-lg" data-testid="v2-results">
-      {/* Level 1 — Executive summary */}
-      <section className="ds-verdict ds-enter" data-testid="v2-explanation">
-        <span className="ds-verdict-kicker">{calendarLabel(quarter)} results · {CHAPTERS[quarter].title}</span>
+      {/* Level 1 — the board paper headline */}
+      <section className="ds-verdict" data-testid="v2-explanation">
+        <span className="ds-verdict-kicker">{calendarLabel(quarter)} results · quarterly board paper</span>
         <h1 className="ds-verdict-text" data-testid="v2-headline-verdict" data-tone={headline.tone}>{headline.text}</h1>
         {mode === 'mba' && <div className="ds-verdict-basis">{headline.basis}</div>}
         <div className="ds-figures" data-testid="v2-figures">
@@ -59,36 +70,78 @@ export function QuarterDashboard({ history, quarter, mode }: { history: QuarterR
             const c = card(id);
             return <Figure key={id} testId={`v2-fig-${id}`} label={<Termed label={c.label} />} value={c.display} delta={{ direction: c.direction, tone: c.tone, text: deltaText(c) }} sub={`${calendarLabel(quarter - 1)}: ${c.previousDisplay}`} />;
           })}
+          <Figure testId="v2-fig-price" label="Share price (simulated)" value={fmtPrice(pp.price)}
+            delta={{ direction: pp.change > 0.005 ? 'up' : pp.change < -0.005 ? 'down' : 'flat', tone: pp.change > 0.005 ? 'good' : pp.change < -0.005 ? 'bad' : 'neutral', text: `${fmtPriceDelta(pp.change)} (${fmtPctDelta(pp.changePct)})` }}
+            sub={`${fmtPctDelta(pp.sinceStartPct)} since ${calendarLabel(0)} ($100)`} />
         </div>
       </section>
       <span className="ds-sr" data-testid="v2-res-revenue">{fmtM(rec.after.revenue)}</span>
       <span className="ds-sr" data-testid="v2-res-cash">{fmtM(rec.after.cash)}</span>
       <span className="ds-sr" data-testid="v2-res-solvency">{rec.after.solvency.status}{rec.after.solvency.distressed ? ' · distressed' : ''}</span>
 
-      <div className="ds-grid ds-grid-main ds-enter-2">
-        {top && <ConsequenceView c={top} />}
-        <div className="ds-stack">
+      <QuarterSequence rec={rec} quarter={quarter} attribution={attribution} pp={pp} prevPrice={val.points[quarter - 1].price} />
+
+      <div className="ds-grid ds-grid-main">
+        <div className="ds-stack-lg">
+          {top && <ConsequenceView c={top} />}
+          <Section eyebrow="What moved, and why" testId="v2-why">
+            <AttributionTable rows={attribution} quarter={quarter} />
+          </Section>
+        </div>
+        <div className="ds-stack-lg">
           <div className="ds-next" data-testid="v2-next">
             <Icon name="eye" size={18} />
-            <div><p className="ds-h4" style={{ marginBottom: 2 }}>What happens next?</p>
+            <div><p className="ds-h4" style={{ marginBottom: 2 }}>What to watch next</p>
               <div>{watch ? watch.text : 'Nothing unusual is building up. Keep an eye on cash and customers.'}</div>
               <div className="ds-muted" style={{ marginTop: 4 }}>A leading indicator, not a forecast.</div></div>
           </div>
           <BridgeView bridge={bridge} mode={mode} />
+          <section>
+            <p className="ds-eyebrow">What moved the share price</p>
+            <ValuationBridgeView point={pp} previous={val.points[quarter - 1]} mode={mode} />
+          </section>
         </div>
       </div>
 
-      {/* Level 2 — Explore the business */}
-      <ExploreBusiness history={history} quarter={quarter} mode={mode} />
+      {/* Level 2 — executive intelligence */}
+      <ExecutiveIntelligence history={history} quarter={quarter} mode={mode} />
 
-      {/* Level 3 — Deep analysis */}
+      {/* Level 3 — deep analysis */}
       <details className="ds-fold" open={mode === 'mba' && wide} data-testid="v2-deep">
-        <summary><span><span className="ds-eyebrow" style={{ margin: 0 }}>Deep analysis</span></span><span className="ds-fold-hint">{mode === 'mba' ? 'Diagnostics, market vs decisions, benchmarks, formulas' : 'More detail for the curious'}</span></summary>
+        <summary><span>Deep analysis</span><span className="ds-fold-hint">{mode === 'mba' ? 'Diagnostics, market vs decisions, benchmarks, formulas' : 'More detail for the curious'}</span></summary>
         <div className="ds-fold-body"><DeepAnalysis history={history} quarter={quarter} mode={mode} consequences={consequences} cards={cards} /></div>
       </details>
     </div>
   );
 }
+
+/** Starting position → decision → market movement → business impact → ending position. */
+function QuarterSequence({ rec, quarter, attribution, pp, prevPrice }: { rec: QuarterRecord; quarter: number; attribution: AttributionRow[]; pp: PricePoint; prevPrice: number }) {
+  const b = rec.before, a = rec.after;
+  const inv = BUCKETS.filter(k => (rec.input.allocation[k] ?? 0) > 0).map(k => `${BUCKET_INFO[k].short} ${fmtM(rec.input.allocation[k])}`);
+  const kept = rec.input.allocation.cashReserve ?? 0;
+  const extra = [rec.input.destination && 'strategic destination committed', rec.input.opportunity && (rec.input.opportunity.accept ? 'contract accepted' : 'contract declined'),
+    rec.input.management && Object.keys(rec.input.management).length > 0 && 'recession actions', rec.input.crisisResponse && 'crisis response', rec.input.finalOption && 'final strategic move',
+    (rec.input.financing ?? []).length > 0 && 'financing'].filter(Boolean) as string[];
+  const market = attribution.filter(r => r.components.some(c => c.kind === 'market' && Math.abs(c.amount) >= 0.05));
+  const mUp = market.filter(r => { const m = r.components.find(c => c.kind === 'market')!.amount; return (m > 0) === (r.better === 'higher'); }).length;
+  const steps: { id: string; label: string; body: string }[] = [
+    { id: 'start', label: `Starting position (${calendarShort(quarter - 1)})`, body: `Revenue ${fmtM(b.revenue)} · operating profit ${fmtM(b.operatingProfit)} · cash ${fmtM(b.cash)} · share price ${fmtPrice(prevPrice)}` },
+    { id: 'decision', label: 'Decision', body: `${inv.length ? `Invested ${inv.join(', ')}` : 'No strategic investment'}${kept > 0.005 ? `; kept ${fmtM(kept)} as cash` : ''}${extra.length ? `; ${extra.join(', ')}` : ''}.` },
+    { id: 'market', label: 'Market movement', body: market.length ? `Market conditions moved ${market.length} commercial indicator${market.length === 1 ? '' : 's'}: ${mUp} in your favour, ${market.length - mUp} against. The same conditions applied to every team.` : 'Market conditions had no material effect on your indicators this quarter.' },
+    { id: 'impact', label: 'Business impact', body: `Revenue ${fmtSigned(a.revenue - b.revenue)}, operating profit ${fmtSigned(a.operatingProfit - b.operatingProfit)}, cash ${fmtSigned(a.cash - b.cash)}; share price ${fmtPriceDelta(pp.price - prevPrice)}.` },
+    { id: 'end', label: `Ending position (${calendarShort(quarter)})`, body: `Revenue ${fmtM(a.revenue)} · operating profit ${fmtM(a.operatingProfit)} · cash ${fmtM(a.cash)} · share price ${fmtPrice(pp.price)}` },
+  ];
+  return (
+    <section data-testid="v2-sequence">
+      <p className="ds-eyebrow">The quarter in sequence</p>
+      <table className="ds-table ds-seq"><tbody>
+        {steps.map((st, i) => <tr key={st.id} data-step={st.id}><td><span className="ds-muted" style={{ marginRight: 6 }}>{i + 1}</span><b>{st.label}</b></td><td>{st.body}</td></tr>)}
+      </tbody></table>
+    </section>
+  );
+}
+const fmtSigned = (x: number) => (Math.abs(x) < 0.05 ? '±$0.0M' : `${x > 0 ? '+' : '−'}$${Math.abs(x).toFixed(1)}M`);
 
 function ConsequenceView({ c }: { c: DecisionConsequence }) {
   return (
@@ -148,60 +201,84 @@ export function BridgeView({ bridge, mode }: { bridge: CashBridge; mode: V2Prese
 }
 
 const TABS = [
-  { id: 'financial', label: 'Financial trends' },
-  { id: 'segments', label: 'Revenue by business' },
-  { id: 'customer', label: 'Customers' },
-  { id: 'product', label: 'Product' },
-  { id: 'organization', label: 'People & capacity' },
-  { id: 'strategy', label: 'Strategic readiness' },
+  { id: 'overview', label: 'Executive overview' },
+  { id: 'financial', label: 'Financial' },
+  { id: 'commercial', label: 'Commercial' },
+  { id: 'product', label: 'Product and capability' },
+  { id: 'organization', label: 'Organization' },
+  { id: 'price', label: 'Share price' },
+  { id: 'scorecards', label: 'Executive scorecards' },
 ] as const;
 
-function ExploreBusiness({ history, quarter, mode }: { history: QuarterRecord[]; quarter: number; mode: V2PresentationMode }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('financial');
-  const rec = history[quarter - 1];
-  const prev = quarter > 1 ? history[quarter - 2].after : null;
-  const trend = trendSeries(history);
-  const health = healthIndicators(rec.after);
-  const prevHealth = prev ? healthIndicators(prev) : null;
-  const ind = health.find(h => h.id === tab);
+/** Executive intelligence dashboard: overview, four functional sections, share price and scorecards. */
+export function ExecutiveIntelligence({ history, quarter, mode }: { history: QuarterRecord[]; quarter: number; mode: V2PresentationMode }) {
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('overview');
+  const data = useMemo(() => dashboardData(history, quarter), [history, quarter]);
+  const val = useMemo(() => valuationSeries(history.slice(0, quarter)), [history, quarter]);
+  const health = useMemo(() => healthMovements(history, quarter), [history, quarter]);
+  const [role, setRole] = useState<V2Role>('CEO');
+  const cards = useMemo(() => allScorecards(history.slice(0, quarter), quarter), [history, quarter]);
+  const s = history[quarter - 1].after;
+  const trend = trendSeries(history.slice(0, quarter));
+  const margin = s.revenue > 0 ? s.operatingProfit / s.revenue : 0;
   return (
-    <Section eyebrow="Explore the business" testId="v2-explore">
-      <div className="ds-tabs" role="tablist" aria-label="Explore the business">
+    <Section eyebrow="Executive intelligence" testId="v2-explore">
+      <div className="ds-tabs" role="tablist" aria-label="Executive intelligence">
         {TABS.map(t => <button key={t.id} role="tab" aria-selected={tab === t.id} data-testid={`v2-tab-${t.id}`} onClick={() => setTab(t.id)}>{t.label}</button>)}
       </div>
-      {tab === 'financial' && (
-        <div className="ds-grid ds-grid-3" data-testid="v2-charts">
-          <div><p className="ds-h4">Revenue</p><LineChart testId="v2-chart-revenue" label="Revenue by quarter" points={trend.map(t => ({ x: t.quarter, y: t.revenue }))} format={v => `$${v.toFixed(0)}M`} zeroLine={false} color="var(--ds-s1)" /></div>
-          <div><p className="ds-h4">Operating profit</p><LineChart testId="v2-chart-op" label="Operating profit by quarter" points={trend.map(t => ({ x: t.quarter, y: t.operatingProfit }))} format={v => `$${v.toFixed(0)}M`} color="var(--ds-s2)" /></div>
-          <div><p className="ds-h4">Cash</p><LineChart testId="v2-chart-cash" label="Cash by quarter" points={trend.map(t => ({ x: t.quarter, y: t.cash }))} format={v => `$${v.toFixed(0)}M`} color="var(--ds-s4)" /></div>
-        </div>
-      )}
-      {tab === 'segments' && (
-        <div className="ds-grid ds-grid-main">
-          <SegmentBars testId="v2-chart-segments" rows={trend.map(t => ({ quarter: t.quarter, values: [
-            { key: 'consumer', label: 'Consumer', value: t.segments.consumer }, { key: 'enterprise', label: 'Enterprise', value: t.segments.enterprise },
-            { key: 'aiNative', label: 'AI-native', value: t.segments.aiNative }, { key: 'university', label: 'University', value: t.segments.university }] }))} />
-          <table className="ds-table">
-            <thead><tr><th>Business</th><th style={{ textAlign: 'right' }}>{calendarLabel(quarter)}</th><th style={{ textAlign: 'right' }}>Change</th></tr></thead>
-            <tbody>{(['consumer', 'enterprise', 'aiNative', 'university'] as const).map(k => {
-              const now = rec.after.segmentRevenue[k], before = rec.before.segmentRevenue[k];
-              return <tr key={k}><td>{{ consumer: 'Consumer', enterprise: 'Enterprise', aiNative: 'AI-native', university: 'University' }[k]}</td><td style={{ textAlign: 'right' }}>{fmtM(now)}</td><td style={{ textAlign: 'right' }} className={now - before > 0.05 ? 'ds-tone-good' : now - before < -0.05 ? 'ds-tone-bad' : ''}>{now - before >= 0 ? '+' : '−'}${Math.abs(now - before).toFixed(1)}M</td></tr>;
-            })}</tbody>
-          </table>
-        </div>
-      )}
-      {ind && (
-        <div className="ds-grid ds-grid-main" data-testid={`v2-health-${ind.id}`} style={tab === 'financial' ? { marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--ds-line)' } : undefined}>
-          <div>
-            <Meter label={ind.label} score={ind.score} levelText={ind.level} />
-            <p style={{ margin: '6px 0 0' }}>{ind.summary}</p>
-            <p className="ds-muted" style={{ margin: '6px 0 0' }}>A dashboard interpretation of recorded values — not part of your score.</p>
+      {tab === 'overview' && (
+        <div className="ds-stack-lg" data-testid="v2-overview">
+          <div className="ds-grid ds-grid-kpi" data-testid="v2-overview-kpis">
+            {[
+              { l: 'Revenue', v: fmtM(s.revenue) }, { l: 'Operating profit', v: fmtM(s.operatingProfit) }, { l: 'Operating margin', v: `${(margin * 100).toFixed(1)}%` },
+              { l: 'Cash', v: fmtM(s.cash) }, { l: 'Share price', v: fmtPrice(val.points[quarter].price) },
+            ].map(k => <div key={k.l} className="ds-kpi"><span className="ds-kpi-label"><Termed label={k.l} /></span><span className="ds-kpi-value">{k.v}</span></div>)}
           </div>
-          <table className="ds-table">
-            <thead><tr><th>Indicator</th><th style={{ textAlign: 'right' }}>Now</th>{prevHealth && <th style={{ textAlign: 'right' }}>{calendarLabel(quarter - 1)}</th>}</tr></thead>
-            <tbody>{ind.drivers.map((d, i) => <tr key={d.label}><td><Termed label={d.label} /></td><td style={{ textAlign: 'right' }}><b>{d.value}</b></td>{prevHealth && <td style={{ textAlign: 'right' }} className="ds-muted">{prevHealth.find(h => h.id === ind.id)?.drivers[i]?.value ?? '—'}</td>}</tr>)}</tbody>
-          </table>
-          {mode === 'mba' && <p className="ds-muted" style={{ gridColumn: '1 / -1', margin: 0 }}>How it is calculated: {ind.formula}</p>}
+          <div className="ds-grid ds-grid-3" data-testid="v2-charts">
+            <div><p className="ds-h4">Revenue</p><LineChart testId="v2-chart-revenue" label="Revenue by quarter" points={trend.map(t => ({ x: t.quarter, y: t.revenue }))} format={v => `$${v.toFixed(0)}M`} zeroLine={false} color="var(--nx-ink)" reference={{ y: trend[0].revenue, label: calendarShort(0) }} /></div>
+            <div><p className="ds-h4"><Term id="operating-profit">Operating profit</Term></p><LineChart testId="v2-chart-op" label="Operating profit by quarter" points={trend.map(t => ({ x: t.quarter, y: t.operatingProfit }))} format={v => `$${v.toFixed(0)}M`} color="var(--nx-ink)" reference={{ y: trend[0].operatingProfit, label: calendarShort(0) }} /></div>
+            <div><p className="ds-h4">Share price</p><LineChart testId="v2-chart-price-mini" label="Share price by quarter" points={val.points.map(p => ({ x: p.quarter, y: p.price }))} format={v => `$${v.toFixed(0)}`} zeroLine={false} color="var(--nx-forest)" reference={{ y: 100, label: '$100' }} /></div>
+          </div>
+          <div>
+            <p className="ds-h4">Business health — movement this quarter and since {calendarLabel(0)}</p>
+            <HealthTable rows={health} quarter={quarter} mode={mode} />
+          </div>
+        </div>
+      )}
+      {tab === 'financial' && (
+        <div className="ds-stack-lg">
+          <MetricExplorer data={data} section="financial" />
+          <div className="ds-table-wrap">
+            <table className="ds-table ds-table-compact" data-testid="v2-cash-history">
+              <caption>Cash movement by quarter (recorded ledger)</caption>
+              <thead><tr><th>Quarter</th><th className="num">Opening</th><th className="num">Operating profit</th><th className="num">Investment</th><th className="num">One-off costs</th><th className="num">Financing</th><th className="num">Closing</th></tr></thead>
+              <tbody>{history.slice(0, quarter).map(h => { const b = cashBridge(h); return <tr key={h.quarter}><td>{calendarLabel(h.quarter)}</td><td className="num">{fmtM(b.opening)}</td><td className="num">{fmtSigned(b.operatingProfit)}</td><td className="num">{fmtSigned(-b.investment)}</td><td className="num">{fmtSigned(-b.eventCosts)}</td><td className="num">{fmtSigned(b.financing)}</td><td className="num"><b>{fmtM(b.closing)}</b></td></tr>; })}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {tab === 'commercial' && (
+        <div className="ds-stack-lg">
+          <MetricExplorer data={data} section="commercial" />
+          <div className="ds-grid ds-grid-side">
+            <div><p className="ds-h4">Revenue by business</p><SegmentMix data={data} /></div>
+            <table className="ds-table ds-table-compact">
+              <thead><tr><th>Business</th><th className="num">{calendarShort(0)}</th><th className="num">{calendarShort(quarter)}</th><th className="num">Change</th></tr></thead>
+              <tbody>{(['consumer', 'enterprise', 'aiNative', 'university'] as const).map(k => {
+                const now = s.segmentRevenue[k], st = data.states[0].segmentRevenue[k];
+                return <tr key={k}><td>{{ consumer: 'Consumer', enterprise: 'Enterprise', aiNative: 'AI-native', university: 'University' }[k]}</td><td className="num ds-muted">{fmtM(st)}</td><td className="num">{fmtM(now)}</td><td className="num"><Move d={now - st} eps={0.05} tone={Math.abs(now - st) < 0.05 ? 'neutral' : now > st ? 'good' : 'bad'} text={fmtSigned(now - st)} /></td></tr>;
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {tab === 'product' && <MetricExplorer data={data} section="product" />}
+      {tab === 'organization' && <MetricExplorer data={data} section="organization" />}
+      {tab === 'price' && <SharePricePanel val={val} quarter={quarter} mode={mode} />}
+      {tab === 'scorecards' && (
+        <div className="ds-stack" data-testid="v2-scorecards">
+          <Segmented testIdPrefix="v2-scorecard-role" value={role} onChange={setRole} options={SCORECARD_ROLES.map(r => ({ id: r, label: ROLE_SCORECARD_TITLE[r] }))} />
+          <ScorecardView card={cards.find(c => c.role === role)!} mode={mode} />
         </div>
       )}
     </Section>
@@ -287,7 +364,7 @@ function StoryCard({ kind, title, icon, impact, mode, empty }: { kind: 'challeng
   );
 }
 
-function ReflectionCard({ ctl, mode, rec }: { ctl: V2TeamController; mode: V2PresentationMode; rec: ReturnType<typeof gameHistory>[number] }) {
+function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mode: V2PresentationMode; rec: ReturnType<typeof gameHistory>[number]; history: QuarterRecord[] }) {
   const game = ctl.game!;
   const q = game.record.completed_quarter;
   const saved = game.resolutions.find(r => r.quarter === q);
@@ -317,7 +394,8 @@ function ReflectionCard({ ctl, mode, rec }: { ctl: V2TeamController; mode: V2Pre
 
   return (
     <Card title="Reflect and learn" sub="Quick — choose what fits" icon="bulb" testId="v2-phase-reflect">
-      <div className="ds-grid ds-grid-2">
+      <SegmentReflection rec={rec} history={history} quarter={q} />
+      <div className="ds-grid ds-grid-2" style={{ marginTop: 18 }}>
         <div className="ds-stack">
           <div>
             <p className="ds-h4">You expected</p>
@@ -355,5 +433,34 @@ function ReflectionCard({ ctl, mode, rec }: { ctl: V2TeamController; mode: V2Pre
         </div>
       )}
     </Card>
+  );
+}
+
+/** All four businesses: start, now, this quarter, money allocated, and the capability behind each. */
+function SegmentReflection({ history, quarter }: { rec: QuarterRecord; history: QuarterRecord[]; quarter: number }) {
+  const rows = segmentReflection(history, quarter);
+  const neglected = rows.filter(r => r.neglected);
+  return (
+    <div data-testid="v2-reflect-segments">
+      <p className="ds-h4">All four businesses</p>
+      <div className="ds-table-wrap">
+        <table className="ds-table ds-table-compact">
+          <thead><tr><th>Business</th><th className="num">Revenue {calendarShort(0)}</th><th className="num">Now</th><th className="num">This quarter</th><th className="num">Invested this quarter</th><th className="num">Invested to date</th><th className="num">Capability {calendarShort(0)} → now</th></tr></thead>
+          <tbody>{rows.map(r => (
+            <tr key={r.key} data-segment={r.key}>
+              <td>{r.label}</td>
+              <td className="num ds-muted">{fmtM(r.start)}</td>
+              <td className="num"><b>{fmtM(r.current)}</b></td>
+              <td className="num"><Move d={r.quarterMove} eps={0.05} tone={Math.abs(r.quarterMove) < 0.05 ? 'neutral' : r.quarterMove > 0 ? 'good' : 'bad'} text={fmtSigned(r.quarterMove)} /></td>
+              <td className="num">{fmtM(r.allocatedThisQuarter)}</td>
+              <td className="num">{fmtM(r.allocatedTotal)}</td>
+              <td className="num">{r.capabilityStart.toFixed(0)} → {r.capabilityNow.toFixed(0)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      {neglected.length > 0 && <ul className="ds-list ds-small" data-testid="v2-reflect-neglected" style={{ marginTop: 8 }}>{neglected.map(r => <li key={r.key}>{r.neglected}</li>)}</ul>}
+      <p className="ds-method" style={{ margin: '6px 0 0' }}>Recorded values only. Each business also depends on shared capabilities such as talent, trust and product quality, and on market conditions.</p>
+    </div>
   );
 }

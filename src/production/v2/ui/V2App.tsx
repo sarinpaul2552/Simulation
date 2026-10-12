@@ -8,7 +8,6 @@ import { teamSession, facilitatorSession } from './storage';
 import { V2TeamGame } from './V2TeamGame';
 import { V2Facilitator } from './V2Facilitator';
 import { ErrorBanner, Icon, Segmented } from './ds/components';
-import { CHAPTERS } from '../content/chapters';
 import './ds/ds.css';
 
 type Screen =
@@ -51,17 +50,12 @@ export default function V2App({ onOpenLegacy }: { onOpenLegacy?: () => void }) {
       return (
         <div className="ds-root" data-testid="v2-home">
           <main className="ds-shell ds-stack-lg">
-            <section className="ds-chapter ds-enter" data-chapter-title="home">
-              <span className="ds-chapter-num" aria-hidden="true">8</span>
-              <span className="ds-chapter-kicker">Business strategy simulation · eight quarters · five leaders</span>
-              <h1 className="ds-chapter-title" style={{ maxWidth: '16ch' }}>Lead a learning company through disruption.</h1>
-              <p className="ds-chapter-sub">Every quarter brings new evidence, hard trade-offs and real consequences. Build the company you believe in — then live with it.</p>
-              <div className="ds-chapter-rule" />
-              <ol className="ds-row" style={{ listStyle: 'none', padding: 0, margin: 0, gap: '6px 18px', color: 'var(--ds-board-muted)', fontSize: '0.86em' }}>
-                {Object.values(CHAPTERS).map(c => <li key={c.quarter}><b style={{ color: 'var(--ds-brass)' }}>Q{c.quarter}</b> {c.title}</li>)}
-              </ol>
+            <section className="ds-chapter" data-chapter-title="home">
+              <span className="ds-chapter-kicker">Executive leadership simulation · eight quarters · five executive roles</span>
+              <h1 className="ds-chapter-title" style={{ maxWidth: '22ch' }}>Lead NexLearn through eight quarters of change.</h1>
+              <p className="ds-chapter-sub">Read the evidence, argue the trade-offs, commit as a leadership team — and answer to the board for the value you create.</p>
             </section>
-            <div className="ds-grid ds-grid-3 ds-enter-2">
+            <div className="ds-grid ds-grid-3">
               <button className="ds-card ds-choice" data-testid="v2-home-team" onClick={() => setScreen({ kind: 'team-join' })}><Icon name="users" size={22} /><span><span className="ds-choice-title">Join as a team</span><span className="ds-muted" style={{ display: 'block' }}>Enter your session and team codes.</span></span></button>
               <button className="ds-card ds-choice" data-testid="v2-home-facilitator" onClick={() => setScreen({ kind: 'fac-setup' })}><Icon name="flag" size={22} /><span><span className="ds-choice-title">Facilitator: new session</span><span className="ds-muted" style={{ display: 'block' }}>Create teams and choose the class mode.</span></span></button>
               <button className="ds-card ds-choice" data-testid="v2-home-resume" onClick={() => setScreen({ kind: 'fac-resume' })}><Icon name="clock" size={22} /><span><span className="ds-choice-title">Facilitator: resume</span><span className="ds-muted" style={{ display: 'block' }}>Session code and admin PIN.</span></span></button>

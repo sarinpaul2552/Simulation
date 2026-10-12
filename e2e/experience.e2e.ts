@@ -30,6 +30,7 @@ function plan(q: number): V2PlayerQuarterInput {
 
 async function noHorizontalScroll(page: Page) {
   const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  if (over > 1) console.log('OVERFLOW', page.viewportSize(), await page.evaluate(() => { const w = document.documentElement.clientWidth; return [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > w + 1).slice(0, 8).map(e => `${e.tagName}.${(e as HTMLElement).className}[${(e as HTMLElement).dataset.testid ?? ''}] ${Math.round(e.getBoundingClientRect().right)}`); }));
   expect(over).toBeLessThanOrEqual(1);
 }
 
@@ -200,7 +201,7 @@ test('responsive: Q2 reference screens at laptop, tablet, mobile and projector w
   await page.evaluate(() => window.scrollTo(0, 0));
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/q2-executive-summary.png` });
   if (SHOTS) await page.getByTestId('v2-cash-bridge').screenshot({ path: `${SHOTS}/q2-cash-bridge.png` });
-  for (const t of ['segments', 'customer', 'product', 'organization', 'strategy', 'financial'] as const) {
+  for (const t of ['financial', 'commercial', 'product', 'organization', 'price', 'scorecards', 'overview'] as const) {
     await page.getByTestId(`v2-tab-${t}`).click();
     await expect(page.getByTestId(`v2-tab-${t}`)).toHaveAttribute('aria-selected', 'true');
   }

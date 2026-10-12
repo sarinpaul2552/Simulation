@@ -16,6 +16,8 @@ import { FinalStage } from './stages/FinalStage';
 import './ds/ds.css';
 import { GlossaryMode, GlossaryPanel } from './ds/glossary';
 import { CompanyIntro } from './stages/CompanyIntro';
+import { valuationSeries, fmtPrice } from '../insights/valuation';
+import { gameHistory } from '../insights/history';
 import { COMPANY } from '../content/company';
 
 /** Four student-facing stages over the unchanged server phases. */
@@ -72,6 +74,7 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
   const completedPhases = ['results', 'reflect', 'final'];
   const quarterShown = completedPhases.includes(phase!) ? game.record.completed_quarter : game.record.completed_quarter + 1;
   const stage = stageOf(phase!, commitment === 'team_commitment');
+  const price = valuationSeries(gameHistory(game.snapshot)).points[game.snapshot.completedQuarter].price;
   return (
     <GlossaryMode.Provider value={mode}>
     <div className="ds-root" data-testid="v2-team-game" data-phase={phase} data-quarter={quarterShown} data-mode={mode} data-commitment={commitment} data-chapter={phase === 'final' ? 8 : quarterShown}>
@@ -83,13 +86,14 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
             <span className="ds-sr">Completed <b data-testid="v2-completed">{game.snapshot.completedQuarter}</b>/8</span>
             <span>Revenue <b>{money(s.revenue)}</b></span>
             <span>Cash <b data-testid="v2-cash">{money(s.cash)}</b></span>
+            <span>{COMPANY.ticker} <b data-testid="v2-topbar-price">{fmtPrice(price)}</b></span>
             <span>Strategy <b data-testid="v2-destination">{destinationName(s.destination?.id)}</b></span>
             {s.solvency.distressed && <span className="ds-badge ds-badge-bad" data-testid="v2-distressed"><Icon name="alert" size={12} />Distressed</span>}
             {s.solvency.status === 'insolvent' && <span className="ds-badge ds-badge-bad"><Icon name="alert" size={12} />Insolvent</span>}
           </div>
           <span className="ds-spacer" />
-          <span className="ds-meta">{MODE_LABEL[mode]} · {deviceRole ? `You are the ${deviceRole} · ` : ''}{teamCode}</span>
-          <button onClick={() => setPanel('company')} data-testid="v2-open-company">About {COMPANY.name}</button>
+          <span className="ds-meta ds-topbar-code">{MODE_LABEL[mode]} · {deviceRole ? `You are the ${deviceRole} · ` : ''}{teamCode}</span>
+          <button onClick={() => setPanel('company')} data-testid="v2-open-company">About</button>
           <button onClick={() => setPanel('glossary')} data-testid="v2-open-glossary">Glossary</button>
           <button onClick={onExit}>Leave</button>
         </div>

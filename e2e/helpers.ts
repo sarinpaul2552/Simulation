@@ -193,6 +193,10 @@ export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts:
   await expect(page.getByTestId('v2-figures')).toBeVisible();
   await expect(page.getByTestId('v2-cash-bridge')).toHaveAttribute('data-reconciles', 'true');
   await expect(page.getByTestId('v2-consequence')).toBeVisible();
+  // Batch 8 · Stages 2–3: the quarter sequence, recorded attribution and a reconciling valuation bridge
+  await expect(page.getByTestId('v2-sequence')).toBeVisible();
+  await expect(page.getByTestId('v2-attribution')).toBeVisible();
+  await expect(page.getByTestId('v2-valuation-bridge')).toHaveAttribute('data-reconciles', 'true');
   await expect(page.getByTestId('v2-expected')).not.toHaveText('No belief was recorded.');
   if (opts.onResults) await opts.onResults(page);
   await expect(page.getByTestId('v2-next-quarter')).toBeDisabled(); // a learning choice is required

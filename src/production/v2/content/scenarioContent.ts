@@ -32,7 +32,7 @@ export const QUARTER_CARDS: Record<number, QuarterCard> = {
       'Business is steady. Consumers keep subscribing, companies keep renewing their training contracts, and universities are stable. People are talking about AI tutors, but nobody is paying for them in large numbers yet. The board gives you up to $30M to invest.',
       'The learning market is healthy: consumer subscriptions are steady, enterprise renewals are on track and university partners are stable. Generative-AI tutoring is widely discussed but commercially unproven. The board authorizes up to $30M of strategic investment with no obvious winning segment.'),
     whyItMatters: [
-      mt('Investments take one to three quarters to turn into real capability — what you fund now shapes the company you can be later.', 'Capability investments mature over 1–3 quarters, so Q1 2023 allocation sets the option set for the Q4 2023 commitment and beyond.'),
+      mt('Investments take one to three quarters to turn into real capability — what you fund now shapes the company you can be later.', 'Capability investments mature over 1–3 quarters, so the Q1 2023 allocation shapes the options open when the board expects a committed direction (Q4 2023).'),
       mt('There is no clear winner yet, so every choice is a bet on how the market will change.', 'With no dominant signal, the allocation is an explicit thesis about where demand will move.'),
       mt('Money you do not invest stays in the bank as a safety cushion.', 'Unallocated envelope is retained as cash — optionality versus capability building.'),
     ],
@@ -71,7 +71,7 @@ export const QUARTER_CARDS: Record<number, QuarterCard> = {
       'The board wants a clear direction. Choose one of five strategies: Consumer AI, Enterprise AI, Premium Human + AI, University/Credentials, or a Balanced marketplace. A clear choice focuses the company, but changing direction takes time and works best when you already have the right skills.',
       'The board requires a strategic commitment among five destinations. Commitment focuses the organization and unlocks specialized upside, but repositioning takes time and is most effective when the capabilities built in Q1–Q3 2023 support it.'),
     whyItMatters: [
-      mt('Your choice decides which future opportunities and risks you face.', 'The destination shapes focus effects, market access, crisis exposure and the final-quarter options.'),
+      mt('Your choice decides which future opportunities and risks you face.', 'The destination shapes focus effects, market access, the risks the company is exposed to and the options open later.'),
       mt('If your skills do not match the strategy, the change will be slow and tiring for your people.', 'Low readiness means a longer, more load-heavy transition.'),
       mt('This choice cannot be changed later in the game.', 'The commitment is irreversible within the game horizon.'),
     ],

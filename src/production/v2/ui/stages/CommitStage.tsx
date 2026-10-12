@@ -62,7 +62,7 @@ function Resolution({ input, deliberation, quarter, mode }: { input: V2PlayerQua
   ].filter(Boolean) as string[];
   const financing = (input.financing ?? []).map(f => f.kind === 'debt' ? `Borrow ${money(f.amount)}` : f.kind === 'equity' ? `Sell shares for ${money(f.amount)}` : f.kind === 'repay' ? `Repay ${money(f.amount)} of debt` : f.kind === 'partner' ? 'Bring in a strategic partner' : `${f.depth} restructuring`);
   return (
-    <article className="ds-resolution ds-enter" data-testid="v2-decision-summary">
+    <article className="ds-resolution" data-testid="v2-decision-summary">
       <p className="ds-eyebrow">Board resolution · {calendarLabel(quarter)} · {CHAPTERS[quarter].title}</p>
       <h2 className="ds-resolution-title">The leadership team resolves to…</h2>
       <dl>
@@ -108,7 +108,7 @@ function TeamCommitment({ ctl, deviceRole, quarter }: { ctl: V2TeamController; d
       <p className="ds-muted" style={{ margin: 0 }}>Your answer is recorded for reflection and the facilitator debrief. It does not change the economics.</p>
       <div className="ds-actions" style={{ marginTop: 4 }}>
         <button className="ds-btn ds-btn-secondary" data-testid="v2-revise" disabled={ctl.busy} onClick={() => void ctl.go('decide')}>Revise the decision</button>
-        <button className="ds-btn ds-btn-chapter ds-btn-lg" data-testid="v2-commit-team" disabled={ctl.busy || !authorized || (!pending && !agreement)}
+        <button className="ds-btn ds-btn-decision ds-btn-lg" data-testid="v2-commit-team" disabled={ctl.busy || !authorized || (!pending && !agreement)}
           onClick={() => (pending ? void ctl.commitTeam(recorded!, deviceRole) : setConfirming(true))}>
           {ctl.busy ? 'Committing…' : pending ? `Finish committing ${calendarLabel(quarter)}` : 'Commit Our Decision'} <Icon name="arrow" />
         </button>
@@ -174,7 +174,7 @@ function PrivateVote({ ctl, deviceRole, quarter }: { ctl: V2TeamController; devi
         <button className="ds-btn ds-btn-secondary" data-testid="v2-revise" disabled={ctl.busy} onClick={() => void ctl.go('decide')}>Revise the decision (clears votes)</button>
         {phase === 'vote'
           ? <button className="ds-btn ds-btn-primary" data-testid="v2-to-commit" disabled={ctl.busy || !votes?.revealed} onClick={() => void ctl.go('commit')}>Continue to commit <Icon name="arrow" /></button>
-          : <button className="ds-btn ds-btn-chapter" data-testid="v2-commit" disabled={ctl.busy} onClick={() => void ctl.commit()}>{ctl.busy ? 'Committing…' : `Commit ${calendarLabel(quarter)} decision`}</button>}
+          : <button className="ds-btn ds-btn-decision" data-testid="v2-commit" disabled={ctl.busy} onClick={() => void ctl.commit()}>{ctl.busy ? 'Committing…' : `Commit ${calendarLabel(quarter)} decision`}</button>}
       </div>
     </section>
   );
@@ -187,7 +187,7 @@ function LegacyCommit({ ctl, quarter }: { ctl: V2TeamController; quarter: number
       <div className="ds-callout" data-testid="v2-commit-warning"><Icon name="alert" />Committing resolves {calendarLabel(quarter)}. It cannot be undone.</div>
       <div className="ds-actions">
         <button className="ds-btn ds-btn-secondary" data-testid="v2-revise" disabled={ctl.busy} onClick={() => void ctl.go('decide')}>Revise the decision</button>
-        <button className="ds-btn ds-btn-chapter" data-testid="v2-commit" disabled={ctl.busy} onClick={() => void ctl.commit()}>{ctl.busy ? 'Committing…' : `Commit ${calendarLabel(quarter)} decision`}</button>
+        <button className="ds-btn ds-btn-decision" data-testid="v2-commit" disabled={ctl.busy} onClick={() => void ctl.commit()}>{ctl.busy ? 'Committing…' : `Commit ${calendarLabel(quarter)} decision`}</button>
       </div>
     </section>
   );
