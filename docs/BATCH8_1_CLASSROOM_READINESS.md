@@ -88,7 +88,7 @@
 | Audit and calibration analyses | `batch81-audit.test.ts` 3 passed; `valuation-calibration.test.ts` 4 passed |
 | Database integration (`npm run test:db`) | 14 passed |
 | Migration on existing data (7.5) | 1 passed |
-| Browser E2E, current schema | See the final run in the delivery note. Covers:<br>• new `classroom.e2e.ts`: facilitator-led three-team Q1→Q8, equal-quarter awards, debrief, projector, print; individual devices with 3, 4 and 6 players; network interruption during commit; stale client; mobile results<br>• `a11y.e2e.ts` (axe WCAG 2.1 AA): no serious or critical violations<br>• gameplay, integrity (double submit, invalid codes, tampered storage, concurrent devices), experience, Stage 1, Stages 2–3 |
+| Browser E2E, current schema | **23 passed, 0 failed, 1 skipped** (the compat suite runs only against older schemas). Covers:<br>• new `classroom.e2e.ts`: facilitator-led three-team Q1→Q8, equal-quarter awards, debrief, projector, print; individual devices with 3, 4 and 6 players; network interruption during commit; stale client; mobile results<br>• `a11y.e2e.ts` (axe WCAG 2.1 AA): no serious or critical violations<br>• gameplay, integrity (double submit, invalid codes, tampered storage, concurrent devices), experience, Stage 1, Stages 2–3 |
 | E2E, pre-Batch-7 schema (`V2_COMPAT=1`) | compat + Stages 2–3: 3 passed |
 | E2E, pre-Batch-7.5 schema | Stages 2–3: 2 passed (compat suite gated) |
 | Type check, production build | Pass |
