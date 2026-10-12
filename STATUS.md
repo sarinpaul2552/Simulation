@@ -1,3 +1,11 @@
+# CURRENT STATUS — Batch 8.1 deployed to production (2026-10-12)
+
+- Live at https://simulation26.vercel.app from `main` (Batches 7.5, 8, 8.1 at f141453, plus the mobile board-report fix).
+- Production DB migrated: Batch 7 experience + Batch 7.5 commitment (additive, idempotent).
+- Verified in production: three full eight-quarter games (desktop and 375px phone). Share prices, scorecards, awards,
+  revenue and cash match a local replay exactly, and the facilitator integrity check reports verified for every team.
+- Full record: `docs/BATCH8_1_PRODUCTION_DEPLOYMENT.md`.
+
 # CURRENT STATUS — Autonomous Batch 5 (V2 Production Integration)
 
 - Classroom gameplay now runs on the frozen V2 engine through `src/production/v2` (adapter, snapshot contract, RPC client,
