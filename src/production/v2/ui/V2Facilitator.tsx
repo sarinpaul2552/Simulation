@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { calendarLabel } from '../content/calendar';
 import type { V2Api, V2FacilitatorOverview } from '../api';
 import { V2_TOTAL_QUARTERS } from '../adapter';
 import { auditTeam } from '../gameService';
@@ -62,7 +63,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
       <header className="ds-topbar">
         <div className="ds-topbar-inner">
           <span className="ds-company">Facilitator · {o.session_code}</span>
-          <span className="ds-quarter">{o.pacing === 'self' ? 'Self-paced' : `Open: Q${o.open_quarter}`}</span>
+          <span className="ds-quarter">{o.pacing === 'self' ? 'Self-paced' : `Open: ${calendarLabel(o.open_quarter)}`}</span>
           <span className="ds-meta">{MODE_LABEL[mode]} mode{!projector && <> · PIN <b data-testid="v2-fac-pin">{adminPin}</b></>}</span>
           <span className="ds-spacer" />
           <button onClick={() => setProjector(!projector)} data-testid="v2-fac-projector">{projector ? 'Normal view' : 'Projector view'}</button>
@@ -97,12 +98,12 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
                 <button className="ds-btn ds-btn-secondary" disabled={busy} onClick={() => void act(() => api.setPacing(sessionCode, adminPin, o.pacing === 'facilitator' ? 'self' : 'facilitator'))}>Switch to {o.pacing === 'facilitator' ? 'self-paced' : 'facilitator-led'}</button>
                 {o.pacing === 'facilitator' && (
                   <>
-                    <span>Open quarter: <b data-testid="v2-fac-open-quarter">Q{o.open_quarter}</b> ({done(o.open_quarter)} of {o.teams.length} teams completed it)</span>
-                    {o.open_quarter < V2_TOTAL_QUARTERS && <button className="ds-btn ds-btn-primary" data-testid="v2-fac-open-next" disabled={busy} onClick={() => void act(() => api.setOpenQuarter(sessionCode, adminPin, o.open_quarter + 1))}>Open Q{o.open_quarter + 1}</button>}
+                    <span>Open quarter: <b data-testid="v2-fac-open-quarter">{calendarLabel(o.open_quarter)}</b> ({done(o.open_quarter)} of {o.teams.length} teams completed it)</span>
+                    {o.open_quarter < V2_TOTAL_QUARTERS && <button className="ds-btn ds-btn-primary" data-testid="v2-fac-open-next" disabled={busy} onClick={() => void act(() => api.setOpenQuarter(sessionCode, adminPin, o.open_quarter + 1))}>Open {calendarLabel(o.open_quarter + 1)}</button>}
                   </>
                 )}
               </div>
-              {waitingForMe && <div className="ds-callout" style={{ marginTop: 8 }} data-testid="v2-fac-ready"><Icon name="flag" />All active teams have finished Q{o.open_quarter} and are waiting for you to open Q{o.open_quarter + 1}.</div>}
+              {waitingForMe && <div className="ds-callout" style={{ marginTop: 8 }} data-testid="v2-fac-ready"><Icon name="flag" />All active teams have finished {calendarLabel(o.open_quarter)} and are waiting for you to open {calendarLabel(o.open_quarter + 1)}.</div>}
             </Card>
             <Card title="Teams" icon="users" action={<button className="ds-btn ds-btn-secondary" data-testid="v2-fac-verify" disabled={busy} onClick={() => void runAudit()}><Icon name="check" />Verify integrity</button>}>
               <div className="ds-table-wrap">
@@ -118,7 +119,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
                           <td><b>{t.team_name}</b></td>
                           <td><code>{t.team_code}</code></td>
                           <td data-testid="v2-fac-progress">{t.started ? `${t.completed_quarter}/${V2_TOTAL_QUARTERS} done` : 'Not joined'}</td>
-                          <td>{t.phase ? (t.phase === 'final' ? 'Finished' : waiting ? `Waiting for Q${working}` : `Q${['results', 'reflect'].includes(t.phase) ? t.completed_quarter : working} · ${PHASE_LABEL[t.phase]}`) : '—'}</td>
+                          <td>{t.phase ? (t.phase === 'final' ? 'Finished' : waiting ? `Waiting for ${calendarLabel(working)}` : `${calendarLabel(['results', 'reflect'].includes(t.phase) ? t.completed_quarter : working)} · ${PHASE_LABEL[t.phase]}`) : '—'}</td>
                           <td data-testid="v2-fac-votes">{t.phase === 'vote' || (t.phase === 'commit' && o.commitment_mode !== 'team_commitment') ? `${t.votes_submitted}/5 votes` : t.phase === 'commit' ? 'committing' : t.phase === 'risk' && o.commitment_mode === 'team_commitment' ? 'reviewing' : '—'}</td>
                           <td>{h ? money(h.revenue) : '—'}</td>
                           <td>{h ? money(h.cash) : '—'}</td>
@@ -178,7 +179,7 @@ function Compare({ overview }: { overview: V2FacilitatorOverview }) {
             <div className="ds-stack" style={{ gap: 6 }}>
               {vals.map(x => (
                 <div key={x.name} className="ds-meter" style={{ gridTemplateColumns: 'minmax(0,140px) minmax(0,1fr) auto' }}>
-                  <span className="ds-small"><b>{x.name}</b> <span className="ds-muted">Q{x.q}</span></span>
+                  <span className="ds-small"><b>{x.name}</b> <span className="ds-muted">{calendarLabel(x.q)}</span></span>
                   <div className="ds-meter-track"><div className="ds-meter-fill" style={{ width: `${Number.isFinite(x.v) ? Math.max(2, (Math.abs(x.v) / max) * 100) : 0}%` }} /></div>
                   <span className="ds-small" style={{ fontVariantNumeric: 'tabular-nums' }}>{m.fmt(x.v)}</span>
                 </div>
@@ -197,10 +198,10 @@ function DebriefCard({ d }: { d: TeamDebrief }) {
       <div className="ds-grid ds-grid-main">
         <div className="ds-stack">
           {d.final && <div className="ds-row"><span className="ds-badge ds-badge-accent">Overall {d.final.overall.toFixed(1)}</span><span className="ds-small">Financial {d.final.financial.toFixed(1)} · Strategic {d.final.strategic.toFixed(1)} · Organizational {d.final.organizational.toFixed(1)}</span></div>}
-          <div><p className="ds-h4">Major decisions</p><ul className="ds-list ds-small">{d.decisions.map(x => <li key={x.quarter}><b>Q{x.quarter}:</b> {x.text}{x.belief ? <span className="ds-muted"> — belief: {x.belief}</span> : null}</li>)}</ul></div>
-          {d.pivotal.length > 0 && <div><p className="ds-h4">Pivotal moments</p><ul className="ds-list ds-small">{d.pivotal.map(p => <li key={p.quarter}><b>Q{p.quarter}:</b> {p.text}</li>)}</ul></div>}
-          <div data-testid="v2-debrief-commitments"><p className="ds-h4">How each quarter was committed</p><ul className="ds-list ds-small">{d.commitments.map(c => <li key={c.quarter} data-kind={c.kind}><b>Q{c.quarter}:</b> {c.text}</li>)}</ul></div>
-          <div><p className="ds-h4">Disagreements (revealed private votes)</p>{d.disagreements.length ? <ul className="ds-list ds-small">{d.disagreements.map(x => <li key={x.quarter}><b>Q{x.quarter}:</b> {x.text}</li>)}</ul> : <p className="ds-muted">No significant dissent recorded.</p>}</div>
+          <div><p className="ds-h4">Major decisions</p><ul className="ds-list ds-small">{d.decisions.map(x => <li key={x.quarter}><b>{calendarLabel(x.quarter)}:</b> {x.text}{x.belief ? <span className="ds-muted"> — belief: {x.belief}</span> : null}</li>)}</ul></div>
+          {d.pivotal.length > 0 && <div><p className="ds-h4">Pivotal moments</p><ul className="ds-list ds-small">{d.pivotal.map(p => <li key={p.quarter}><b>{calendarLabel(p.quarter)}:</b> {p.text}</li>)}</ul></div>}
+          <div data-testid="v2-debrief-commitments"><p className="ds-h4">How each quarter was committed</p><ul className="ds-list ds-small">{d.commitments.map(c => <li key={c.quarter} data-kind={c.kind}><b>{calendarLabel(c.quarter)}:</b> {c.text}</li>)}</ul></div>
+          <div><p className="ds-h4">Disagreements (revealed private votes)</p>{d.disagreements.length ? <ul className="ds-list ds-small">{d.disagreements.map(x => <li key={x.quarter}><b>{calendarLabel(x.quarter)}:</b> {x.text}</li>)}</ul> : <p className="ds-muted">No significant dissent recorded.</p>}</div>
           <div><p className="ds-h4">Discussion questions</p><ol className="ds-list ds-small">{d.questions.map(q => <li key={q}>{q}</li>)}</ol></div>
         </div>
         <div className="ds-stack">

@@ -59,7 +59,7 @@ export function useV2Team(api: V2Api, teamCode: string) {
     const d = pendingDraft.current;
     pendingDraft.current = null;
     if (d && game && EDITABLE.includes(game.record.phase)) {
-      await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed });
+      await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed, introSeen: d.introSeen });
     }
   }, [api, game]);
 
@@ -99,7 +99,7 @@ export function useV2Team(api: V2Api, teamCode: string) {
       if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
       pendingDraft.current = null;
       const d = draftOverride ?? draft;
-      if (d) await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed });
+      if (d) await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed, introSeen: d.introSeen });
     }
     await api.setPhase(teamCode, phaseQuarter(game), from, to);
     await reload();
@@ -117,7 +117,7 @@ export function useV2Team(api: V2Api, teamCode: string) {
       if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
       pendingDraft.current = null;
       const d = draftRef.current;
-      if (d) await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed });
+      if (d) await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed, introSeen: d.introSeen });
     }
     const start = path.indexOf(from);
     const steps = start >= 0 ? path.slice(start + 1) : path;

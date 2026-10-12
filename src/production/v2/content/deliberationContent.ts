@@ -28,7 +28,7 @@ export const BELIEFS: Record<number, Choice[]> = {
     { id: 'q3-consumer-decline', label: mt('The consumer business is in real decline — shift away from it.', 'Consumer decline is structural; reallocate away from it.') },
     { id: 'q3-enterprise-demand', label: mt('Company requests for proposals show real enterprise demand.', 'RFP volume signals genuine enterprise AI demand.') },
     { id: 'q3-ai-monetizes', label: mt('High AI engagement will turn into paying customers.', 'AI engagement will convert into revenue.') },
-    { id: 'q3-prepare-commitment', label: mt('Our priority is getting ready for next quarter’s big commitment.', 'Build readiness for the Q4 destination commitment.') },
+    { id: 'q3-prepare-commitment', label: mt('Our priority is getting ready for next quarter’s big commitment.', 'Build readiness for the Q4 2023 destination commitment.') },
   ],
   4: [
     { id: 'q4-fit-capabilities', label: mt('We should choose the strategy our skills already support.', 'Choose the destination our capabilities already support.') },
@@ -84,7 +84,7 @@ export const RISKS: Record<number, Choice[]> = {
     { id: 'consumer-loss', label: mt('The consumer decline is worse than it looks', 'Consumer revenue erosion') },
     { id: 'ai-unproven', label: mt('AI users will not pay', 'AI monetization risk') },
     { id: 'talent-loss', label: mt('We lose key engineers to rivals', 'Talent attrition') },
-    { id: 'not-ready', label: mt('We are not ready for next quarter’s commitment', 'Readiness gap for Q4') },
+    { id: 'not-ready', label: mt('We are not ready for next quarter’s commitment', 'Readiness gap for the Q4 2023 commitment') },
     { id: 'cash', label: mt('We run short of cash', 'Liquidity risk') },
   ],
   4: [

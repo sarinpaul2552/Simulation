@@ -7,6 +7,9 @@ import { CHAPTERS } from '../../content/chapters';
 import { pick, V2PresentationMode } from '../../content/modes';
 import { buildRoleBriefing } from '../../content/roleContent';
 import { EvidenceList, Icon, Section } from '../ds/components';
+import { Term } from '../ds/glossary';
+import { calendarLabel, calendarShort } from '../../content/calendar';
+import { CompanyIntro } from './CompanyIntro';
 
 /** Stage 1 — The Challenge: the quarter-opening chapter, what changed, the evidence, and the private role briefings. */
 export function ChallengeStage({ ctl, mode, deviceRole }: { ctl: V2TeamController; mode: V2PresentationMode; deviceRole?: V2Role }) {
@@ -27,11 +30,14 @@ export function ChallengeStage({ ctl, mode, deviceRole }: { ctl: V2TeamControlle
   const compact = briefed.length > 0 || viewing !== null;
   const focusBrief = viewing !== null || (individual && !!deviceRole);
 
+  if (q === 1 && !ctl.draft?.introSeen && !viewing) {
+    return <div data-testid="v2-phase-briefing"><CompanyIntro mode={mode} busy={ctl.busy} onBegin={() => { ctl.updateDraft({ introSeen: true }, { immediate: true }); window.scrollTo?.(0, 0); }} /></div>;
+  }
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-briefing">
       <section className={`ds-chapter ds-enter ${compact ? 'ds-chapter-compact' : ''}`} data-testid="v2-briefing" data-chapter-title={chapter.title}>
         <span className="ds-chapter-num" aria-hidden="true">Q{q}</span>
-        <span className="ds-chapter-kicker">Year {chapter.year} · Quarter {q} · The Challenge</span>
+        <span className="ds-chapter-kicker">{calendarLabel(q)} · Quarter {q} of 8 · Understand</span>
         <h1 className="ds-chapter-title" data-testid="v2-chapter-title">{chapter.title}</h1>
         <p className="ds-chapter-sub">{pick(mode, chapter.sub)}</p>
         <div className="ds-chapter-rule" />
@@ -85,52 +91,64 @@ export function ChallengeStage({ ctl, mode, deviceRole }: { ctl: V2TeamControlle
       <div className="ds-actions ds-actions-sticky">
         {!allBriefed && <span className="ds-muted">Every leader reads their brief before the team decides.</span>}
         <button className="ds-btn ds-btn-chapter ds-btn-lg" data-testid="v2-to-decide" disabled={!allBriefed || ctl.busy || viewing !== null} onClick={() => void ctl.go('decide')}>
-          Go to the leadership decision <Icon name="arrow" />
+          Go to discuss and decide <Icon name="arrow" />
         </button>
       </div>
     </div>
   );
 }
 
+const ROLE_ASK: Record<V2Role, string> = { CEO: 'the CEO', CFO: 'the CFO', Product: 'the Product lead', People: 'the People lead', Growth: 'the Growth lead' };
+
 function RoleBriefingView({ ctl, role, mode }: { ctl: V2TeamController; role: V2Role; mode: V2PresentationMode }) {
   const brief = buildRoleBriefing(ctl.game!.snapshot, role, mode);
-  const stances = ctl.draft?.deliberation?.stances ?? {};
-  const chosen = stances[role];
-  const setStance = (id: string) => ctl.updateDraft({ deliberation: { ...(ctl.draft?.deliberation ?? {}), stances: { ...stances, [role]: id } } }, { immediate: true });
+  const q = workingQuarter(ctl.game!.snapshot)!;
+  const showPrev = q > 2;
   return (
     <div className="ds-brief" data-testid="v2-role-brief" data-role={role}>
       <div className="ds-brief-head"><b>{brief.title}</b><span className="ds-muted">{brief.perspective}</span></div>
       <div className="ds-brief-body">
         <div>
-          <div className="ds-brief-section">
+          <div className="ds-brief-section" data-testid="v2-brief-responsibility">
             <p className="ds-h4">1 · Your responsibility</p>
             <p style={{ margin: 0 }}>{brief.responsibility}</p>
           </div>
-          <div className="ds-brief-section">
-            <p className="ds-h4">2 · What only you know</p>
-            <EvidenceList items={brief.knowledge} testId="v2-role-signals" />
+          <div className="ds-brief-section" data-testid="v2-brief-position">
+            <p className="ds-h4">2 · Your current business position</p>
+            <div className="ds-table-wrap">
+              <table className="ds-position">
+                <thead><tr><th>Indicator</th>{q > 1 && <th>{calendarShort(0)}</th>}{showPrev && <th>{calendarShort(q - 2)}</th>}<th>{calendarShort(q - 1)}</th>{q > 1 && <th>Change</th>}</tr></thead>
+                <tbody>{brief.position.map(p => (
+                  <tr key={p.id} data-kpi={p.id}>
+                    <td>{p.glossary ? <Term id={p.glossary}>{p.label}</Term> : p.label}</td>
+                    {q > 1 && <td className="ds-muted">{p.start ?? '—'}</td>}
+                    {showPrev && <td className="ds-muted">{p.previous ?? '—'}</td>}
+                    <td><b>{p.value}</b></td>
+                    {q > 1 && <td className="ds-muted" style={{ whiteSpace: 'nowrap' }}>{p.change ? p.change.text : ''}</td>}
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <p className="ds-muted" style={{ margin: '6px 0 0' }}>{q > 1 ? `Company data at the end of ${calendarLabel(q - 1)}. Change is versus the previous quarter.` : `Company data at the end of ${calendarLabel(0)} — where your leadership begins.`}</p>
+          </div>
+          <div className="ds-brief-section" data-testid="v2-brief-objectives">
+            <p className="ds-h4">5 · Your objectives</p>
+            <ul className="ds-list">{brief.objectives.map((o, i) => <li key={i}>{o}</li>)}</ul>
           </div>
         </div>
         <div>
-          <div className="ds-brief-section">
-            <p className="ds-h4">3 · Why it matters</p>
-            <ul className="ds-list">{brief.whyItMatters.map((w, i) => <li key={i}>{w}</li>)}</ul>
+          <div className="ds-brief-section" data-testid="v2-brief-evidence">
+            <p className="ds-h4">3 · What the available evidence suggests</p>
+            {brief.evidence.length > 0 && <div style={{ marginBottom: 8 }}><p className="ds-small" style={{ margin: '0 0 4px', fontWeight: 650 }}>Only you can see:</p><EvidenceList items={brief.evidence} testId="v2-role-signals" /></div>}
+            <ul className="ds-list">{brief.suggests.map((t, i) => <li key={i}>{t}</li>)}</ul>
           </div>
-          <div className="ds-brief-section">
-            <p className="ds-h4">4 · Your recommendation</p>
-            <div className="ds-choices" data-testid="v2-stance-options">
-              {brief.recommendations.map(r => (
-                <button key={r.id} type="button" className={`ds-choice ${chosen === r.id ? 'selected' : ''}`} data-testid={`v2-stance-${r.id}`} aria-pressed={chosen === r.id} onClick={() => setStance(r.id)}>
-                  <span className="ds-choice-title">{r.label}</span>
-                  {brief.suggested?.id === r.id && <span className="ds-pill" style={{ marginLeft: 'auto' }}>Your data points here</span>}
-                </button>
-              ))}
-            </div>
-            {brief.suggested && <p className="ds-muted" style={{ marginTop: 6 }}>{brief.suggested.reason} You decide.</p>}
+          <div className="ds-brief-section" data-testid="v2-brief-uncertain">
+            <p className="ds-h4">4 · What remains uncertain</p>
+            <ul className="ds-list">{brief.uncertain.map((t, i) => <li key={i}>{t}</li>)}</ul>
           </div>
-          <div className="ds-brief-section">
-            <p className="ds-h4">5 · Ask your team</p>
-            <ul className="ds-list">{brief.askTeam.map((a, i) => <li key={i}>{a}</li>)}</ul>
+          <div className="ds-brief-section" data-testid="v2-brief-discuss">
+            <p className="ds-h4">6 · Raise with your colleagues</p>
+            <ul className="ds-list">{brief.discuss.map((d, i) => <li key={i}><b>Ask {ROLE_ASK[d.with]}:</b> {d.ask}</li>)}</ul>
           </div>
         </div>
       </div>

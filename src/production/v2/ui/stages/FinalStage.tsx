@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { calendarLabel } from '../../content/calendar';
 import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { buildLearningReport, Finding } from '../../insights/report';
@@ -86,7 +87,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
             const ag = agreementOf(t.quarter);
             return (
               <div className="ds-tl-item" key={t.quarter} data-testid={`v2-journey-q${t.quarter}`}>
-                <div className="ds-tl-q">Q{t.quarter}</div>
+                <div className="ds-tl-q">Q{t.quarter}<span className="ds-tl-cal">{calendarLabel(t.quarter)}</span></div>
                 <div className="ds-tl-body">
                   <div style={{ fontWeight: 700 }}>{t.event}</div>
                   <div className="ds-small"><b>Your decision:</b> {t.decision}{ag ? <span className="ds-muted"> · {AGREEMENTS.find(a => a.id === ag)?.label}</span> : null}</div>
@@ -103,7 +104,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
         <div className="ds-stack">
           {report.pivotal.map(p => (
             <div key={p.quarter} className="ds-tl-item">
-              <div className="ds-tl-q">Q{p.quarter}</div>
+              <div className="ds-tl-q">Q{p.quarter}<span className="ds-tl-cal">{calendarLabel(p.quarter)}</span></div>
               <div className="ds-tl-body">
                 <div style={{ fontWeight: 700 }}>{p.decision}</div>
                 <div className="ds-small"><b>Immediate consequence:</b> {p.immediate}</div>

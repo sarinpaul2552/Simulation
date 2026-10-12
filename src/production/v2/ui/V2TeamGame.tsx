@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { calendarLabel } from '../content/calendar';
 import type { V2Api } from '../api';
 import { commitmentModeOf } from '../api';
 import type { V2Role } from '../types';
@@ -13,9 +14,12 @@ import { CommitStage } from './stages/CommitStage';
 import { ResultsStage } from './stages/ResultsStage';
 import { FinalStage } from './stages/FinalStage';
 import './ds/ds.css';
+import { GlossaryMode, GlossaryPanel } from './ds/glossary';
+import { CompanyIntro } from './stages/CompanyIntro';
+import { COMPANY } from '../content/company';
 
 /** Four student-facing stages over the unchanged server phases. */
-export const STAGES = ['The Challenge', 'Leadership Decision', 'Commit', 'Results & Learning'];
+export const STAGES = ['Understand', 'Discuss & Decide', 'Commit', 'Results & Learn'];
 /**
  * Stage of a server phase. In Team Commitment sessions the team reviews and commits from the 'risk' phase (the
  * Commit stage); with private voting or legacy no-vote sessions 'risk' is only passed through on the way to 'vote'/'commit'.
@@ -36,6 +40,7 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
   const mode = normalizeMode(game?.session.presentation_mode);
   const commitment = game ? commitmentModeOf(game.session) : 'private_vote';
   const { reload } = ctl;
+  const [panel, setPanel] = useState<'glossary' | 'company' | null>(null);
   useEffect(() => {
     if (!individual || phase === 'final') return;
     const t = setInterval(() => void reload(), 5000);
@@ -68,13 +73,14 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
   const quarterShown = completedPhases.includes(phase!) ? game.record.completed_quarter : game.record.completed_quarter + 1;
   const stage = stageOf(phase!, commitment === 'team_commitment');
   return (
+    <GlossaryMode.Provider value={mode}>
     <div className="ds-root" data-testid="v2-team-game" data-phase={phase} data-quarter={quarterShown} data-mode={mode} data-commitment={commitment} data-chapter={phase === 'final' ? 8 : quarterShown}>
       <header className="ds-topbar" data-testid="v2-company-strip">
         <div className="ds-topbar-inner">
-          <span className="ds-company">{game.teamName}</span>
-          <span className="ds-quarter">{phase === 'final' ? 'Final report' : `Q${quarterShown} of ${V2_TOTAL_QUARTERS}`}</span>
+          <span className="ds-company">{COMPANY.name} <span className="ds-meta" style={{ fontFamily: 'var(--ds-font)' }}>· {game.teamName}</span></span>
+          <span className="ds-quarter">{phase === 'final' ? 'Final report' : `${calendarLabel(quarterShown)} · ${quarterShown}/${V2_TOTAL_QUARTERS}`}</span>
           <div className="ds-topbar-metrics">
-            <span>Completed <b data-testid="v2-completed">{game.snapshot.completedQuarter}</b>/8</span>
+            <span className="ds-sr">Completed <b data-testid="v2-completed">{game.snapshot.completedQuarter}</b>/8</span>
             <span>Revenue <b>{money(s.revenue)}</b></span>
             <span>Cash <b data-testid="v2-cash">{money(s.cash)}</b></span>
             <span>Strategy <b data-testid="v2-destination">{destinationName(s.destination?.id)}</b></span>
@@ -83,9 +89,19 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
           </div>
           <span className="ds-spacer" />
           <span className="ds-meta">{MODE_LABEL[mode]} · {deviceRole ? `You are the ${deviceRole} · ` : ''}{teamCode}</span>
+          <button onClick={() => setPanel('company')} data-testid="v2-open-company">About {COMPANY.name}</button>
+          <button onClick={() => setPanel('glossary')} data-testid="v2-open-glossary">Glossary</button>
           <button onClick={onExit}>Leave</button>
         </div>
       </header>
+      {panel === 'glossary' && <GlossaryPanel onClose={() => setPanel(null)} />}
+      {panel === 'company' && (
+        <div className="ds-dialog-backdrop" onClick={e => { if (e.target === e.currentTarget) setPanel(null); }}>
+          <div className="ds-dialog" style={{ maxWidth: 1100, maxHeight: '92vh', overflowY: 'auto', background: 'var(--ds-paper)' }} role="dialog" aria-modal="true" aria-label={`About ${COMPANY.name}`}>
+            <CompanyIntro mode={mode} onClose={() => setPanel(null)} />
+          </div>
+        </div>
+      )}
       <main className="ds-shell">
         {phase !== 'final' && <Stepper stages={STAGES} current={stage} />}
         <ErrorBanner error={ctl.error} />
@@ -96,5 +112,6 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
         {phase === 'final' && <FinalStage ctl={ctl} mode={mode} />}
       </main>
     </div>
+    </GlossaryMode.Provider>
   );
 }

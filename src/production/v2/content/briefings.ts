@@ -1,0 +1,185 @@
+/**
+ * EXECUTIVE BRIEFINGS (Batch 8 · Stage 1)
+ *
+ * Six-part role briefings without recommendations. Each quarter gives every role:
+ *   - what the available evidence suggests — always as competing readings, never as an answer;
+ *   - what remains uncertain;
+ *   - what to raise with named colleagues (the disagreements the roles are built to have).
+ * Objectives are functional and deliberately in tension (CFO protects cash and margin, Growth wants revenue,
+ * Product wants quality and capability, People protects capacity and culture, the CEO must make it coherent).
+ * Content is written from the shared and role-private briefing only — never from hidden demand or future events —
+ * and avoids language that makes any one investment (including AI) look automatically superior.
+ */
+import type { V2Role } from '../../../simulation/engineV2Scenario';
+import { mt, ModeText } from './modes';
+
+export interface QuarterRoleBrief { suggests: ModeText[]; uncertain: ModeText[]; discuss: { with: V2Role; ask: ModeText }[] }
+
+export const ROLE_OBJECTIVES: Record<V2Role, ModeText[]> = {
+  CEO: [
+    mt('Grow the value of the company over eight quarters, not just this one.', 'Create durable shareholder value across the eight-quarter horizon.'),
+    mt('Make sure the team’s decisions add up to one clear direction.', 'Keep strategy, investment and organization coherent.'),
+    mt('Keep the board’s confidence: no surprises, no crises left unmanaged.', 'Maintain board confidence and the company’s reputation.'),
+  ],
+  CFO: [
+    mt('Keep enough cash to stay safe — the company must never run out.', 'Protect liquidity: stay well above minimum operating cash.'),
+    mt('Protect profitability: every dollar spent should earn its keep.', 'Defend operating margin and return on investment.'),
+    mt('Use debt or new shares only when the reason is clear.', 'Use leverage and dilution deliberately, not by default.'),
+  ],
+  Product: [
+    mt('Keep the product good enough that customers stay and pay.', 'Protect product quality and the trust it earns.'),
+    mt('Build the capabilities the company will need — when it needs them.', 'Sequence capability building (AI and core product) to the strategy’s timetable.'),
+    mt('Avoid promising features the teams cannot deliver.', 'Manage technical debt and delivery risk.'),
+  ],
+  People: [
+    mt('Make sure the teams can deliver what the company asks of them.', 'Keep change load within execution capacity.'),
+    mt('Protect culture and keep the people who matter most.', 'Protect culture, talent and retention of critical skills.'),
+    mt('Build capacity for the changes still ahead.', 'Invest in organizational capacity ahead of demand.'),
+  ],
+  Growth: [
+    mt('Grow revenue — find and win customers.', 'Drive revenue growth across segments.'),
+    mt('Keep the customers we already have.', 'Defend retention and pricing power in the core.'),
+    mt('Build a pipeline of future deals, not just this quarter’s sales.', 'Build enterprise pipeline and win rate for future quarters.'),
+  ],
+};
+
+const b = (suggests: ModeText[], uncertain: ModeText[], discuss: [V2Role, ModeText][]): QuarterRoleBrief => ({ suggests, uncertain, discuss: discuss.map(([w, a]) => ({ with: w, ask: a })) });
+
+export const QUARTER_BRIEFS: Record<number, Record<V2Role, QuarterRoleBrief>> = {
+  1: {
+    CEO: b([mt('Every segment is steady — nothing forces our hand yet.'), mt('AI tutoring is talked about everywhere, but nobody has shown that customers will pay for it.')],
+      [mt('Which segment will grow fastest over the next two years.'), mt('Whether today’s calm is the start of a change or just a quiet quarter.')],
+      [['CFO', mt('How much of the $30M can we spend without weakening our cash position?')], ['Growth', mt('Which customers are we most at risk of losing — and which are easiest to win?')]]),
+    CFO: b([mt('We are profitable (15% margin) with $60M in the bank: we can afford to invest.'), mt('But money we spend now will not pay back for one to three quarters, and our minimum safe cash is $15M.')],
+      [mt('How quickly any investment will show up in revenue.'), mt('Whether we will need a cash cushion later in the game.')],
+      [['Product', mt('What would you build with this money, and when would it start to pay back?')], ['CEO', mt('How much cash do you want held back for the unexpected?')]]),
+    Product: b([mt('Our product quality (70) is solid, but our AI capability (10) is low.'), mt('Competitors are investing steadily; nobody has a clear AI lead and customers are not yet paying for AI.')],
+      [mt('Whether customers will value AI features or our existing product more.'), mt('How long it would take us to catch up if the market moved fast.')],
+      [['Growth', mt('Are customers asking for new features, or for the product they already have to be better?')], ['People', mt('Do we have the people to build something new while keeping today’s product running?')]]),
+    People: b([mt('Culture (72) is healthy and teams have room for change.'), mt('Talent (55) is only average — big new initiatives will stretch us.')],
+      [mt('How much change the teams can absorb at once.'), mt('Which skills we will need two or three quarters from now.')],
+      [['CEO', mt('How many big initiatives are we asking the teams to run at the same time?')], ['Product', mt('Which skills do you need that we do not have today?')]]),
+    Growth: b([mt('Consumer subscriptions bring in $140M a quarter — 70% of revenue — and 85% of payers stay.'), mt('Enterprise is smaller ($40M) but has an $80M pipeline; universities are steady.')],
+      [mt('Whether our consumer base is as loyal as it looks.'), mt('How fast enterprise deals can be won and delivered.')],
+      [['CFO', mt('Can we spend more to win customers, or must growth pay for itself?')], ['Product', mt('What would make customers choose us over a cheaper alternative?')]]),
+  },
+  2: {
+    CEO: b([mt('Free AI tools are reaching millions of people and new rivals are moving fast.'), mt('But interest is not revenue: companies are curious about AI training but have not moved budgets, and universities are unchanged.')],
+      [mt('Whether this is a lasting shift or a hype wave.'), mt('Whether moving fast or waiting for evidence is the bigger risk.')],
+      [['Growth', mt('How much of our consumer business is actually at risk this year?')], ['CFO', mt('If we change direction and are wrong, how much can we afford to lose?')]]),
+    CFO: b([mt('Consumer conversion is falling: analysts expect category demand down 4–12%.'), mt('Our cash and margin are still healthy — we have room to act, but not to waste money.')],
+      [mt('How much revenue we will actually lose.'), mt('Whether new investment will pay back before cash gets tight.')],
+      [['Product', mt('What does a credible AI product cost, and for how many quarters?')], ['Growth', mt('Should we spend more to defend customers, or protect margin and accept some losses?')]]),
+    Product: b([mt('Engineering estimates credible AI features need two to three quarters of sustained investment.'), mt('Our current product is still good, and customers have not shown they will pay extra for AI.')],
+      [mt('Whether customers will reward AI features or a better core product.'), mt('Whether we can build both at once without overloading the teams.')],
+      [['CFO', mt('Can we commit to two or three quarters of spending before seeing any return?')], ['People', mt('Can the teams build something new without the current product slipping?')]]),
+    People: b([mt('Teams are steady and culture is intact.'), mt('A sudden change of direction would add workload and could unsettle people.')],
+      [mt('How the market for skilled engineers will move.'), mt('How much change the organization can take this year.')],
+      [['CEO', mt('Are we changing direction, or adding new work on top of the old?')], ['Product', mt('Which skills would we need to hire, and how quickly?')]]),
+    Growth: b([mt('Winning a new customer now costs about 20% more as AI-first apps bid for the same people.'), mt('Our paying customers have not left — yet. Companies are curious about AI training but are not buying.')],
+      [mt('Whether customers will leave for free tools or stay for quality.'), mt('Whether enterprise interest will turn into signed deals.')],
+      [['Product', mt('What could we offer that a free tool cannot?')], ['CFO', mt('If winning customers costs more, should we still spend on growth?')]]),
+  },
+  3: {
+    CEO: b([mt('The numbers disagree: usage is down, but paying customers and university partners look solid.'), mt('Companies are asking for AI proposals, but deals take a long time to close.')],
+      [mt('Which evidence reflects the real market.'), mt('What we must have ready before we choose a strategy next quarter.')],
+      [['CFO', mt('What do the paying-customer numbers tell you that the usage numbers do not?')], ['People', mt('What strategy could our organization actually deliver next year?')]]),
+    CFO: b([mt('Finance estimates paying revenue is down only 2–5% — far less than usage suggests.'), mt('AI engagement is high, but estimates of how many users will pay range from 5% to 20%.')],
+      [mt('Whether the usage decline will eventually hit revenue.'), mt('Whether AI engagement will ever turn into profit.')],
+      [['Growth', mt('Is the usage decline a warning, or noise from casual users?')], ['Product', mt('What would convince you AI features are worth paying for?')]]),
+    Product: b([mt('AI engagement is up 45% and sessions per user are doubling.'), mt('Engagement is not payment, and our engineers are being poached by rivals.')],
+      [mt('Whether engagement will convert into revenue.'), mt('Whether we can keep the people needed to build it.')],
+      [['People', mt('Can we keep our best engineers if rivals pay 30–40% more?')], ['CFO', mt('How much proof do you need before funding more product work?')]]),
+    People: b([mt('Rivals are poaching AI engineers at 30–40% salary premiums; attrition risk is rising in product teams.'), mt('Next quarter’s strategic decision will add a major reorganization on top.')],
+      [mt('How many key people we might lose.'), mt('Which strategy the organization is actually ready for.')],
+      [['Product', mt('Which people are irreplaceable for the next year?')], ['CEO', mt('Are we prepared to pay more to keep people, or to accept losing some?')]]),
+    Growth: b([mt('Monthly active learners are down 11% and time in the app is down 15%.'), mt('Enterprise requests for AI learning are up about 25%, but buying cycles are long; universities are renewing strongly.')],
+      [mt('Whether the consumer decline will spread from casual users to payers.'), mt('Which segment will be the biggest opportunity in two years.')],
+      [['CFO', mt('Your numbers say payers are staying — do you trust them?')], ['CEO', mt('Which customers do we want to be the company for?')]]),
+  },
+  4: {
+    CEO: b([mt('The board will back a clear direction — and will not fund half-commitments beyond this year.'), mt('The board’s readiness assessment shows how well our current skills fit each strategy — but fit is only one input.')],
+      [mt('Which market will be most attractive in two years.'), mt('Whether we should pick the strategy we are ready for, or the one we believe in.')],
+      [['People', mt('How long would the organization need to reorganize for each option?')], ['Growth', mt('Which strategy has customers who will actually pay?')]]),
+    CFO: b([mt('A strategy that fits our current skills will be cheaper and faster to execute.'), mt('A bolder strategy might have a bigger market but a longer, costlier transition.')],
+      [mt('How much the transition will cost.'), mt('How exposed each strategy is to a downturn.')],
+      [['CEO', mt('What return do you expect from this strategy, and by when?')], ['Product', mt('How much more investment does each option need before it pays off?')]]),
+    Product: b([mt('Engineering: repositioning around a strategy our skills do not yet support takes two to four quarters.'), mt('Every strategy needs a credible product, but they need different capabilities.')],
+      [mt('Whether we can build what the chosen strategy needs fast enough.'), mt('How competitors will position themselves.')],
+      [['CEO', mt('Are we choosing a strategy we can build, or one we must build towards?')], ['Growth', mt('What do customers in each segment expect from the product?')]]),
+    People: b([mt('People team: a strategic reorganization adds significant change load for about three quarters.'), mt('Strategies that match today’s skills will be less disruptive.')],
+      [mt('How the teams will cope with a long transition.'), mt('Whether we will need different people for the new strategy.')],
+      [['CEO', mt('How much disruption are you willing to accept to get there?')], ['CFO', mt('Will there be budget to support people through the change?')]]),
+    Growth: b([mt('AI is now expected as standard — the question is where to win, not whether to have it.'), mt('Each strategy points us at different customers with different needs and buying habits.')],
+      [mt('Which customer group will grow fastest.'), mt('How loyal each group will be if conditions get worse.')],
+      [['CEO', mt('Which customers are we choosing — and which are we accepting we may lose?')], ['CFO', mt('Which segment has the most reliable revenue?')]]),
+  },
+  5: {
+    CEO: b([mt('A $48M-a-year contract would be the biggest in our history.'), mt('It ties up cash, people and product work for about three quarters — and may or may not fit our strategy.')],
+      [mt('Whether the contract strengthens or distracts our strategy.'), mt('What a downturn would do to us with or without it.')],
+      [['CFO', mt('Can we afford the upfront cost if a downturn arrives?')], ['People', mt('Who would deliver this, and what would they stop doing?')]]),
+    CFO: b([mt('Finance: $6–11M upfront plus about $1.5M a quarter for delivery, with penalties if we slip.'), mt('Economists put a downturn within two quarters at 30–50%, and contracted revenue tends to hold up better than consumer spending.')],
+      [mt('Whether the downturn comes.'), mt('Whether we can deliver on time and avoid penalties.')],
+      [['Growth', mt('How certain is this revenue once signed?')], ['Product', mt('What happens to our own roadmap if we say yes?')]]),
+    Product: b([mt('Engineering: client customization would take 20–40% of product capacity for three quarters — less if enterprise is already our focus.'), mt('Large clients can also sharpen a product that other customers want.')],
+      [mt('How much of the customization would be useful beyond this client.'), mt('Whether our own roadmap can wait.')],
+      [['CEO', mt('Is this client our future, or a detour?')], ['People', mt('Can we staff this without stopping core product work?')]]),
+    People: b([mt('People team: the delivery programme adds heavy workload for about three quarters — lighter if enterprise delivery is already our focus.'), mt('A flagship client could also attract talent and build experience.')],
+      [mt('Whether the teams can absorb it alongside everything else.'), mt('What a downturn would do to morale under heavy load.')],
+      [['CFO', mt('If we take it on, can we afford extra people to deliver it?')], ['CEO', mt('What else will we stop doing to make room?')]]),
+    Growth: b([mt('Consumer demand is stabilising; AI features are now expected as standard.'), mt('A Fortune-100 reference client could open other enterprise doors — or pull attention from the rest of the pipeline.')],
+      [mt('How many other deals would follow this one.'), mt('Whether delivery problems would damage our reputation.')],
+      [['Product', mt('Can we deliver to strict service promises?')], ['CFO', mt('Is one huge client too much concentration risk?')]]),
+  },
+  6: {
+    CEO: b([mt('A recession is confirmed: households and companies are cutting spending; universities are holding budgets.'), mt('Competitors are cutting too — which could create openings for whoever stays strong.')],
+      [mt('How long the downturn lasts.'), mt('Whether cutting deeply or investing through the cycle will look wiser in a year.')],
+      [['CFO', mt('How many quarters can we survive if revenue keeps falling?')], ['People', mt('What would cuts do to the capabilities we need for the recovery?')]]),
+    CFO: b([mt('Finance: revenue likely 3–8% below plan for two quarters; lenders are tightening and share prices are down.'), mt('Raising money will be harder and more expensive than before.')],
+      [mt('How deep and how long the drop in revenue will be.'), mt('Whether lenders will still be willing to lend later.')],
+      [['People', mt('Where can we save money without losing people we will need?')], ['Growth', mt('Would discounts protect revenue or just lower our prices for good?')]]),
+    Product: b([mt('AI buyers are split: new deals are down 10–30%, but projects that save customers money are growing.'), mt('Cutting product investment saves cash but slows everything we have built.')],
+      [mt('Which customers will keep buying in a downturn.'), mt('How quickly a cut-back product team could restart.')],
+      [['CFO', mt('Which product investments must be protected even in a recession?')], ['Growth', mt('What do customers need most from us right now?')]]),
+    People: b([mt('Layoffs are widespread in the sector; deep cuts usually lead good people to leave for two to three quarters afterwards.'), mt('A hiring freeze is milder but slows everything.')],
+      [mt('How the remaining staff will react to cuts.'), mt('Whether we can rehire the skills we lose.')],
+      [['CFO', mt('How much do we really need to save, and by when?')], ['CEO', mt('Which capabilities are we refusing to cut?')]]),
+    Growth: b([mt('Consumer learning spend is expected to fall 12–20%; customers are looking for discounts.'), mt('Winning customers is cheaper now, but fewer of them convert.')],
+      [mt('Whether customers we lose now will come back.'), mt('Whether price cuts can be reversed later.')],
+      [['CFO', mt('Should we raise prices, hold them or discount?')], ['CEO', mt('Which customers matter most to protect?')]]),
+  },
+  7: {
+    CEO: b([mt('The downturn looks to be bottoming out, but confidence is still weak.'), mt('Our crisis is tied to the strategy we chose — how we respond will be remembered.')],
+      [mt('How severe the damage will be if we respond cheaply.'), mt('What customers and staff expect from us.')],
+      [['CFO', mt('What can we afford to spend on the response?')], ['Growth', mt('What would customers need to see to keep trusting us?')]]),
+    CFO: b([mt('Enterprise buyers are using service-contract clauses and cutting suppliers after reliability problems.'), mt('A full fix costs cash now; a cheaper response risks larger losses later.')],
+      [mt('How much a partial response would really cost in lost revenue.'), mt('Whether our cash can absorb a full fix.')],
+      [['Product', mt('What does a proper fix take, and how quickly?')], ['CEO', mt('How much cash are you prepared to spend to protect trust?')]]),
+    Product: b([mt('Launch slippage and cross-team escalations rose last quarter.'), mt('Fixing the root cause takes people away from new work.')],
+      [mt('Whether the problem will recur.'), mt('How much new work we must pause to fix it.')],
+      [['People', mt('Do we have the senior people to lead the fix?')], ['CFO', mt('If we spend less now, what is the risk later?')]]),
+    People: b([mt('Recovering competitors are poaching senior experts at 30%+ premiums.'), mt('A crisis adds pressure on exactly the people we can least afford to lose.')],
+      [mt('Who will leave under the pressure.'), mt('How long the teams can sustain crisis mode.')],
+      [['CEO', mt('How long do you expect crisis mode to last?')], ['Product', mt('Who must be protected from being pulled into the fix?')]]),
+    Growth: b([mt('A rival’s AI error has sparked refund requests across consumer learning apps.'), mt('Customers are watching how providers respond to problems.')],
+      [mt('Whether customers will blame the whole industry or specific companies.'), mt('How quickly trust recovers.')],
+      [['CEO', mt('What will we tell customers?')], ['CFO', mt('Are refunds and credits cheaper than losing customers?')]]),
+  },
+  8: {
+    CEO: b([mt('Recovery is under way; weakened competitors are available at 1.5–2× revenue, and buyers are circling the sector.'), mt('The board wants to know what this company should become next — and whether we can afford it.')],
+      [mt('Which option will create lasting value rather than a short-term boost.'), mt('How the market will value each choice.')],
+      [['CFO', mt('Which options can we actually fund?')], ['People', mt('Could the organization absorb an acquisition or rapid growth?')]]),
+    CFO: b([mt('Growth investors are back for companies with momentum, though valuations are below their peak.'), mt('Every option has a different mix of cash, debt, ownership and risk.')],
+      [mt('Whether the recovery is strong enough to justify a big move.'), mt('What raising money or borrowing would cost us in ownership or interest.')],
+      [['CEO', mt('Is growth worth giving up part of the company?')], ['Growth', mt('Is the recovery real in our customers’ numbers?')]]),
+    Product: b([mt('The product we have built decides which options are realistic.'), mt('Rapid growth or an acquisition would strain product quality.')],
+      [mt('Whether our product can scale without problems.'), mt('How much integration work an acquisition would need.')],
+      [['CEO', mt('Which option protects the product we built?')], ['People', mt('Can we grow without losing quality?')]]),
+    People: b([mt('After eight quarters, the organization’s capacity and culture limit what we can do next.'), mt('Big moves add workload; stabilizing gives people time to recover.')],
+      [mt('How much more change the teams can take.'), mt('Whether key people will stay through another big change.')],
+      [['CEO', mt('What will this choice ask of our people?')], ['CFO', mt('Will there be money to support the people through it?')]]),
+    Growth: b([mt('Enterprise budgets are reopening and consumer spending is stabilising.'), mt('Growth options need customers ready to buy — not just available money.')],
+      [mt('How fast demand will recover in our segments.'), mt('Which customers an acquisition would bring.')],
+      [['CEO', mt('Where will the next two years of revenue come from?')], ['Product', mt('Can the product support faster growth?')]]),
+  },
+};

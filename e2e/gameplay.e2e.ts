@@ -150,11 +150,11 @@ test('Q1→Q8: two teams, facilitator pacing, refresh at every phase, facilitato
       await fac.getByTestId('v2-resume-code').fill(s.sessionCode);
       await fac.getByTestId('v2-resume-pin').fill(s.adminPin);
       await fac.getByTestId('v2-resume-go').click();
-      await expect(fac.getByTestId('v2-fac-open-quarter')).toHaveText('Q3');
+      await expect(fac.getByTestId('v2-fac-open-quarter')).toHaveText('Q3 2023');
       await expect(await facilitatorRow(fac, 'Alpha')).toContainText('3/8 done');
       // …and a refresh of the facilitator page keeps the session (reconnect without re-entering codes)
       await fac.reload();
-      await expect(fac.getByTestId('v2-fac-open-quarter')).toHaveText('Q3');
+      await expect(fac.getByTestId('v2-fac-open-quarter')).toHaveText('Q3 2023');
     }
     if (q < 8) {
       await openQuarter(fac, q + 1);

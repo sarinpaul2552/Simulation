@@ -32,7 +32,7 @@ export const QUARTER_CARDS: Record<number, QuarterCard> = {
       'Business is steady. Consumers keep subscribing, companies keep renewing their training contracts, and universities are stable. People are talking about AI tutors, but nobody is paying for them in large numbers yet. The board gives you up to $30M to invest.',
       'The learning market is healthy: consumer subscriptions are steady, enterprise renewals are on track and university partners are stable. Generative-AI tutoring is widely discussed but commercially unproven. The board authorizes up to $30M of strategic investment with no obvious winning segment.'),
     whyItMatters: [
-      mt('Investments take one to three quarters to turn into real capability — what you fund now shapes the company you can be later.', 'Capability investments mature over 1–3 quarters, so Q1 allocation sets the option set for Q4 and beyond.'),
+      mt('Investments take one to three quarters to turn into real capability — what you fund now shapes the company you can be later.', 'Capability investments mature over 1–3 quarters, so Q1 2023 allocation sets the option set for the Q4 2023 commitment and beyond.'),
       mt('There is no clear winner yet, so every choice is a bet on how the market will change.', 'With no dominant signal, the allocation is an explicit thesis about where demand will move.'),
       mt('Money you do not invest stays in the bank as a safety cushion.', 'Unallocated envelope is retained as cash — optionality versus capability building.'),
     ],
@@ -47,7 +47,7 @@ export const QUARTER_CARDS: Record<number, QuarterCard> = {
     whyItMatters: [
       mt('Our biggest business (consumer subscriptions) may lose customers to free tools.', 'The core consumer franchise faces substitution and rising customer-acquisition cost (CAC).'),
       mt('Interest is not the same as paying customers — demand for AI products is still unproven.', 'Interest signals are leading indicators; willingness to pay for AI products is not yet established.'),
-      mt('Building good AI features takes time, so waiting has a cost too.', 'AI capability compounds: delayed investment widens the gap to faster competitors.'),
+      mt('Moving early builds skills before demand is proven; waiting keeps cash and lets others take the first risks.', 'Early investment builds capability ahead of proven demand; waiting preserves cash and the option to follow once willingness to pay is clearer.'),
     ],
     challenge: mt('Do we defend what we have, or move toward AI — and how fast?', 'How do we respond to the disruption: defend the core, pivot toward AI, or hedge?'),
   },
@@ -55,23 +55,23 @@ export const QUARTER_CARDS: Record<number, QuarterCard> = {
     quarter: 3, stage: 'Year 1 · Q3',
     headline: mt('The evidence points in different directions', 'Conflicting evidence'),
     whatHappened: mt(
-      'Fewer people are using our consumer app, but paying subscribers are staying more than the usage numbers suggest. Companies are asking for AI training proposals. People love our AI features, but nobody knows yet how much they will pay for them. Universities are renewing.',
+      'Fewer people are using our consumer app, but paying subscribers are staying more than the usage numbers suggest. Companies are asking for AI training proposals. People use our AI features a lot, but nobody knows yet whether they will pay for them. Universities are renewing.',
       'Headline consumer usage is down sharply, yet paying cohorts look stickier than usage suggests. Enterprise AI-learning RFPs are rising; AI engagement is soaring with uncertain monetization. University renewals are strong.'),
     whyItMatters: [
       mt('Different numbers tell different stories — you must decide which evidence you trust.', 'Usage, revenue and engagement metrics diverge; the team must weigh signal quality, not just direction.'),
       mt('Strong interest in AI does not yet prove people will pay.', 'Engagement without proven willingness-to-pay is an option, not a revenue stream.'),
-      mt('Next quarter you must commit to a long-term direction, so this is your last chance to prepare.', 'Q4 requires a destination commitment; Q3 is the last quarter to build readiness for it.'),
+      mt('Next quarter you must commit to a long-term direction, so this is your last chance to prepare.', 'Q4 2023 requires a destination commitment; Q3 2023 is the last quarter to build readiness for it.'),
     ],
-    challenge: mt('Which evidence do we believe, and what do we build before we commit?', 'Which signals do we act on, and which capabilities must be ready for the Q4 commitment?'),
+    challenge: mt('Which evidence do we believe, and what do we build before we commit?', 'Which signals do we act on, and which capabilities must be ready for the Q4 2023 commitment?'),
   },
   4: {
     quarter: 4, stage: 'Year 1 · Q4',
     headline: mt('Time to choose what company we will become', 'Strategic commitment'),
     whatHappened: mt(
       'The board wants a clear direction. Choose one of five strategies: Consumer AI, Enterprise AI, Premium Human + AI, University/Credentials, or a Balanced marketplace. A clear choice focuses the company, but changing direction takes time and works best when you already have the right skills.',
-      'The board requires a strategic commitment among five destinations. Commitment focuses the organization and unlocks specialized upside, but repositioning takes time and is most effective when Q1–Q3 capabilities support it.'),
+      'The board requires a strategic commitment among five destinations. Commitment focuses the organization and unlocks specialized upside, but repositioning takes time and is most effective when the capabilities built in Q1–Q3 2023 support it.'),
     whyItMatters: [
-      mt('Your choice decides which future opportunities and risks you face.', 'The destination shapes focus effects, market access, crisis exposure and Q8 options.'),
+      mt('Your choice decides which future opportunities and risks you face.', 'The destination shapes focus effects, market access, crisis exposure and the final-quarter options.'),
       mt('If your skills do not match the strategy, the change will be slow and tiring for your people.', 'Low readiness means a longer, more load-heavy transition.'),
       mt('This choice cannot be changed later in the game.', 'The commitment is irreversible within the game horizon.'),
     ],
@@ -125,7 +125,7 @@ export const QUARTER_CARDS: Record<number, QuarterCard> = {
     whyItMatters: [
       mt('Only some options are open to you — they reflect your cash, profits and organization.', 'Option availability is earned from cash, margin, execution, capacity and strategic value.'),
       mt('Bigger moves bring bigger rewards and bigger risks.', 'Scale, raise, acquire and sell each carry distinct risk/return and integration load.'),
-      mt('This decision is how the board will remember your leadership.', 'The Q8 choice and its consequences feed the terminal evaluation.'),
+      mt('This decision is how the board will remember your leadership.', 'The Q4 2024 choice and its consequences feed the terminal evaluation.'),
     ],
     challenge: mt('What should the company do next?', 'Which earned option creates the most durable value?'),
   },

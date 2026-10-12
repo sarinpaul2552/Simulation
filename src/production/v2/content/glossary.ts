@@ -1,0 +1,56 @@
+/**
+ * Business glossary (Batch 8). Plain-English definitions with an example; MBA mode adds technical detail
+ * (how the simulation measures it). Shown in place via tap/click (Term component) and in a full glossary panel.
+ */
+export interface GlossaryEntry { id: string; term: string; plain: string; example: string; mba?: string }
+
+export const GLOSSARY: GlossaryEntry[] = [
+  { id: 'cac', term: 'Customer acquisition cost (CAC)', plain: 'What it costs to win one new paying customer — advertising, promotions and sales effort.',
+    example: 'If NexLearn spends $1M on marketing and gains 10,000 subscribers, CAC is $100 per subscriber.',
+    mba: 'Shown as an index (100 = NexLearn’s Q4 2022 level). Above 100 means each new customer costs more than it used to.' },
+  { id: 'retention', term: 'Retention', plain: 'The share of paying customers who stay with you from one quarter to the next.',
+    example: '85% retention means 85 of every 100 subscribers renew; 15 leave and must be replaced just to stand still.',
+    mba: 'Consumer paid retention per quarter. Small changes compound: 85% vs 80% is a large difference in customer lifetime value.' },
+  { id: 'renewal', term: 'Renewal rate', plain: 'The share of contracts (here, university partnerships) that are renewed when they come up.',
+    example: 'A 90% renewal rate means 9 in 10 university partners sign again.' },
+  { id: 'pricing-power', term: 'Pricing power', plain: 'How easily the company can charge a good price without losing customers.',
+    example: 'A strong brand can raise prices a little and keep most customers; a weak one loses them.',
+    mba: 'Index (50 = starting level), driven by product quality, trust and competition.' },
+  { id: 'pipeline', term: 'Enterprise pipeline', plain: 'The total value of business deals that companies are seriously considering but have not yet signed.',
+    example: 'An $80M pipeline at a 25% win rate suggests roughly $20M of deals may close over time.',
+    mba: 'Qualified enterprise pipeline in $M; it converts into bookings through the win rate and sales cycle.' },
+  { id: 'win-rate', term: 'Enterprise win rate', plain: 'The share of serious enterprise deals that the company actually wins.',
+    example: 'Winning 1 in 4 bids is a 25% win rate.' },
+  { id: 'credential-network', term: 'Credential network value', plain: 'How valuable NexLearn’s network of university partners and recognised qualifications is to learners.',
+    example: 'More accredited university partners make NexLearn certificates worth more to employers.',
+    mba: 'Index built from credential capability and university relationships.' },
+  { id: 'operating-margin', term: 'Operating margin', plain: 'How many cents of every dollar of revenue are left after paying the costs of running the business.',
+    example: '$30M operating profit on $200M revenue is a 15% operating margin.',
+    mba: 'Operating profit ÷ revenue, before strategic investment, event costs and financing.' },
+  { id: 'operating-profit', term: 'Operating profit', plain: 'Revenue minus the everyday costs of running the business, before new strategic investment.',
+    example: '$200M revenue − $170M operating costs = $30M operating profit.' },
+  { id: 'liquidity', term: 'Liquidity', plain: 'Whether the company has enough cash to pay its bills.',
+    example: 'NexLearn needs at least $15M of cash to operate safely; below that it is insolvent.',
+    mba: 'Status from closing cash vs minimum ($15M) and comfortable ($40M) levels, plus runway at the current burn.' },
+  { id: 'execution-capacity', term: 'Execution capacity', plain: 'How much change the organization can handle at once without things slipping.',
+    example: 'Running five big projects at once may exceed capacity even if each one is a good idea.',
+    mba: 'Organizational capacity adjusted for culture. Investment absorbed beyond capacity is partly lost.' },
+  { id: 'org-load', term: 'Organizational load', plain: 'The amount of change the company is asking its people to deliver this quarter.',
+    example: 'Several new initiatives plus a reorganization creates a heavy load.',
+    mba: 'Transformation load: bucket loads + coordination load + strategy transition + event load, compared with capacity.' },
+  { id: 'strategic-readiness', term: 'Strategic readiness', plain: 'How well the company’s skills fit its chosen strategy (or, before choosing, the best-fitting strategy).',
+    example: 'An Enterprise AI strategy needs strong enterprise sales and AI capability.',
+    mba: 'Dashboard interpretation: before Q4 2023 the best destination readiness; after, 50% strategy established + 50% average of the capabilities it relies on.' },
+  { id: 'maturation', term: 'Capability maturation', plain: 'Money invested today turns into real capability gradually over the next one to three quarters.',
+    example: 'Some investments pay off sooner (half in the first quarter); others more slowly.',
+    mba: 'Each investment cohort matures on the engine’s schedule (e.g. 50/35/15% or 20/40/40%) and can be reduced by overload.' },
+  { id: 'shareholder-value', term: 'Shareholder value', plain: 'How much the company is worth to its owners — driven by growth, profits, risk and future prospects.',
+    example: 'A company that grows profitably and safely usually becomes more valuable.',
+    mba: 'In the final assessment: value creation relative to the starting company, adjusted for dilution.' },
+  { id: 'runway', term: 'Runway', plain: 'How many quarters the company could keep going at its current rate of spending before cash runs out.',
+    example: 'With $60M of cash and a $10M loss per quarter, the runway is six quarters.' },
+  { id: 'trust', term: 'Trust', plain: 'How much customers and partners believe the company will deliver on its promises.',
+    example: 'A data breach or service failure lowers trust; reliable delivery builds it.' },
+];
+
+export const GLOSSARY_BY_ID: Record<string, GlossaryEntry> = Object.fromEntries(GLOSSARY.map(g => [g.id, g]));

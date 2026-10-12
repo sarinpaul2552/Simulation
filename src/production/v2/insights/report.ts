@@ -77,9 +77,9 @@ export function decisionSummary(input: V2PlayerQuarterInput): string {
 }
 
 const DIM_MEASURES = {
-  financial: mt('Growth, profit margin, cash, debt, ownership and the value of the company.', 'Revenue growth and quality, Q8 margin, net cash, leverage, dilution and shareholder value.'),
+  financial: mt('Growth, profit margin, cash, debt, ownership and the value of the company.', 'Revenue growth and quality, final-quarter margin, net cash, leverage, dilution and shareholder value.'),
   strategic: mt('How strong you are where you chose to compete, how consistent your strategy was, and the options you earned.', 'Capability strength in the chosen focus, destination coherence, market position, adaptability and optionality.'),
-  organizational: mt('The health of your people: talent, culture, trust and capacity to execute.', 'Talent, culture, trust, execution and organizational capacity at Q8.'),
+  organizational: mt('The health of your people: talent, culture, trust and capacity to execute.', 'Talent, culture, trust, execution and organizational capacity at the end of Q4 2024.'),
 };
 
 function findings(s: V2TeamState, history: ReturnType<typeof gameHistory>): { strengths: Finding[]; struggles: Finding[] } {
@@ -106,13 +106,13 @@ function findings(s: V2TeamState, history: ReturnType<typeof gameHistory>): { st
   const dCulture = s.culture - s0.culture;
   if (dCulture <= -6) struggles.push({ w: -dCulture, title: 'Culture weakened', evidence: `Culture fell from ${s0.culture.toFixed(0)} to ${s.culture.toFixed(0)}.` });
   if (dCulture >= 0 && s.capabilities.talent >= s0.capabilities.talent + 10) strengths.push({ w: 6, title: 'Built organizational resilience', evidence: `Talent rose to ${s.capabilities.talent.toFixed(0)} while culture held at ${s.culture.toFixed(0)}.` });
-  if (s.financing.debt > 0 && revGrowth < 0.03) struggles.push({ w: 5, title: 'Debt increased without enough commercial progress', evidence: `Debt of ${fmtM(s.financing.debt)} at Q8 while revenue changed ${(revGrowth * 100).toFixed(1)}%.` });
+  if (s.financing.debt > 0 && revGrowth < 0.03) struggles.push({ w: 5, title: 'Debt increased without enough commercial progress', evidence: `Debt of ${fmtM(s.financing.debt)} at the end of Q4 2024 while revenue changed ${(revGrowth * 100).toFixed(1)}%.` });
   const margin = s.revenue > 0 ? s.operatingProfit / s.revenue : 0, m0 = s0.operatingProfit / s0.revenue;
   if (margin - m0 >= 0.02) strengths.push({ w: (margin - m0) * 200, title: 'Improved profitability', evidence: `Operating margin rose from ${(m0 * 100).toFixed(1)}% to ${(margin * 100).toFixed(1)}%.` });
   if (margin - m0 <= -0.03) struggles.push({ w: (m0 - margin) * 200, title: 'Profitability fell', evidence: `Operating margin fell from ${(m0 * 100).toFixed(1)}% to ${(margin * 100).toFixed(1)}%.` });
   const earned = s.final.record?.availability.filter(o => o.available).length ?? 0;
-  if (earned >= 4) strengths.push({ w: 5, title: 'Earned many strategic options', evidence: `${earned} of 6 final options were open to the company at Q8.` });
-  if (s.final.record && earned <= 2) struggles.push({ w: 5, title: 'Few strategic options at the end', evidence: `Only ${earned} of 6 final options were open at Q8.` });
+  if (earned >= 4) strengths.push({ w: 5, title: 'Earned many strategic options', evidence: `${earned} of 6 final options were open to the company in Q4 2024.` });
+  if (s.final.record && earned <= 2) struggles.push({ w: 5, title: 'Few strategic options at the end', evidence: `Only ${earned} of 6 final options were open in Q4 2024.` });
   const top = (xs: (Finding & { w: number })[]) => xs.sort((a, b) => b.w - a.w).slice(0, 3).map(({ title, evidence }) => ({ title, evidence }));
   return { strengths: top(strengths), struggles: top(struggles) };
 }
@@ -140,7 +140,7 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
       quarter: 4,
       decision: `Committed to ${V2_DESTINATIONS[d.id].name}.`,
       immediate: `Readiness at commitment was ${(d.readinessAtCommit * 100).toFixed(0)}%, adding ${d.transition.loadPerQuarter.toFixed(1)} points of change load per quarter for three quarters.`,
-      longerTerm: `It set the crisis you faced in Q7 (“${s.crisis.record?.assessment.title ?? '—'}”) and the strategic focus behind your Q8 options.`,
+      longerTerm: `It set the crisis you faced in Q3 2024 (“${s.crisis.record?.assessment.title ?? '—'}”) and the strategic focus behind your final options.`,
     });
   }
   const q5 = h[4];
@@ -152,10 +152,10 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
       quarter: 5,
       decision: accept ? 'Accepted the $48M global contract.' : 'Declined the $48M global contract.',
       immediate: accept ? `Paid ${fmtM(upfront)} upfront and took on a delivery team and extra workload.` : 'Kept cash, people and roadmap focused on your own strategy.',
-      longerTerm: `Enterprise revenue went from ${fmtM(q5.before.segmentRevenue.enterprise)} (Q4) to ${fmtM(s.segmentRevenue.enterprise)} (Q8).`,
+      longerTerm: `Enterprise revenue went from ${fmtM(q5.before.segmentRevenue.enterprise)} (Q4 2023) to ${fmtM(s.segmentRevenue.enterprise)} (Q4 2024).`,
       counterfactual: alt ? pick(mode, mt(
-        `Replaying your game with the opposite choice (everything else the same): Q8 revenue ${fmtM(alt.revenue)} instead of ${fmtM(s.revenue)}, cash ${fmtM(alt.cash)} instead of ${fmtM(s.cash)}.`,
-        `Counterfactual replay (same engine, all other decisions unchanged): Q8 revenue ${fmtM(alt.revenue)} vs ${fmtM(s.revenue)}; cash ${fmtM(alt.cash)} vs ${fmtM(s.cash)}; operating profit ${fmtM(alt.operatingProfit)} vs ${fmtM(s.operatingProfit)}.`)) : undefined,
+        `Replaying your game with the opposite choice (everything else the same): Q4 2024 revenue ${fmtM(alt.revenue)} instead of ${fmtM(s.revenue)}, cash ${fmtM(alt.cash)} instead of ${fmtM(s.cash)}.`,
+        `Counterfactual replay (same engine, all other decisions unchanged): Q4 2024 revenue ${fmtM(alt.revenue)} vs ${fmtM(s.revenue)}; cash ${fmtM(alt.cash)} vs ${fmtM(s.cash)}; operating profit ${fmtM(alt.operatingProfit)} vs ${fmtM(s.operatingProfit)}.`)) : undefined,
     });
   }
   const q6 = h[5];
@@ -163,10 +163,10 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
     out.push({
       quarter: 6,
       decision: `Recession response: ${decisionSummary({ ...q6.input, allocation: { consumer: 0, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0, cashReserve: 0 } }) || 'no special actions'}.`,
-      immediate: [`Cash ended Q6 at ${fmtM(q6.after.cash)}`,
+      immediate: [`Cash ended Q2 2024 at ${fmtM(q6.after.cash)}`,
         q6.consequence.managementSummary.savingsPerQuarter > 0.05 ? `cost savings of ${fmtM(q6.consequence.managementSummary.savingsPerQuarter)}/quarter` : '',
         q6.consequence.managementSummary.oneOffCost > 0.05 ? `one-off cost of ${fmtM(q6.consequence.managementSummary.oneOffCost)}` : ''].filter(Boolean).join('; ') + '.',
-      longerTerm: `${moved('Culture', q6.before.culture, s.culture)} and ${moved('talent', q6.before.capabilities.talent, s.capabilities.talent)} by Q8.`,
+      longerTerm: `${moved('Culture', q6.before.culture, s.culture)} and ${moved('talent', q6.before.capabilities.talent, s.capabilities.talent)} by Q4 2024.`,
     });
   }
   const q7 = h[6];
@@ -179,8 +179,8 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
       quarter: 7,
       decision: `Crisis “${a.title}”: chose ${label(q7.input.crisisResponse)}.`,
       immediate: `Severity ${(a.severity * 100).toFixed(0)}%; cash cost ${fmtM(a.responses.find(x => x.id === q7.input.crisisResponse)?.cash ?? 0)}; trust ${q7.before.trust.toFixed(0)} → ${q7.after.trust.toFixed(0)}.`,
-      longerTerm: `By Q8 trust was ${s.trust.toFixed(0)} and revenue ${fmtM(s.revenue)}.`,
-      counterfactual: alts.length ? `Replaying with other responses (all else equal): ${alts.map(x => `${label(x.r)} → Q8 revenue ${fmtM(x.st!.revenue)}, cash ${fmtM(x.st!.cash)}, trust ${x.st!.trust.toFixed(0)}`).join('; ')}.` : undefined,
+      longerTerm: `By Q4 2024 trust was ${s.trust.toFixed(0)} and revenue ${fmtM(s.revenue)}.`,
+      counterfactual: alts.length ? `Replaying with other responses (all else equal): ${alts.map(x => `${label(x.r)} → Q4 2024 revenue ${fmtM(x.st!.revenue)}, cash ${fmtM(x.st!.cash)}, trust ${x.st!.trust.toFixed(0)}`).join('; ')}.` : undefined,
     });
   }
   // Keep the three with the largest Q8 cash/revenue spread (or the destination + two most recent)
@@ -251,7 +251,7 @@ export function strategicVulnerabilities(s: V2TeamState): Finding[] {
   const out: (Finding & { w: number })[] = [];
   const seg = Object.entries(s.segmentRevenue).sort((a, b) => b[1] - a[1]);
   const total = seg.reduce((t, [, v]) => t + v, 0);
-  if (total > 0 && seg[0][1] / total >= 0.65) out.push({ w: seg[0][1] / total * 10, title: `Revenue depends on ${SEGMENT_LABEL[seg[0][0]] ?? seg[0][0]}`, evidence: `${((seg[0][1] / total) * 100).toFixed(0)}% of Q8 revenue comes from one business (${fmtM(seg[0][1])} of ${fmtM(total)}).` });
+  if (total > 0 && seg[0][1] / total >= 0.65) out.push({ w: seg[0][1] / total * 10, title: `Revenue depends on ${SEGMENT_LABEL[seg[0][0]] ?? seg[0][0]}`, evidence: `${((seg[0][1] / total) * 100).toFixed(0)}% of final-quarter revenue comes from one business (${fmtM(seg[0][1])} of ${fmtM(total)}).` });
   if (s.destination) {
     const def = V2_DESTINATIONS[s.destination.id];
     for (const b of def.alignedBuckets) {
@@ -261,7 +261,7 @@ export function strategicVulnerabilities(s: V2TeamState): Finding[] {
     }
     if ((s.destination.id === 'consumer-ai' || s.destination.id === 'enterprise-ai') && s.commercial.aiCommercialReadiness < 50) out.push({ w: 7, title: 'An AI strategy with limited AI readiness', evidence: `AI commercial readiness ended at ${s.commercial.aiCommercialReadiness.toFixed(0)}/100.` });
   }
-  if (s.cash < 40) out.push({ w: (40 - s.cash) / 4 + 4, title: 'Thin cash buffer', evidence: `Q8 cash of ${fmtM(s.cash)} is below the ${fmtM(40)} comfort level; a further shock would need new financing.` });
+  if (s.cash < 40) out.push({ w: (40 - s.cash) / 4 + 4, title: 'Thin cash buffer', evidence: `Final cash of ${fmtM(s.cash)} is below the ${fmtM(40)} comfort level; a further shock would need new financing.` });
   if (s.financing.debt > 0) out.push({ w: 3 + s.financing.debt / 10, title: 'Carrying debt', evidence: `${fmtM(s.financing.debt)} of debt at ${(s.financing.interestRate * 100).toFixed(1)}% per quarter.` });
   if (s.financing.ownership < 0.85) out.push({ w: 4, title: 'Diluted ownership', evidence: `Original shareholders own ${(s.financing.ownership * 100).toFixed(0)}% of the company.` });
   if (s.culture < 65) out.push({ w: (65 - s.culture) / 2 + 3, title: 'Fragile culture', evidence: `Culture ended at ${s.culture.toFixed(0)} (started 72): less capacity to absorb the next change.` });
@@ -290,7 +290,7 @@ export function alternativesNotPursued(snap: V2GameSnapshot): Finding[] {
   if (q4?.input.destination) {
     const ranked = V2_DESTINATION_IDS.map(id => ({ id, r: destinationReadiness(id, q4.before).readiness })).sort((a, b) => b.r - a.r);
     const chosen = ranked.find(x => x.id === q4.input.destination)!;
-    if (ranked[0].id !== chosen.id && ranked[0].r - chosen.r >= 0.1) out.push({ title: `Did not choose ${V2_DESTINATIONS[ranked[0].id].name}`, evidence: `At Q4 your skills fitted it best (${(ranked[0].r * 100).toFixed(0)}% ready); you chose ${V2_DESTINATIONS[chosen.id].name} (${(chosen.r * 100).toFixed(0)}%).` });
+    if (ranked[0].id !== chosen.id && ranked[0].r - chosen.r >= 0.1) out.push({ title: `Did not choose ${V2_DESTINATIONS[ranked[0].id].name}`, evidence: `In Q4 2023 your skills fitted it best (${(ranked[0].r * 100).toFixed(0)}% ready); you chose ${V2_DESTINATIONS[chosen.id].name} (${(chosen.r * 100).toFixed(0)}%).` });
   }
   const totals: Record<string, number> = { consumer: 0, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0 };
   for (const x of h) for (const k of Object.keys(totals)) totals[k] += (x.input.allocation as unknown as Record<string, number>)[k];
@@ -300,7 +300,7 @@ export function alternativesNotPursued(snap: V2GameSnapshot): Finding[] {
   const rec = s.final.record;
   if (rec) {
     const others = rec.availability.filter(o => o.available && o.id !== rec.option).map(o => FINAL[o.id] ?? o.id);
-    if (others.length) out.push({ title: 'Other Q8 options you had earned', evidence: `You could also have chosen to ${others.join(', ')}.` });
+    if (others.length) out.push({ title: 'Other final options you had earned', evidence: `You could also have chosen to ${others.join(', ')}.` });
   }
   return out.slice(0, 4);
 }

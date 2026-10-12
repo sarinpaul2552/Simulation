@@ -42,6 +42,8 @@ export interface V2Draft {
   deliberation?: V2Deliberation;
   /** Roles that have viewed their private brief on the shared device (sequential private briefing). */
   briefed?: V2Role[];
+  /** Batch 8: the team has read the NexLearn company introduction (Q1 only). */
+  introSeen?: boolean;
 }
 
 export interface V2GameRecord {

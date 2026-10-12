@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Termed } from '../ds/glossary';
+import { calendarLabel } from '../../content/calendar';
 import { V2_TOTAL_QUARTERS } from '../../adapter';
 import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
@@ -49,13 +51,13 @@ export function QuarterDashboard({ history, quarter, mode }: { history: QuarterR
     <div className="ds-stack-lg" data-testid="v2-results">
       {/* Level 1 — Executive summary */}
       <section className="ds-verdict ds-enter" data-testid="v2-explanation">
-        <span className="ds-verdict-kicker">Q{quarter} results · {CHAPTERS[quarter].title}</span>
+        <span className="ds-verdict-kicker">{calendarLabel(quarter)} results · {CHAPTERS[quarter].title}</span>
         <h1 className="ds-verdict-text" data-testid="v2-headline-verdict" data-tone={headline.tone}>{headline.text}</h1>
         {mode === 'mba' && <div className="ds-verdict-basis">{headline.basis}</div>}
         <div className="ds-figures" data-testid="v2-figures">
           {(['revenue', 'operatingProfit', 'cash'] as const).map(id => {
             const c = card(id);
-            return <Figure key={id} testId={`v2-fig-${id}`} label={c.label} value={c.display} delta={{ direction: c.direction, tone: c.tone, text: deltaText(c) }} sub={`${quarter === 1 ? 'Start' : `Q${quarter - 1}`}: ${c.previousDisplay}`} />;
+            return <Figure key={id} testId={`v2-fig-${id}`} label={<Termed label={c.label} />} value={c.display} delta={{ direction: c.direction, tone: c.tone, text: deltaText(c) }} sub={`${calendarLabel(quarter - 1)}: ${c.previousDisplay}`} />;
           })}
         </div>
       </section>
@@ -180,7 +182,7 @@ function ExploreBusiness({ history, quarter, mode }: { history: QuarterRecord[];
             { key: 'consumer', label: 'Consumer', value: t.segments.consumer }, { key: 'enterprise', label: 'Enterprise', value: t.segments.enterprise },
             { key: 'aiNative', label: 'AI-native', value: t.segments.aiNative }, { key: 'university', label: 'University', value: t.segments.university }] }))} />
           <table className="ds-table">
-            <thead><tr><th>Business</th><th style={{ textAlign: 'right' }}>Q{quarter}</th><th style={{ textAlign: 'right' }}>Change</th></tr></thead>
+            <thead><tr><th>Business</th><th style={{ textAlign: 'right' }}>{calendarLabel(quarter)}</th><th style={{ textAlign: 'right' }}>Change</th></tr></thead>
             <tbody>{(['consumer', 'enterprise', 'aiNative', 'university'] as const).map(k => {
               const now = rec.after.segmentRevenue[k], before = rec.before.segmentRevenue[k];
               return <tr key={k}><td>{{ consumer: 'Consumer', enterprise: 'Enterprise', aiNative: 'AI-native', university: 'University' }[k]}</td><td style={{ textAlign: 'right' }}>{fmtM(now)}</td><td style={{ textAlign: 'right' }} className={now - before > 0.05 ? 'ds-tone-good' : now - before < -0.05 ? 'ds-tone-bad' : ''}>{now - before >= 0 ? '+' : '−'}${Math.abs(now - before).toFixed(1)}M</td></tr>;
@@ -196,8 +198,8 @@ function ExploreBusiness({ history, quarter, mode }: { history: QuarterRecord[];
             <p className="ds-muted" style={{ margin: '6px 0 0' }}>A dashboard interpretation of recorded values — not part of your score.</p>
           </div>
           <table className="ds-table">
-            <thead><tr><th>Indicator</th><th style={{ textAlign: 'right' }}>Now</th>{prevHealth && <th style={{ textAlign: 'right' }}>Q{quarter - 1}</th>}</tr></thead>
-            <tbody>{ind.drivers.map((d, i) => <tr key={d.label}><td>{d.label}</td><td style={{ textAlign: 'right' }}><b>{d.value}</b></td>{prevHealth && <td style={{ textAlign: 'right' }} className="ds-muted">{prevHealth.find(h => h.id === ind.id)?.drivers[i]?.value ?? '—'}</td>}</tr>)}</tbody>
+            <thead><tr><th>Indicator</th><th style={{ textAlign: 'right' }}>Now</th>{prevHealth && <th style={{ textAlign: 'right' }}>{calendarLabel(quarter - 1)}</th>}</tr></thead>
+            <tbody>{ind.drivers.map((d, i) => <tr key={d.label}><td><Termed label={d.label} /></td><td style={{ textAlign: 'right' }}><b>{d.value}</b></td>{prevHealth && <td style={{ textAlign: 'right' }} className="ds-muted">{prevHealth.find(h => h.id === ind.id)?.drivers[i]?.value ?? '—'}</td>}</tr>)}</tbody>
           </table>
           {mode === 'mba' && <p className="ds-muted" style={{ gridColumn: '1 / -1', margin: 0 }}>How it is calculated: {ind.formula}</p>}
         </div>
@@ -218,7 +220,7 @@ function DeepAnalysis({ history, quarter, mode, consequences, cards }: { history
         <p className="ds-h4">Financial diagnostics</p>
         <div className="ds-grid ds-grid-kpi" data-testid="v2-kpis">
           {cards.map(c => (
-            <KpiTile key={c.id} testId={`v2-kpi-${c.id}`} label={c.label} value={c.display} explain={c.explain}
+            <KpiTile key={c.id} testId={`v2-kpi-${c.id}`} label={<Termed label={c.label} />} value={c.display} explain={c.explain}
               delta={{ direction: c.direction, tone: c.tone, text: c.id === 'liquidity' ? c.deltaDisplay : deltaText(c) }}
               previous={`Last quarter: ${c.previousDisplay}`} footnote={c.id !== 'liquidity' ? c.vsStart : undefined} />
           ))}
@@ -344,11 +346,11 @@ function ReflectionCard({ ctl, mode, rec }: { ctl: V2TeamController; mode: V2Pre
         </div>
       </div>
       {waiting ? (
-        <div className="ds-callout" data-testid="v2-waiting" style={{ marginTop: 12 }}><Icon name="clock" />Reflection saved. Waiting for the facilitator to open Q{q + 1}…</div>
+        <div className="ds-callout" data-testid="v2-waiting" style={{ marginTop: 12 }}><Icon name="clock" />Reflection saved. Waiting for the facilitator to open {calendarLabel(q + 1)}…</div>
       ) : (
         <div className="ds-actions">
           <button className="ds-btn ds-btn-primary" data-testid="v2-next-quarter" disabled={ctl.busy || learning.length === 0} onClick={proceed}>
-            {last ? 'Save and see the final report' : `Save and continue to Q${q + 1}`} <Icon name="arrow" />
+            {last ? 'Save and see the final report' : `Save and continue to ${calendarLabel(q + 1)}`} <Icon name="arrow" />
           </button>
         </div>
       )}

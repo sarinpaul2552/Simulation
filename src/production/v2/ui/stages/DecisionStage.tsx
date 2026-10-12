@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeFor, workingQuarter, V2Forecast, V2_ROLES } from '../../adapter';
+import { Term } from '../ds/glossary';
+import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeFor, workingQuarter, V2Forecast } from '../../adapter';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
 import type { V2Allocation } from '../../../../simulation/engineV2';
 import type { V2FinancingAction } from '../../../../simulation/engineV2Financing';
@@ -11,10 +12,10 @@ import { defaultInput } from '../useV2Team';
 import { BELIEFS, RISKS, CONFIDENCE_LEVELS } from '../../content/deliberationContent';
 import { pick, V2PresentationMode } from '../../content/modes';
 import { CHAPTERS } from '../../content/chapters';
+import { calendarLabel } from '../../content/calendar';
 import { FINAL_LABELS, money, pct } from '../format';
 import { Card, ChoiceList, Fold, Icon, Section, Segmented } from '../ds/components';
 import { DecisionSummary } from './DecisionSummary';
-import { buildRoleBriefing } from '../../content/roleContent';
 import { BUCKETS, BUCKET_INFO, capacityEstimate, nominalGain, timeToImpact, Bucket } from '../../insights/consequences';
 import type { V2GameSnapshot } from '../../snapshot';
 
@@ -78,9 +79,8 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-decide">
       <header className="ds-enter">
-        <p className="ds-eyebrow">Q{q} · {CHAPTERS[q].title} · Leadership decision</p>
+        <p className="ds-eyebrow">{calendarLabel(q)} · {CHAPTERS[q].title} · Discuss and decide</p>
         <h1 className="ds-title" style={{ fontSize: 'clamp(1.6rem, 3.6vw, 2.4rem)' }}>{hasEvent ? (EVENT_HEADING[q] ?? 'Make the call, then fund it.') : `How will you deploy ${money(envelope, 0)}?`}</h1>
-        <Recommendations stances={delib.stances ?? {}} snapshot={snap} mode={mode} />
       </header>
 
       {hasEvent && (
@@ -141,6 +141,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
 
         <div className="ds-stack" data-testid="v2-discussion">
           <p className="ds-eyebrow" style={{ marginBottom: 0 }}>Leadership discussion</p>
+          <p className="ds-muted" style={{ margin: 0 }}>Share what each of you saw in your brief. Where do your objectives pull in different directions?</p>
           <details className="ds-fold" open={beliefOpen} onToggle={e => setBeliefOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-fold-belief">
             <summary>1 · What is our strategy based on?{beliefLabel && <span className="ds-fold-hint">{pick(mode, beliefLabel.label)}{confLabel ? ` · ${confLabel} confidence` : ''}</span>}</summary>
             <div className="ds-fold-body">
@@ -190,18 +191,6 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
 
 function Fact({ label, value }: { label: string; value: string }) {
   return <div><div className="ds-muted">{label}</div><div style={{ fontWeight: 700, fontSize: '1.1em' }} className="ds-num">{value}</div></div>;
-}
-
-function Recommendations({ stances, snapshot, mode }: { stances: Partial<Record<string, string>>; snapshot: V2GameSnapshot; mode: V2PresentationMode }) {
-  const given = V2_ROLES.filter(r => stances[r]);
-  const label = (r: (typeof V2_ROLES)[number]) => buildRoleBriefing(snapshot, r, mode).recommendations.find(o => o.id === stances[r])?.label ?? String(stances[r]);
-  if (!given.length) return <p className="ds-muted" style={{ margin: 0 }}>Leaders can bring a recommendation from their private brief into this discussion.</p>;
-  return (
-    <div data-testid="v2-recommendations" className="ds-row" style={{ gap: '6px 8px', marginTop: 4 }}>
-      <span className="ds-small" style={{ fontWeight: 650 }}>Leaders recommend:</span>
-      {given.map(r => <span key={r} className="ds-pill"><b>{r}</b>&nbsp;{label(r)}</span>)}
-    </div>
-  );
 }
 
 /** The resource-allocation workspace: budget, visual mix, per-bucket guidance and an execution-capacity estimate. */
@@ -263,7 +252,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode }: { s
 
       <div className="ds-gauge" data-testid="v2-capacity" data-level={est.level}>
         <div className="ds-row" style={{ justifyContent: 'space-between' }}>
-          <span className="ds-small" style={{ fontWeight: 650 }}>Execution capacity (estimate)</span>
+          <span className="ds-small" style={{ fontWeight: 650 }}><Term id="execution-capacity">Execution capacity</Term> (estimate)</span>
           <span className={`ds-small ds-tone-${levelTone}`} style={{ fontWeight: 700 }}><Icon name={levelTone === 'good' ? 'check' : 'alert'} size={12} /> {levelText} · {pct(est.ratio)}</span>
         </div>
         <div className="ds-gauge-track"><span className="ds-gauge-mark" style={{ left: `${Math.min(100, (est.ratio / 1.25) * 100)}%` }} /></div>
@@ -273,7 +262,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode }: { s
           : <p className="ds-muted" style={{ margin: '8px 0 0' }}>{est.activeInitiatives} initiative{est.activeInitiatives === 1 ? '' : 's'} at once{est.coordination > 0 ? `, adding ${est.coordination} points of coordination work` : ''}. Strategy commitments, contracts and events can add more.</p>}
       </div>
       {over && <p className="ds-error" style={{ marginTop: 10 }}><Icon name="alert" />You have allocated {money(invested)} — more than the {money(envelope, 0)} budget.</p>}
-      <p className="ds-muted" style={{ marginTop: 10, marginBottom: 0 }}>Investment builds capability over one to three quarters. Returns are not guaranteed: they depend on your teams’ capacity and on the market.</p>
+      <p className="ds-muted" style={{ marginTop: 10, marginBottom: 0 }}>Investment builds capability over one to three quarters (<Term id="maturation">capability maturation</Term>). Returns are not guaranteed: they depend on your teams’ capacity and on the market.</p>
     </section>
   );
 }

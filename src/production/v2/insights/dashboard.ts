@@ -136,7 +136,7 @@ export function healthIndicators(s: V2TeamState): HealthIndicator[] {
       drivers: [{ label: 'Culture', value: s.culture.toFixed(0) }, { label: 'Talent', value: s.capabilities.talent.toFixed(0) }, { label: 'Capacity', value: s.organizationalCapacity.toFixed(0) }, { label: 'Change load vs capacity', value: `${(loadRatio * 100).toFixed(0)}%` }],
       formula: 'Average of culture, talent and capacity (÷100) and load headroom (1.5 − load ÷ capacity), each capped 0–1' },
     { id: 'strategy', label: 'Strategic readiness', score: strat, level: level(strat), summary: stratSummary, drivers: stratDrivers,
-      formula: 'Before Q4: best destination readiness. After Q4: 50% strategy established (readiness ramping 25 pts/quarter, minus focus dilution) + 50% average of the capabilities the strategy relies on (÷100)' },
+      formula: 'Before the Q4 2023 commitment: best destination readiness. After: 50% strategy established (readiness ramping 25 pts/quarter, minus focus dilution) + 50% average of the capabilities the strategy relies on (÷100)' },
   ];
 }
 
@@ -161,8 +161,8 @@ export function benchmarks(history: QuarterRecord[], quarter: number): Benchmark
   return [
     { label: 'Minimum operating cash (insolvency line)', source: 'target', metric: 'Cash', current: fmtM(s.cash), reference: fmtM(L.minimumOperatingCash, 0), met: s.cash >= L.minimumOperatingCash },
     { label: 'Comfortable cash level', source: 'target', metric: 'Cash', current: fmtM(s.cash), reference: fmtM(L.comfortableCash, 0), met: s.cash >= L.comfortableCash },
-    { label: 'Q8 "scale independently": operating margin', source: 'target', metric: 'Margin', current: fmtPct(margin), reference: fmtPct(S.minMargin, 0), met: margin >= S.minMargin },
-    { label: 'Q8 "scale independently": execution', source: 'target', metric: 'Execution', current: s.capabilities.execution.toFixed(0), reference: String(S.minExecution), met: s.capabilities.execution >= S.minExecution },
-    { label: 'Q8 "scale independently": organizational capacity', source: 'target', metric: 'Capacity', current: s.organizationalCapacity.toFixed(0), reference: String(S.minCapacity), met: s.organizationalCapacity >= S.minCapacity },
+    { label: 'Final-quarter "scale independently" option: operating margin', source: 'target', metric: 'Margin', current: fmtPct(margin), reference: fmtPct(S.minMargin, 0), met: margin >= S.minMargin },
+    { label: 'Final-quarter "scale independently" option: execution', source: 'target', metric: 'Execution', current: s.capabilities.execution.toFixed(0), reference: String(S.minExecution), met: s.capabilities.execution >= S.minExecution },
+    { label: 'Final-quarter "scale independently" option: organizational capacity', source: 'target', metric: 'Capacity', current: s.organizationalCapacity.toFixed(0), reference: String(S.minCapacity), met: s.organizationalCapacity >= S.minCapacity },
   ];
 }

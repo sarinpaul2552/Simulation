@@ -6,6 +6,7 @@
  * coordination load). Nothing is a counterfactual: no alternative revenue or profit is invented. Where an outcome is
  * uncertain the text says so and frames it as a question or a risk, never as proven causality.
  */
+import { calendarLabel } from '../content/calendar';
 import type { V2TeamState } from '../../../simulation/engineV2';
 import {
   V2_BUCKET_CURVES, V2_COORDINATION_LOAD, V2_ACTIVE_INITIATIVE_THRESHOLD, V2_MAX_CALIBRATED_BUCKET,
@@ -164,7 +165,7 @@ export function decisionConsequences(rec: QuarterRecord, mode: V2PresentationMod
     const rows = pending.filter(p => targets.includes(p.target));
     if (!rows.length) return '';
     const last = Math.max(...rows.map(r => r.lastQuarter));
-    return `${rows.map(r => `${TARGET_LABEL[r.target] ?? r.target} +${r.remaining.toFixed(1)}`).join(', ')} still to mature by Q${last}`;
+    return `${rows.map(r => `${TARGET_LABEL[r.target] ?? r.target} +${r.remaining.toFixed(1)}`).join(', ')} still to mature by ${calendarLabel(last)}`;
   };
 
   // --- Event decisions (the quarter's headline choice) -------------------------------------------------------- //
@@ -174,7 +175,7 @@ export function decisionConsequences(rec: QuarterRecord, mode: V2PresentationMod
       id: 'destination', weight: 100,
       decision: `You committed the company to become a ${V2_DESTINATIONS[d.id].name}.`,
       immediate: pick(mode, mt(`Your skills were ${pct(d.readinessAtCommit)} ready for this strategy, so the change adds ${d.transition.loadPerQuarter.toFixed(1)} points of workload each quarter while you transition.`,
-        `Readiness at commitment ${pct(d.readinessAtCommit)}; transition load ${d.transition.loadPerQuarter.toFixed(1)}/quarter through Q${d.transition.endQuarter}.`)),
+        `Readiness at commitment ${pct(d.readinessAtCommit)}; transition load ${d.transition.loadPerQuarter.toFixed(1)}/quarter through ${calendarLabel(d.transition.endQuarter)}.`)),
       longerTerm: pick(mode, mt('Investments aligned with this strategy now cost your teams less effort, and the strategy strengthens each quarter you stay on it.',
         'Aligned buckets carry reduced load and strategy strength ramps each quarter; capability ceilings in the focus areas rise with it.')),
       uncertainty: pick(mode, mt('Whether the market rewards this direction is still unknown — watch your strategy’s customers in the next results.', 'Commitment trades optionality for focus; the market response to this destination is not yet observed.')),
@@ -227,7 +228,7 @@ export function decisionConsequences(rec: QuarterRecord, mode: V2PresentationMod
       decision: `Final strategic decision: ${FINAL_LABEL[opt] ?? opt}.`,
       immediate: `This quarter’s investment envelope was ${fmtM(f.envelope, 0)}.`,
       longerTerm: 'This choice sets the company’s position for the final assessment.',
-      uncertainty: 'What happens after Q8 is outside the simulation.',
+      uncertainty: 'What happens after Q4 2024 is outside the simulation.',
     });
   }
 

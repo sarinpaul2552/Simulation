@@ -159,7 +159,7 @@ describe('Batch 7.5 · team commitment in the debrief', () => {
     expect(d.commitments[1].text).toMatch(/different opinions.*CEO/);
     expect(d.commitments[2].kind).toBe('none');
     expect(d.disagreements).toHaveLength(0); // no votes were fabricated
-    expect(d.questions.join(' ')).toMatch(/Q2 the team reported different opinions/);
+    expect(d.questions.join(' ')).toMatch(/Q2 2023 the team reported different opinions/);
   });
   it('private votes stay distinguishable from agreements', () => {
     const d = buildTeamDebrief({ team_id: 't', team_name: 'T', inputs: g.inputs.slice(0, 2), votes: { 1: { CEO: 'support', CFO: 'oppose', People: 'oppose', Product: 'support', Growth: 'support' } }, agreements: { 2: { agreement: 'leader', committed_by: null } } });

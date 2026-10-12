@@ -2,6 +2,7 @@
  * V2 DESIGN SYSTEM COMPONENTS (Batch 7). Small, dependency-free React components. Charts are inline SVG with a
  * hover tooltip, a single y-axis, recorded points only (no interpolation beyond drawing a line between real values).
  */
+import { calendarLabel, calendarShort } from '../../content/calendar';
 import { ReactNode, useState } from 'react';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/fraunces';
@@ -86,7 +87,7 @@ export function Delta({ direction, tone, text }: { direction: Direction; tone: T
   );
 }
 
-export function KpiTile({ label, value, delta, previous, explain, testId, footnote }: { label: string; value: string; delta?: { direction: Direction; tone: Tone; text: string }; previous?: string; explain?: string; testId?: string; footnote?: string }) {
+export function KpiTile({ label, value, delta, previous, explain, testId, footnote }: { label: ReactNode; value: string; delta?: { direction: Direction; tone: Tone; text: string }; previous?: string; explain?: string; testId?: string; footnote?: string }) {
   return (
     <div className="ds-card ds-kpi" data-testid={testId} title={explain}>
       <span className="ds-kpi-label">{label}</span>
@@ -188,7 +189,7 @@ export function LineChart({ points, label, format, color = 'var(--ds-s1)', testI
   const hp = hover !== null ? points[hover] : null;
   return (
     <figure className="ds-chart-wrap" style={{ margin: 0 }} data-testid={testId} data-points={points.length}>
-      <figcaption className="ds-sr">{label}: {points.map(p => `Q${p.x} ${format(p.y)}`).join(', ')}</figcaption>
+      <figcaption className="ds-sr">{label}: {points.map(p => `${calendarLabel(p.x)} ${format(p.y)}`).join(', ')}</figcaption>
       <svg className="ds-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} onMouseLeave={() => setHover(null)}>
         {ticks.map(t => (
           <g key={t}>
@@ -196,7 +197,7 @@ export function LineChart({ points, label, format, color = 'var(--ds-s1)', testI
             <text x={PAD.l - 6} y={sy(t) + 3} textAnchor="end">{format(t)}</text>
           </g>
         ))}
-        {Array.from({ length: maxQuarter + 1 }, (_, q) => <text key={q} x={sx(q)} y={H - 6} textAnchor="middle">{q === 0 ? 'Start' : `Q${q}`}</text>)}
+        {Array.from({ length: maxQuarter + 1 }, (_, q) => <text key={q} x={sx(q)} y={H - 6} textAnchor="middle">{calendarShort(q)}</text>)}
         {points.length > 1 && <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" />}
         {points.map((p, i) => (
           <g key={p.x}>
@@ -206,7 +207,7 @@ export function LineChart({ points, label, format, color = 'var(--ds-s1)', testI
         ))}
         {hp && <line x1={sx(hp.x)} x2={sx(hp.x)} y1={PAD.t} y2={H - PAD.b} stroke="#c3c2b7" strokeDasharray="3 3" />}
       </svg>
-      {hp && <div className="ds-tooltip" style={{ left: `${(sx(hp.x) / W) * 100}%`, top: `${(sy(hp.y) / H) * 100}%` }}>{hp.x === 0 ? 'Start' : `Q${hp.x}`}: {format(hp.y)}</div>}
+      {hp && <div className="ds-tooltip" style={{ left: `${(sx(hp.x) / W) * 100}%`, top: `${(sy(hp.y) / H) * 100}%` }}>{calendarLabel(hp.x)}: {format(hp.y)}</div>}
     </figure>
   );
 }
@@ -241,12 +242,12 @@ export function SegmentBars({ rows, testId }: { rows: { quarter: number; values:
                 const h = Math.max(0, y0 - y1 - 2);
                 return <rect key={v.key} x={x} y={y1} width={bw * 0.6} height={h} rx={i === r.values.length - 1 ? 3 : 0} fill={colorOf(v.key, i)} onMouseEnter={() => setHover({ q: r.quarter, key: v.key })} />;
               })}
-              <text x={x + bw * 0.3} y={H - 6} textAnchor="middle">{r.quarter === 0 ? 'Start' : `Q${r.quarter}`}</text>
+              <text x={x + bw * 0.3} y={H - 6} textAnchor="middle">{calendarShort(r.quarter)}</text>
             </g>
           );
         })}
       </svg>
-      {hover && hv && <div className="ds-tooltip" style={{ left: `${((PAD.l + hover.q * bw + bw * 0.5) / W) * 100}%`, top: '10%' }}>{hover.q === 0 ? 'Start' : `Q${hover.q}`} · {hv.label}: ${hv.value.toFixed(1)}M</div>}
+      {hover && hv && <div className="ds-tooltip" style={{ left: `${((PAD.l + hover.q * bw + bw * 0.5) / W) * 100}%`, top: '10%' }}>{calendarLabel(hover.q)} · {hv.label}: ${hv.value.toFixed(1)}M</div>}
       <div className="ds-legend">{keys.map((k, i) => <span key={k.key}><i style={{ background: colorOf(k.key, i) }} />{k.label}</span>)}</div>
     </figure>
   );
@@ -295,7 +296,7 @@ export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCanc
 }
 
 /** Big figure with label, value, delta and a short note. */
-export function Figure({ label, value, delta, sub, testId }: { label: string; value: string; delta?: { direction: Direction; tone: Tone; text: string }; sub?: string; testId?: string }) {
+export function Figure({ label, value, delta, sub, testId }: { label: ReactNode; value: string; delta?: { direction: Direction; tone: Tone; text: string }; sub?: string; testId?: string }) {
   return (
     <div className="ds-figure" data-testid={testId}>
       <span className="ds-fig-label">{label}</span>

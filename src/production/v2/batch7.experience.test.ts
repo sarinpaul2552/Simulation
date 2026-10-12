@@ -77,9 +77,10 @@ describe('Batch 7 · 7A scenario content', () => {
   });
 });
 
-describe('Batch 7 · 7A role briefings (role-visible information only)', () => {
+describe('Batch 8 · role briefings: six parts, role-visible information only, no recommendations', () => {
   const inputs = games.find(g => g.id === 'balanced')!.inputs;
-  it('each role gets five sections every quarter, built only from its own signals', () => {
+  const DIRECTIVE = /\b(you should|(?<!whether )we should|we must invest|the best (choice|option|strategy)|recommend(ed|ation)?|suggested by your data|your data points here)\b/i;
+  it('each role gets all six parts every quarter, built only from its own signals', () => {
     let snap = initializeGame();
     for (const inp of inputs) {
       const q = workingQuarter(snap)!;
@@ -87,27 +88,39 @@ describe('Batch 7 · 7A role briefings (role-visible information only)', () => {
       for (const role of V2_ROLES) for (const mode of V2_PRESENTATION_MODES) {
         const b = buildRoleBriefing(snap, role, mode);
         expect(b.responsibility.length).toBeGreaterThan(10);
-        expect(b.knowledge.length).toBeGreaterThan(0);
-        expect(b.whyItMatters.length).toBeGreaterThan(0);
-        expect(b.recommendations.length).toBeGreaterThanOrEqual(2);
-        expect(b.askTeam.length).toBeGreaterThan(0);
-        // knowledge ⊆ the role's own brief (which the adapter already restricts to all + this role)
+        expect(b.position.length).toBeGreaterThan(0);
+        expect(b.suggests.length).toBeGreaterThanOrEqual(2);
+        expect(b.uncertain.length).toBeGreaterThanOrEqual(1);
+        expect(b.objectives.length).toBeGreaterThanOrEqual(3);
+        expect(b.discuss.length).toBeGreaterThanOrEqual(2);
+        for (const d of b.discuss) expect(d.with).not.toBe(role);
         const allowed = new Set(getRoleBrief(snap, role).signals.map(s => s.id));
-        for (const k of b.knowledge) expect(allowed.has(k.id), `${role} Q${q} ${k.id}`).toBe(true);
+        for (const k of [...b.evidence, ...b.position]) expect(allowed.has(k.id), `${role} Q${q} ${k.id}`).toBe(true);
         const others = sq.signals.filter(s => s.audience !== role && s.audience !== 'all').map(s => s.id);
-        for (const id of others) expect(b.knowledge.some(k => k.id === id)).toBe(false);
-        if (b.suggested) expect(b.recommendations.some(r => r.id === b.suggested!.id)).toBe(true);
+        for (const id of others) expect(b.evidence.some(k => k.id === id)).toBe(false);
+        expect(b).not.toHaveProperty('recommendations');
+        expect(b).not.toHaveProperty('suggested');
         const txt = JSON.stringify(b);
+        expect(txt).not.toMatch(DIRECTIVE);
         expect(txt).not.toMatch(TRUTH);
         expect(txt).not.toMatch(BAD_TEXT);
       }
       snap = resolveQuarter(snap, inp).snapshot;
     }
   });
+  it('current business position shows the starting value and the change from last quarter', () => {
+    const snap = replayInputs(inputs.slice(0, 3));
+    const cfo = buildRoleBriefing(snap, 'CFO', 'mba');
+    const cash = cfo.position.find(p => p.id === 'cfo-cash')!;
+    expect(cash.start).toBe('$60.0M');
+    expect(cash.value).toBe(`$${snap.state.cash.toFixed(1)}M`);
+    expect(cash.previous).toBe(`$${replayInputs(inputs.slice(0, 2)).state.cash.toFixed(1)}M`);
+    expect(cash.change).toBeDefined();
+  });
   it('undergraduate mode shows no more KPIs than MBA mode', () => {
     const snap = replayInputs(inputs.slice(0, 2));
     for (const role of V2_ROLES) {
-      expect(buildRoleBriefing(snap, role, 'undergraduate').knowledge.length).toBeLessThanOrEqual(buildRoleBriefing(snap, role, 'mba').knowledge.length);
+      expect(buildRoleBriefing(snap, role, 'undergraduate').position.length).toBeLessThanOrEqual(buildRoleBriefing(snap, role, 'mba').position.length);
     }
   });
 });

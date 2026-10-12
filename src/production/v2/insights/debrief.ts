@@ -5,6 +5,7 @@
  * team-level deliberation (belief, risks) and — once a quarter is resolved — its revealed leadership votes.
  * Private role briefings are never part of the input.
  */
+import { calendarLabel } from '../content/calendar';
 import type { V2Role } from '../../../simulation/engineV2Scenario';
 import { V2_DESTINATIONS } from '../../../simulation/engineV2Destination';
 import { replayInputs } from '../adapter';
@@ -66,9 +67,9 @@ export function buildTeamDebrief(t: DebriefTeamInput): TeamDebrief {
   const topBucket = Object.entries(allocShare).sort((a, b) => b[1] - a[1])[0];
   const strategy = `${s.destination ? V2_DESTINATIONS[s.destination.id].name : 'No destination yet'}; heaviest investment in ${topBucket ? (BUCKET_NAME[topBucket[0]] ?? topBucket[0]) : '—'}.`;
   const questions = [
-    s.destination ? `Why did you choose ${V2_DESTINATIONS[s.destination.id].name}, and what evidence mattered most?` : 'What evidence will decide your Q4 commitment?',
-    disagreements.length ? `In Q${disagreements[0].quarter} some leaders opposed or raised concerns — how did the team resolve it?`
-      : Object.entries(t.agreements ?? {}).some(([, a]) => a.agreement !== 'agreed') ? `In Q${Object.entries(t.agreements ?? {}).find(([, a]) => a.agreement !== 'agreed')![0]} the team reported different opinions — what was the disagreement, and how was it settled?`
+    s.destination ? `Why did you choose ${V2_DESTINATIONS[s.destination.id].name}, and what evidence mattered most?` : 'What evidence will decide your Q4 2023 commitment?',
+    disagreements.length ? `In ${calendarLabel(disagreements[0].quarter)} some leaders opposed or raised concerns — how did the team resolve it?`
+      : Object.entries(t.agreements ?? {}).some(([, a]) => a.agreement !== 'agreed') ? `In ${calendarLabel(Number(Object.entries(t.agreements ?? {}).find(([, a]) => a.agreement !== 'agreed')![0]))} the team reported different opinions — what was the disagreement, and how was it settled?`
       : 'Did anyone disagree privately but support publicly? What did that cost?',
     s.solvency.everInsolvent || s.financing.debt > 0 ? 'How did cash constraints change what you could do later?' : 'Was your cash buffer an asset or an under-investment?',
     'Which result surprised you most, and which earlier decision caused it?',

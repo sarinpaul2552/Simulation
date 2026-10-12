@@ -1,5 +1,6 @@
 import { expect, Page, BrowserContext, Browser } from '@playwright/test';
 import type { V2PlayerQuarterInput, V2Role, V2VoteValue } from '../src/production/v2/types';
+import { calendarLabel } from '../src/production/v2/content/calendar';
 
 export const ROLES: V2Role[] = ['CEO', 'CFO', 'Product', 'People', 'Growth'];
 
@@ -32,7 +33,7 @@ export async function createSession(page: Page, teams: string[], opts: { mode?: 
   return { sessionCode, adminPin, teamCodes };
 }
 
-export async function joinTeam(page: Page, sessionCode: string, teamCode: string, role?: V2Role) {
+export async function joinTeam(page: Page, sessionCode: string, teamCode: string, role?: V2Role, opts: { keepIntro?: boolean } = {}) {
   await page.goto('/');
   await page.getByTestId('v2-home-team').click();
   await page.getByTestId('v2-join-session').fill(sessionCode);
@@ -43,6 +44,9 @@ export async function joinTeam(page: Page, sessionCode: string, teamCode: string
     await page.getByTestId('v2-join-go').click();
   }
   await expect(page.getByTestId('v2-team-game')).toBeVisible();
+  // Batch 8: the NexLearn introduction greets a team at the start of Q1 2023 (once per team).
+  const begin = page.getByTestId('v2-intro-begin');
+  if (!opts.keepIntro && await begin.isVisible().catch(() => false)) { await begin.click(); await expect(begin).toHaveCount(0); }
 }
 
 export async function expectPhase(page: Page, phase: string, quarter?: number) {
@@ -114,13 +118,12 @@ export async function fillDiscussion(page: Page, q: number) {
 }
 
 /** Walk through the five private briefings on the shared device. */
-export async function readBriefings(page: Page, opts: { refreshAt?: V2Role; quarter?: number; stance?: boolean } = {}) {
+export async function readBriefings(page: Page, opts: { refreshAt?: V2Role; quarter?: number } = {}) {
   for (const role of ROLES) {
     await expect(page.getByTestId('v2-next-role')).toHaveText(role);
     await expect(page.getByTestId('v2-role-brief')).toHaveCount(0);
     await page.getByTestId('v2-open-brief').click();
     await expect(page.getByTestId('v2-role-brief')).toHaveAttribute('data-role', role);
-    if (opts.stance) await page.locator('[data-testid^="v2-stance-"]:not([data-testid="v2-stance-options"])').first().click();
     await page.getByTestId('v2-hide-brief').click();
     await expect(page.getByTestId('v2-role-brief')).toHaveCount(0);
     if (opts.refreshAt === role) await refreshAndExpect(page, 'briefing', opts.quarter!);
@@ -134,7 +137,7 @@ export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts:
   await expectPhase(page, 'briefing', q);
   await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '0');
   await r('briefing');
-  await readBriefings(page, { refreshAt: opts.refreshEveryPhase ? 'Product' : undefined, quarter: q, stance: true });
+  await readBriefings(page, { refreshAt: opts.refreshEveryPhase ? 'Product' : undefined, quarter: q });
   await page.getByTestId('v2-to-decide').click();
   await expectPhase(page, 'decide', q);
   await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '1');
@@ -200,7 +203,7 @@ export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts:
 }
 
 export async function openQuarter(fac: Page, quarter: number) {
-  await expect(fac.getByTestId('v2-fac-open-quarter')).toHaveText(`Q${quarter - 1}`);
+  await expect(fac.getByTestId('v2-fac-open-quarter')).toHaveText(calendarLabel(quarter - 1));
   await fac.getByTestId('v2-fac-open-next').click();
-  await expect(fac.getByTestId('v2-fac-open-quarter')).toHaveText(`Q${quarter}`);
+  await expect(fac.getByTestId('v2-fac-open-quarter')).toHaveText(calendarLabel(quarter));
 }

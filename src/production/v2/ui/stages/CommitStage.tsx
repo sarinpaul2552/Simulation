@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { calendarLabel } from '../../content/calendar';
 import { V2_ROLES, workingQuarter, envelopeFor } from '../../adapter';
 import type { V2Deliberation, V2PlayerQuarterInput, V2Role, V2VoteValue } from '../../types';
 import type { V2Agreement, V2CommitmentMode, V2VotesResponse } from '../../api';
@@ -62,7 +63,7 @@ function Resolution({ input, deliberation, quarter, mode }: { input: V2PlayerQua
   const financing = (input.financing ?? []).map(f => f.kind === 'debt' ? `Borrow ${money(f.amount)}` : f.kind === 'equity' ? `Sell shares for ${money(f.amount)}` : f.kind === 'repay' ? `Repay ${money(f.amount)} of debt` : f.kind === 'partner' ? 'Bring in a strategic partner' : `${f.depth} restructuring`);
   return (
     <article className="ds-resolution ds-enter" data-testid="v2-decision-summary">
-      <p className="ds-eyebrow">Board resolution · Q{quarter} · {CHAPTERS[quarter].title}</p>
+      <p className="ds-eyebrow">Board resolution · {calendarLabel(quarter)} · {CHAPTERS[quarter].title}</p>
       <h2 className="ds-resolution-title">The leadership team resolves to…</h2>
       <dl>
         <dt>Invest {money(env, 0)}</dt>
@@ -98,7 +99,7 @@ function TeamCommitment({ ctl, deviceRole, quarter }: { ctl: V2TeamController; d
       <p className="ds-eyebrow">Team commitment</p>
       <h2 className="ds-title" style={{ marginBottom: 0 }}>{pending ? 'Commitment recorded' : 'How did the team reach this decision?'}</h2>
       {pending ? (
-        <p className="ds-muted" style={{ margin: 0 }}>The team’s agreement is recorded. Finish committing Q{quarter} to see the results.</p>
+        <p className="ds-muted" style={{ margin: 0 }}>The team’s agreement is recorded. Finish committing {calendarLabel(quarter)} to see the results.</p>
       ) : (
         <ChoiceList name="agreement" testIdPrefix="v2-agreement" value={agreement ? [agreement] : []} onChange={v => setAgreement(v[0] as V2Agreement)}
           options={AGREEMENTS.map(a => ({ id: a.id, disabled: !authorized, label: <span><b>{a.letter}.</b> {a.label}</span>, detail: a.detail }))} />
@@ -109,11 +110,11 @@ function TeamCommitment({ ctl, deviceRole, quarter }: { ctl: V2TeamController; d
         <button className="ds-btn ds-btn-secondary" data-testid="v2-revise" disabled={ctl.busy} onClick={() => void ctl.go('decide')}>Revise the decision</button>
         <button className="ds-btn ds-btn-chapter ds-btn-lg" data-testid="v2-commit-team" disabled={ctl.busy || !authorized || (!pending && !agreement)}
           onClick={() => (pending ? void ctl.commitTeam(recorded!, deviceRole) : setConfirming(true))}>
-          {ctl.busy ? 'Committing…' : pending ? `Finish committing Q${quarter}` : 'Commit Our Decision'} <Icon name="arrow" />
+          {ctl.busy ? 'Committing…' : pending ? `Finish committing ${calendarLabel(quarter)}` : 'Commit Our Decision'} <Icon name="arrow" />
         </button>
       </div>
       {confirming && agreement && (
-        <ConfirmDialog title={`Commit the Q${quarter} decision?`} confirmLabel="Commit Our Decision" busy={ctl.busy} testId="v2-confirm"
+        <ConfirmDialog title={`Commit the ${calendarLabel(quarter)} decision?`} confirmLabel="Commit Our Decision" busy={ctl.busy} testId="v2-confirm"
           onCancel={() => setConfirming(false)}
           onConfirm={() => { setConfirming(false); void ctl.commitTeam(agreement, deviceRole); }}>
           <p style={{ marginTop: 0 }}>The quarter will be resolved with this investment and decision. It cannot be undone.</p>
@@ -168,12 +169,12 @@ function PrivateVote({ ctl, deviceRole, quarter }: { ctl: V2TeamController; devi
           <div className="ds-roles">{V2_ROLES.map(r => <span key={r} className={`ds-role-pill ${submitted.includes(r) ? 'done' : ''}`}>{submitted.includes(r) && <Icon name="check" size={12} />}{r}</span>)}</div>
         </div>
       ) : <p className="ds-muted">Revealing…</p>}
-      {phase === 'commit' && <div className="ds-callout" data-testid="v2-commit-warning"><Icon name="alert" />Committing resolves Q{quarter}. It cannot be undone.</div>}
+      {phase === 'commit' && <div className="ds-callout" data-testid="v2-commit-warning"><Icon name="alert" />Committing resolves {calendarLabel(quarter)}. It cannot be undone.</div>}
       <div className="ds-actions">
         <button className="ds-btn ds-btn-secondary" data-testid="v2-revise" disabled={ctl.busy} onClick={() => void ctl.go('decide')}>Revise the decision (clears votes)</button>
         {phase === 'vote'
           ? <button className="ds-btn ds-btn-primary" data-testid="v2-to-commit" disabled={ctl.busy || !votes?.revealed} onClick={() => void ctl.go('commit')}>Continue to commit <Icon name="arrow" /></button>
-          : <button className="ds-btn ds-btn-chapter" data-testid="v2-commit" disabled={ctl.busy} onClick={() => void ctl.commit()}>{ctl.busy ? 'Committing…' : `Commit Q${quarter} decision`}</button>}
+          : <button className="ds-btn ds-btn-chapter" data-testid="v2-commit" disabled={ctl.busy} onClick={() => void ctl.commit()}>{ctl.busy ? 'Committing…' : `Commit ${calendarLabel(quarter)} decision`}</button>}
       </div>
     </section>
   );
@@ -183,10 +184,10 @@ function LegacyCommit({ ctl, quarter }: { ctl: V2TeamController; quarter: number
   return (
     <section className="ds-panel ds-stack" style={{ alignSelf: 'start' }}>
       <p className="ds-eyebrow">Commit</p>
-      <div className="ds-callout" data-testid="v2-commit-warning"><Icon name="alert" />Committing resolves Q{quarter}. It cannot be undone.</div>
+      <div className="ds-callout" data-testid="v2-commit-warning"><Icon name="alert" />Committing resolves {calendarLabel(quarter)}. It cannot be undone.</div>
       <div className="ds-actions">
         <button className="ds-btn ds-btn-secondary" data-testid="v2-revise" disabled={ctl.busy} onClick={() => void ctl.go('decide')}>Revise the decision</button>
-        <button className="ds-btn ds-btn-chapter" data-testid="v2-commit" disabled={ctl.busy} onClick={() => void ctl.commit()}>{ctl.busy ? 'Committing…' : `Commit Q${quarter} decision`}</button>
+        <button className="ds-btn ds-btn-chapter" data-testid="v2-commit" disabled={ctl.busy} onClick={() => void ctl.commit()}>{ctl.busy ? 'Committing…' : `Commit ${calendarLabel(quarter)} decision`}</button>
       </div>
     </section>
   );
