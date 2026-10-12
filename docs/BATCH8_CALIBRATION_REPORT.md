@@ -24,13 +24,15 @@ There are 19 eight-quarter runs, all played through the production replay path w
 
 | Group | Share price | Notes |
 |---|---|---|
-| Paired, adaptive and capability-led strategies | $145–$165 | Revenue +14–21%, margin up, healthy liquidity |
+| Consumer + AI, Enterprise + AI, Evidence-responsive, Premium builder, Aggressive spender | $145–$165 | Revenue +14–21%, margin up, healthy liquidity |
+| Deliberately wrong-way, Credential builder | $129, $107 | Off-target or slow-to-commercialise investment |
 | Balanced diversified | $137 | |
 | Concentrated strategies | $75–$127 | Concentrating on enterprise or people alone drags margin and liquidity |
 | Cash preservation | $74 (Cash100), $96 (Conservative) | Revenue −10%; $200M+ cash idle |
 | Distress tests | $60 and $70 for the two that became distressed | Distress discount and financial-health loss visible in the bridge |
 
-- The largest single-quarter move is ±20% (the limit), and only for distressed companies in Q7.
+- Only the distressed companies reach the ±20% limit (Q7).
+- Strategies whose liquidity deteriorated (People100, Enterprise100) fall up to 17.5% in Q7.
 - Healthy strategies move by at most 14% in a quarter.
 
 ## Tests run
