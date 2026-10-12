@@ -428,6 +428,7 @@ select.ds-input { width: auto; }
 .ds-table td { padding: 7px 8px; border-bottom: 1px solid var(--ds-line); vertical-align: top; }
 .ds-table th:first-child, .ds-table td:first-child { padding-left: 0; }
 .ds-table .num, .ds-table th.num { text-align: right; white-space: nowrap; }
+.ds-table td.ds-wrap { white-space: normal; }
 .ds-table tr.ds-row-total td { font-weight: 650; border-top: 1px solid var(--ds-ink); }
 .ds-table tr.ds-row-group td { font-weight: 650; color: var(--ds-ink-2); padding-top: 12px; border-bottom-color: var(--ds-line-2); }
 .ds-table caption { text-align: left; caption-side: top; font-size: var(--fs-note); color: var(--ds-ink-3); padding-bottom: 6px; }

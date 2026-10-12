@@ -96,14 +96,16 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           {gates.length > 0 && <div className="ds-notice ds-notice-bad" style={{ marginTop: 12 }}><Icon name="alert" />{gates.map(g => GATE_TEXT[g.id] ?? g.id).join(' ')}</div>}
           <div style={{ marginTop: 16 }}>
             <p className="ds-h4">Four lenses on the same company — reported separately, never combined</p>
+            <div className="ds-table-wrap">
             <table className="ds-table ds-table-compact" data-testid="v2-three-measures">
               <tbody>
                 <tr><td><b>Terminal simulation score</b><span className="ds-method" style={{ display: 'block' }}>The simulation’s own evaluation of the company built: finances, strategic position and organization.</span></td><td className="num"><span className="ds-score-big" data-testid="v2-final-overall">{sc.overall.toFixed(1)}</span><span className="ds-muted"> / 100</span></td></tr>
                 <tr><td><b>Shareholder value</b><span className="ds-method" style={{ display: 'block' }}>The simulated share price, from $100 at {calendarLabel(0)}.</span></td><td className="num"><b>{fmtPrice(end.price)}</b></td></tr>
-                <tr><td><b>Executive functional scores</b><span className="ds-method" style={{ display: 'block' }}>How the company performed under each function’s responsibilities (section 8) — not individual students.</span></td><td className="num ds-small">{cards.map(c => `${c.role === 'Product' ? 'CPO' : c.role === 'Growth' ? 'CGO' : c.role === 'People' ? 'CPeO' : c.role} ${c.functional.toFixed(0)}`).join(' · ')}</td></tr>
-                <tr><td><b>Board assessment</b><span className="ds-method" style={{ display: 'block' }}>Rule-based reading of the KPI evidence in the board verdict above.</span></td><td className="num ds-small">{verdict.map(d => `${d.label.split(' ')[0]} ${d.assessment.toLowerCase()}`).join(' · ')}</td></tr>
+                <tr><td><b>Executive functional scores</b><span className="ds-method" style={{ display: 'block' }}>How the company performed under each function’s responsibilities (section 8) — not individual students.</span></td><td className="num ds-small ds-wrap">{cards.map(c => `${c.role === 'Product' ? 'CPO' : c.role === 'Growth' ? 'CGO' : c.role === 'People' ? 'CPeO' : c.role} ${c.functional.toFixed(0)}`).join(' · ')}</td></tr>
+                <tr><td><b>Board assessment</b><span className="ds-method" style={{ display: 'block' }}>Rule-based reading of the KPI evidence in the board verdict above.</span></td><td className="num ds-small ds-wrap">{verdict.map(d => `${d.label.split(' ')[0]} ${d.assessment.toLowerCase()}`).join(' · ')}</td></tr>
               </tbody>
             </table>
+            </div>
           </div>
           <div className="ds-figures" style={{ marginTop: 16 }} data-testid="v2-final-dimensions">
             {report.dimensions.map(d => (
@@ -256,19 +258,21 @@ function ScorecardSummary({ cards, mode }: { cards: ReturnType<typeof allScoreca
   const [open, setOpen] = useState<string | null>(null);
   return (
     <div className="ds-stack">
+      <div className="ds-table-wrap">
       <table className="ds-table" data-testid="v2-scorecard-summary">
-        <thead><tr><th>Executive function</th><th className="num">Functional</th><th className="num">Company</th><th className="num">Executive score</th><th>Main challenge</th><th className="ds-sr">Detail</th></tr></thead>
+        <thead><tr><th>Executive function</th><th className="num">Functional</th><th className="num ds-hide-sm">Company</th><th className="num">Executive score</th><th className="ds-hide-sm">Main challenge</th><th className="ds-sr">Detail</th></tr></thead>
         <tbody>{cards.map(c => (
           <tr key={c.role} data-role={c.role}>
             <td><b>{c.title}</b></td>
             <td className="num">{c.functional.toFixed(0)}</td>
-            <td className="num">{c.company.toFixed(0)}</td>
+            <td className="num ds-hide-sm">{c.company.toFixed(0)}</td>
             <td className="num"><b>{c.executive.toFixed(0)}</b></td>
-            <td className="ds-small">{c.challenges[0] ?? <span className="ds-muted">None material</span>}</td>
+            <td className="ds-small ds-hide-sm">{c.challenges[0] ?? <span className="ds-muted">None material</span>}</td>
             <td><button className="ds-btn ds-btn-ghost ds-no-print" style={{ fontSize: 'var(--fs-note)' }} onClick={() => setOpen(open === c.role ? null : c.role)} aria-expanded={open === c.role}>{open === c.role ? 'Hide' : 'Scorecard'}</button></td>
           </tr>
         ))}</tbody>
       </table>
+      </div>
       {open && <ScorecardView card={cards.find(c => c.role === open)!} mode={mode} />}
       <p className="ds-method" style={{ margin: 0 }}>Scorecards rate how the team handled each function, not individual students; in a smaller team one person may have held several roles. Model {EXECUTIVE_VERSION}.</p>
     </div>
