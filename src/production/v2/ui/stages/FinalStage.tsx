@@ -15,6 +15,7 @@ import { FINAL_LABELS } from '../format';
 import { Icon, LineChart, Meter } from '../ds/components';
 import { Term } from '../ds/glossary';
 import { ScorecardView } from '../ds/intel';
+import { boardVerdict, defensePrompts, type DefensePrompt } from '../../insights/boardVerdict';
 
 const GATE_TEXT: Record<string, string> = {
   'terminal-insolvency': 'The company ended the game insolvent, which caps the business performance score.',
@@ -32,6 +33,8 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
   const val = useMemo(() => valuationSeries(history), [history]);
   const kpis = useMemo(() => kpiDashboard(history), [history]);
   const cards = useMemo(() => allScorecards(history), [history]);
+  const verdict = useMemo(() => boardVerdict(history), [history]);
+  const prompts = useMemo(() => defensePrompts(history), [history]);
   const s = game.snapshot.state;
   const s0 = val.points[0];
   const end = val.points[val.points.length - 1];
@@ -58,6 +61,29 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           </div>
         </header>
 
+        <section className="ds-report-section" data-testid="v2-board-verdict">
+          <h2>Board verdict: what kind of company did this leadership team build?</h2>
+          <p className="ds-conclusion" style={{ marginBottom: 12 }}>{report.conclusion}</p>
+          <div className="ds-table-wrap">
+            <table className="ds-table">
+              <thead><tr><th>Dimension</th><th>Assessment</th><th>Evidence</th><th className="num">{calendarShort(0)}</th><th className="num">{calendarShort(8)}</th><th>Last two quarters</th></tr></thead>
+              <tbody>{verdict.map(d => d.evidence.map((e, i) => (
+                <tr key={`${d.id}-${i}`} data-dimension={i === 0 ? d.id : undefined} data-assessment={i === 0 ? d.assessment : undefined}>
+                  {i === 0 && <td rowSpan={d.evidence.length} style={{ verticalAlign: 'top' }}><b>{d.label}</b><span className="ds-small" style={{ display: 'block', color: 'var(--ds-ink-2)' }}>{d.summary}</span></td>}
+                  {i === 0 && <td rowSpan={d.evidence.length} style={{ verticalAlign: 'top' }} className={d.assessment === 'Strong' ? 'ds-tone-good' : d.assessment === 'Weak' ? 'ds-tone-bad' : 'ds-tone-neutral'}><b>{d.assessment}</b></td>}
+                  <td className="ds-small" style={{ paddingLeft: 8 }}>{e.label}</td>
+                  <td className="num ds-muted">{e.start}</td>
+                  <td className="num"><b>{e.end}</b></td>
+                  <td className="ds-small">{e.trend}</td>
+                </tr>
+              )))}</tbody>
+            </table>
+          </div>
+          <details className="ds-perspectives" style={{ marginTop: 8 }}><summary>How each assessment is decided</summary>
+            <ul className="ds-list ds-small" style={{ marginTop: 6 }}>{verdict.map(d => <li key={d.id}><b>{d.label}.</b> {d.rule}</li>)}</ul>
+          </details>
+        </section>
+
         <section className="ds-report-section" data-testid="v2-report-summary">
           <h2><span className="ds-sec-n">{sec()}</span>Executive summary</h2>
           <div className="ds-figures" data-testid="v2-report-headline">
@@ -69,12 +95,13 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           <p className="ds-conclusion" style={{ marginTop: 16 }} data-testid="v2-conclusion">{report.conclusion}</p>
           {gates.length > 0 && <div className="ds-notice ds-notice-bad" style={{ marginTop: 12 }}><Icon name="alert" />{gates.map(g => GATE_TEXT[g.id] ?? g.id).join(' ')}</div>}
           <div style={{ marginTop: 16 }}>
-            <p className="ds-h4">Three separate measures</p>
+            <p className="ds-h4">Four lenses on the same company — reported separately, never combined</p>
             <table className="ds-table ds-table-compact" data-testid="v2-three-measures">
               <tbody>
-                <tr><td><b>Business performance</b><span className="ds-method" style={{ display: 'block' }}>The simulation’s own evaluation of the company you built: finances, strategic position and organization.</span></td><td className="num"><span className="ds-score-big" data-testid="v2-final-overall">{sc.overall.toFixed(1)}</span><span className="ds-muted"> / 100</span></td></tr>
+                <tr><td><b>Terminal simulation score</b><span className="ds-method" style={{ display: 'block' }}>The simulation’s own evaluation of the company built: finances, strategic position and organization.</span></td><td className="num"><span className="ds-score-big" data-testid="v2-final-overall">{sc.overall.toFixed(1)}</span><span className="ds-muted"> / 100</span></td></tr>
                 <tr><td><b>Shareholder value</b><span className="ds-method" style={{ display: 'block' }}>The simulated share price, from $100 at {calendarLabel(0)}.</span></td><td className="num"><b>{fmtPrice(end.price)}</b></td></tr>
-                <tr><td><b>Executive performance</b><span className="ds-method" style={{ display: 'block' }}>Average of the five executive scorecards (section 8).</span></td><td className="num"><b>{(cards.reduce((t, c) => t + c.executive, 0) / cards.length).toFixed(0)}</b><span className="ds-muted"> / 100</span></td></tr>
+                <tr><td><b>Executive functional scores</b><span className="ds-method" style={{ display: 'block' }}>How the company performed under each function’s responsibilities (section 8) — not individual students.</span></td><td className="num ds-small">{cards.map(c => `${c.role === 'Product' ? 'CPO' : c.role === 'Growth' ? 'CGO' : c.role === 'People' ? 'CPeO' : c.role} ${c.functional.toFixed(0)}`).join(' · ')}</td></tr>
+                <tr><td><b>Board assessment</b><span className="ds-method" style={{ display: 'block' }}>Rule-based reading of the KPI evidence in the board verdict above.</span></td><td className="num ds-small">{verdict.map(d => `${d.label.split(' ')[0]} ${d.assessment.toLowerCase()}`).join(' · ')}</td></tr>
               </tbody>
             </table>
           </div>
@@ -165,7 +192,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
         </section>
       </article>
 
-      <BoardDefense teamName={game.teamName} price={end.price} />
+      <BoardDefense teamName={game.teamName} price={end.price} prompts={prompts} />
     </div>
   );
 }
@@ -260,7 +287,7 @@ function FindingList({ title, items, empty, testId }: { title: string; items: Fi
 }
 
 /** Printable board defense: the board's question and a three-minute framework. */
-function BoardDefense({ teamName, price }: { teamName: string; price: number }) {
+function BoardDefense({ teamName, price, prompts }: { teamName: string; price: number; prompts: DefensePrompt[] }) {
   return (
     <section className="ds-defense" data-testid="v2-board-defense">
       <p className="ds-verdict-kicker">Board defense · {teamName}</p>
@@ -273,6 +300,10 @@ function BoardDefense({ teamName, price }: { teamName: string; price: number }) 
         <li><b>Is it sustainable? (45 seconds).</b> Capabilities, customers, people and finances: what will carry the company forward, and what is exposed.</li>
         <li><b>What the board should expect next (15 seconds).</b> One commitment and one risk you would put before the board.</li>
       </ol>
+      <div style={{ marginTop: 14 }} data-testid="v2-defense-prompts">
+        <p className="ds-h4">Questions the board will ask — from your recorded results</p>
+        <ul className="ds-list-plain">{prompts.map(p => <li key={p.id} data-prompt={p.id}><b>{p.question}</b><span className="ds-small" style={{ display: 'block', color: 'var(--ds-ink-2)' }}>{p.evidence}</span></li>)}</ul>
+      </div>
       <div className="ds-stack" style={{ marginTop: 14, gap: 0 }} aria-hidden>{Array.from({ length: 5 }, (_, i) => <div key={i} className="ds-lines" />)}</div>
       <div className="ds-actions ds-no-print"><button className="ds-btn ds-btn-secondary" onClick={() => window.print()} data-testid="v2-print-defense">Print the board pack</button></div>
     </section>

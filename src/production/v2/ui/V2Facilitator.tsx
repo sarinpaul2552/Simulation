@@ -237,17 +237,17 @@ function Leadership({ teams, onRefresh, busy }: { teams: AwardTeam[]; onRefresh:
   return (
     <div className="ds-stack-lg" data-testid="v2-fac-leadership">
       <div className="ds-row"><button className="ds-btn ds-btn-secondary ds-btn-sm" disabled={busy} onClick={onRefresh}><Icon name="clock" size={14} />Refresh</button>
-        <span className="ds-muted">{q > 0 ? `All teams compared at ${calendarLabel(q)} — the latest quarter every team has completed.` : 'No team has completed a quarter yet.'}</span></div>
+        <span className="ds-muted">{q > 0 ? `All teams compared at ${calendarLabel(q)} — the latest quarter every team has completed. Role columns show functional scores; * = capped by the solvency gate.` : 'No team has completed a quarter yet.'}</span></div>
       {q > 0 && (
         <div className="ds-table-wrap">
           <table className="ds-table" data-testid="v2-fac-leadership-table">
-            <thead><tr><th>Team</th><th className="num">Share price</th><th className="num">Revenue</th><th className="num">Op. profit</th><th className="num">Cash</th>{SCORECARD_ROLES.map(r => <th key={r} className="num">{r === 'Product' ? 'CPO' : r === 'Growth' ? 'CGO' : r === 'People' ? 'CPeO' : r}</th>)}<th className="num">Team</th></tr></thead>
+            <thead><tr><th>Team</th><th className="num">Share price</th><th className="num">Revenue</th><th className="num">Op. profit</th><th className="num">Cash</th>{SCORECARD_ROLES.map(r => <th key={r} className="num">{r === 'Product' ? 'CPO' : r === 'Growth' ? 'CGO' : r === 'People' ? 'CPeO' : r}</th>)}<th className="num">Team (executive)</th></tr></thead>
             <tbody>{rows.map(r => r.s && (
               <tr key={r.t.teamId}>
                 <td><b>{r.t.teamName}</b></td>
                 <td className="num">{fmtPrice(r.price!)} <span className="ds-muted">{fmtPctDelta(r.price! / 100 - 1)}</span></td>
                 <td className="num">{money(r.s.revenue)}</td><td className="num">{money(r.s.operatingProfit)}</td><td className="num">{money(r.s.cash)}</td>
-                {r.cards.map(c => <td key={c.role} className="num">{c.executive.toFixed(0)}</td>)}
+                {r.cards.map(c => <td key={c.role} className="num" title={`Executive ${c.executive.toFixed(0)} (60% functional, 40% shareholder value)`}>{c.functional.toFixed(0)}{c.gate ? '*' : ''}</td>)}
                 <td className="num"><b>{(r.cards.reduce((a, c) => a + c.executive, 0) / r.cards.length).toFixed(0)}</b></td>
               </tr>
             ))}</tbody>
@@ -271,7 +271,7 @@ function Leadership({ teams, onRefresh, busy }: { teams: AwardTeam[]; onRefresh:
           </table>
         )}
         {awards.excluded.length > 0 && <p className="ds-small">{awards.excluded.map(e => `${e.teamName} ${e.reason}`).join('; ')}.</p>}
-        <p className="ds-method">Rules: at least {AWARD_RULES.minTeams} teams, compared at the same quarter, once every team has completed {AWARD_RULES.minQuarter} quarters; teams that became insolvent are not eligible; a lead under {AWARD_RULES.shareWithin} point is a shared award. Awards belong to the team’s executive function — the platform does not observe individual contributions, and in teams of three or four one student may hold several roles. If you wish to recognise individuals, assign the award yourself in class.</p>
+        <p className="ds-method">Role awards rank functional scores (shareholder value is shared by every role in a team, so it decides only the team award). Rules: at least {AWARD_RULES.minTeams} teams, compared at the same quarter, once every team has completed {AWARD_RULES.minQuarter} quarters; teams that became insolvent are not eligible; a lead under {AWARD_RULES.shareWithin} point is a shared award. Awards belong to the team’s executive function — the platform does not observe individual contributions, and in teams of three or four one student may hold several roles. If you wish to recognise individuals, assign the award yourself in class.</p>
       </section>
     </div>
   );

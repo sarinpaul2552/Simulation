@@ -19,6 +19,8 @@ import { DecisionSummary } from './DecisionSummary';
 import { BUCKET_PERSPECTIVES, PERSPECTIVE_ORDER } from '../../content/bucketPerspectives';
 import { ROLE_TITLES } from '../../content/roleContent';
 import { checkFinancing } from '../../insights/financingCheck';
+import { bucketTransformationLoad } from '../../../../simulation/engineV2Capabilities';
+import { calendarShort } from '../../content/calendar';
 import { BUCKETS, BUCKET_INFO, capacityEstimate, nominalGain, timeToImpact, Bucket } from '../../insights/consequences';
 import type { V2GameSnapshot } from '../../snapshot';
 
@@ -140,7 +142,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
 
       <div className="ds-grid ds-grid-work">
         <div className="ds-stack">
-          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} />
+          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={forecast} />
           <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode} />
         </div>
 
@@ -199,7 +201,8 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 /** The resource-allocation workspace: budget, visual mix, per-bucket guidance and an execution-capacity estimate. */
-function AllocationWorkspace({ snap, allocation, envelope, onChange, mode }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode }) {
+function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null }) {
+  const q = workingQuarter(snap)!;
   const invested = BUCKETS.reduce((t, b) => t + (allocation[b] || 0), 0);
   const kept = envelope - invested;
   const est = useMemo(() => capacityEstimate(snap.state, allocation), [snap.state, allocation]);
@@ -217,6 +220,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode }: { s
         <div className="ds-budget-left">
           <span className="ds-muted">{over ? 'Over budget by' : 'Kept as cash'}</span>
           <b className={over ? 'ds-tone-bad' : ''} data-testid="v2-alloc-reserve">{money(over ? invested - envelope : kept)}</b>
+          {forecast && <span className="ds-muted" style={{ display: 'block' }} data-testid="v2-alloc-cash-forecast">Cash at quarter end (estimate, before financing): <b className={forecast.gap > 0 ? 'ds-tone-bad' : ''}>{money(forecast.projectedClosingCash)}</b></span>}
         </div>
         <div className="ds-budget-bar" role="img" aria-label={`Allocation: ${BUCKETS.filter(b => allocation[b] > 0).map(b => `${BUCKET_INFO[b].short} ${money(allocation[b])}`).join(', ') || 'nothing invested'}; kept as cash ${money(Math.max(0, kept))}`}>
           {BUCKETS.map(b => allocation[b] > 0 && <span key={b} title={`${BUCKET_INFO[b].name} ${money(allocation[b])}`} style={{ flex: `${allocation[b]} 0 0`, background: BUCKET_COLOR[b] }} />)}
@@ -240,13 +244,15 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode }: { s
               <input id={`alloc-${b}`} data-testid={`v2-alloc-${b}`} type="number" min={0} step={0.5} inputMode="decimal" value={allocation[b]} onChange={e => onChange(b, parseFloat(e.target.value))} aria-label={`${info.name} ($M)`} />
               <input type="range" min={0} max={Math.min(30, envelope)} step={0.5} value={Math.min(amt, 30)} onChange={e => onChange(b, parseFloat(e.target.value))} aria-label={`${info.name} slider`} tabIndex={-1} />
               <details className="ds-perspectives" data-testid={`v2-perspectives-${b}`}>
-                <summary>How each executive function looks at it</summary>
+                <summary>Competing executive considerations</summary>
                 <dl>{PERSPECTIVE_ORDER.filter(r => BUCKET_PERSPECTIVES[b][r]).map(r => <div key={r} style={{ display: 'contents' }}><dt title={ROLE_TITLES[r]}>{ROLE_SHORT[r]}</dt><dd>{pick(mode, BUCKET_PERSPECTIVES[b][r]!)}</dd></div>)}</dl>
               </details>
               {amt > 0 && (
-                <div className="ds-bucket-meta">
-                  <span>{tti.text}.</span>
-                  {mode === 'mba' && <span>Up to about +{gain.toFixed(1)} {info.builds.split(',')[0]} points before workload losses.</span>}
+                <div className="ds-bucket-meta" data-testid={`v2-bucket-est-${b}`}>
+                  <span><b>Builds:</b> {info.builds}.</span>
+                  <span><b>Lands:</b> {tti.schedule.map((share, i) => `${calendarShort(q + i)} ${(share * 100).toFixed(0)}%`).join(' · ')}.</span>
+                  <span><b>Workload:</b> +{bucketTransformationLoad(b, Math.min(amt, 30)).toFixed(0)} load points.</span>
+                  <span><b>Estimate:</b> up to about +{gain.toFixed(1)} {info.builds.split(',')[0]} points before workload losses (not guaranteed).</span>
                 </div>
               )}
             </div>

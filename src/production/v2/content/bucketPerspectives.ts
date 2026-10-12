@@ -12,7 +12,7 @@ import { mt, ModeText } from './modes';
 export const BUCKET_PERSPECTIVES: Record<Bucket, Partial<Record<V2Role, ModeText>>> = {
   consumer: {
     Growth: mt('Acts on winning and keeping individual learners: watch the cost to win a customer and retention.', 'Lever on consumer acquisition and retention; the test is CAC and churn, not spend.'),
-    CFO: mt('About half of the capability lands this quarter, so it is one of the faster paybacks — if customers respond.', 'Fastest maturation (≈50% in-quarter); payback still depends on market response.'),
+    CFO: mt('About half of the capability lands this quarter, so it is one of the faster paybacks — if customers respond.', 'Fastest maturation (50 / 35 / 15%); payback still depends on market response.'),
     Product: mt('Consumer features compete for the same product teams as everything else.', 'Shares product delivery capacity with AI and core quality work.'),
     People: mt('Adds change workload; larger amounts stretch teams more than proportionally.', 'Load rises with spend; check the capacity estimate before scaling.'),
     CEO: mt('Ask whether it fits the direction the company is choosing.', 'Test alignment with the intended destination.'),
@@ -33,7 +33,7 @@ export const BUCKET_PERSPECTIVES: Record<Bucket, Partial<Record<V2Role, ModeText
   },
   people: {
     People: mt('Raises talent and the amount of change the company can absorb at once.', 'Raises talent and organizational capacity — the constraint on every other initiative.'),
-    CFO: mt('It does not create revenue directly; its return comes through everything else working better.', 'No direct revenue; returns are indirect via absorption and execution.'),
+    CFO: mt('It does not create revenue directly; about half lands this quarter, and its return comes through everything else working better.', 'No direct revenue; fast maturation (50 / 35 / 15%); returns are indirect via absorption and execution.'),
     Product: mt('More capacity means product work is less likely to stall.', 'Capacity reduces delivery slippage on product work.'),
     Growth: mt('Customers do not see this investment directly.', 'Not customer-facing; effects are second-order.'),
     CEO: mt('Ask how much change the team is planning over the next few quarters.', 'Size it against the change agenda ahead.'),

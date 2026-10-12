@@ -62,19 +62,23 @@ test('eight quarters: share price, valuation bridge, attribution, scorecards, bo
           await p.getByTestId('v2-fin-debt').fill('');
           await expect(p.getByTestId('v2-fin-errors')).toHaveCount(0);
         }
-        if (q === 3) await shot(p, 's2-06-q3-decision');
+        if (q === 3) {
+          await p.getByTestId('v2-perspectives-aiProduct').locator('summary').click();
+          await expect(p.getByTestId('v2-bucket-est-aiProduct')).toContainText('Lands');
+          await expect(p.getByTestId('v2-alloc-cash-forecast')).toContainText('estimate');
+          await shot(p, 's81-02-q3-investment-workspace', 'v2-allocation');
+        }
       },
       onResults: async p => {
         await expect(p.getByTestId('v2-fig-price')).toContainText('$');
         if (q === 2) {
-          await shot(p, 's2-07-results-and-attribution');
+          await p.evaluate(() => window.scrollTo(0, 0));
+          if (SHOTS) await p.screenshot({ path: `${SHOTS}/s81-01-q2-quarterly-briefing.png` });
+          await p.getByTestId('v2-deep').locator('summary').click();
           await p.getByTestId('v2-attr-detail-consumerRetention').click();
           await expect(p.getByTestId('v2-attribution')).toContainText('Recorded movement');
-          await shot(p, 's2-07b-attribution-detail', 'v2-attribution');
           await p.getByTestId('v2-tab-overview').click();
           await expect(p.getByTestId('v2-health')).toContainText('Δ Q4 ’22');
-          await shot(p, 's2-04-executive-dashboard', 'v2-explore');
-          await shot(p, 's2-05-health-movements', 'v2-health');
           await p.getByTestId('v2-tab-commercial').click();
           await p.getByTestId('v2-qsel-commercial-1').click();
           await expect(p.getByTestId('v2-explorer-commercial')).toHaveAttribute('data-quarter', '1');
@@ -83,27 +87,32 @@ test('eight quarters: share price, valuation bridge, attribution, scorecards, bo
           await p.getByTestId('v2-scorecard-role-CFO').click();
           await expect(p.getByTestId('v2-scorecard-CFO')).toContainText('Operating margin');
           await expect(p.getByTestId('v2-scorecard-table')).toContainText('Interpretation');
-          await shot(p, 's2-03-cfo-scorecard', 'v2-explore');
           await p.getByTestId('v2-tab-price').click();
-          await expect(p.getByTestId('v2-valuation-bridge').first()).toBeVisible();
+          await expect(p.getByTestId('v2-share-price-panel').getByTestId('v2-valuation-bridge')).toBeVisible();
         }
-        if (q === 6) { await p.getByTestId('v2-tab-price').click(); await shot(p, 's2-08-stock-chart', 'v2-explore'); }
+        if (q === 4) { await p.getByTestId('v2-tab-overview').click(); await shot(p, 's81-03-q4-executive-dashboard', 'v2-explore'); }
+        if (q === 6) { await p.getByTestId('v2-tab-scorecards').click(); await p.getByTestId('v2-scorecard-role-CFO').click(); await shot(p, 's81-04-q6-cfo-scorecard', 'v2-explore'); }
+        if (q === 7) { await p.getByTestId('v2-tab-price').click(); await shot(p, 's81-05-q7-shareholder-value', 'v2-explore'); }
       },
     });
     if (q < 8) await expectPhase(page, 'briefing', q + 1);
   }
   await expectPhase(page, 'final');
+  await expect(page.getByTestId('v2-board-verdict')).toContainText('what kind of company');
+  await expect(page.locator('[data-testid="v2-board-verdict"] [data-assessment]')).toHaveCount(5);
+  await expect(page.getByTestId('v2-defense-prompts')).toContainText('What will the next leadership team inherit?');
   for (const id of ['summary', 'shareholder', 'financial', 'commercial', 'product', 'organization', 'decisions', 'scorecards', 'lessons']) await expect(page.getByTestId(`v2-report-${id}`)).toBeVisible();
-  await expect(page.getByTestId('v2-three-measures')).toContainText('Business performance');
+  await expect(page.getByTestId('v2-three-measures')).toContainText('Terminal simulation score');
+  await expect(page.getByTestId('v2-three-measures')).toContainText('Board assessment');
   await expect(page.getByTestId('v2-three-measures')).toContainText('Shareholder value');
-  await expect(page.getByTestId('v2-three-measures')).toContainText('Executive performance');
+  await expect(page.getByTestId('v2-three-measures')).toContainText('Executive functional scores');
   await expect(page.getByTestId('v2-report-kpis-financial')).toContainText('Operating margin');
   await page.getByTestId('v2-journey-q4').getByRole('button').click();
   await expect(page.getByTestId('v2-decision-history')).toContainText('Major consequence');
   await expect(page.getByTestId('v2-board-defense')).toContainText('Your board gave you NexLearn at $100 per share');
   const reportText = await page.getByTestId('v2-final').innerText();
   expect(reportText).not.toMatch(/NaN|undefined|Infinity/);
-  await shot(page, 's2-09-q8-board-report');
+  await shot(page, 's81-07b-q8-board-report-mba');
   await page.emulateMedia({ media: 'print' });
   await expect(page.getByTestId('v2-print-report')).toBeHidden(); // print layout hides controls
   await page.emulateMedia({ media: 'screen' });
@@ -129,5 +138,5 @@ test('cross-team leadership comparison and awards (facilitator only)', async ({ 
   await expect(fac.getByTestId('v2-fac-awards')).toContainText('Best CFO');
   await expect(fac.getByTestId('v2-fac-awards')).toContainText('role');
   await expect(fac.getByTestId('v2-fac-awards')).toContainText('does not observe individual contributions');
-  await shot(fac, 's2-10-cross-team-awards');
+
 });

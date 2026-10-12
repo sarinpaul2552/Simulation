@@ -118,5 +118,5 @@ export function formatAttr(unit: AttributionRow['unit'], v: number, signed = fal
   const a = Math.abs(v);
   if (unit === '$M') return `${sgn}$${a.toFixed(1)}M`;
   if (unit === '%') return `${sgn}${a.toFixed(1)}${signed ? ' pts' : '%'}`;
-  return `${sgn}${a.toFixed(1)}`;
+  return signed ? `${sgn}${a.toFixed(1)} index pts` : `${sgn}${a.toFixed(1)}`;
 }

@@ -72,7 +72,9 @@ test('Undergraduate and MBA teams playing identical decisions get identical econ
         if (q === 8) await shot(page, 'q8-final-decision');
       },
       onResults: async page => {
-        // MBA: deep analysis open on wide screens, with benchmarks and formulas
+        // MBA (Batch 8.1): deep analysis is on demand; opening it shows benchmarks and formulas
+        await expect(page.getByTestId('v2-deep')).not.toHaveAttribute('open', '');
+        await page.getByTestId('v2-deep').locator('summary').click();
         await expect(page.getByTestId('v2-deep')).toHaveAttribute('open', '');
         await expect(page.getByTestId('v2-benchmarks')).toBeVisible();
         await expect(page.getByTestId('v2-formulas')).toBeVisible();
@@ -200,6 +202,7 @@ test('responsive: Q2 reference screens at laptop, tablet, mobile and projector w
   await page.setViewportSize({ width: 1366, height: 820 });
   await page.evaluate(() => window.scrollTo(0, 0));
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/q2-executive-summary.png` });
+  await page.getByTestId('v2-deep').locator('summary').click();
   if (SHOTS) await page.getByTestId('v2-cash-bridge').screenshot({ path: `${SHOTS}/q2-cash-bridge.png` });
   for (const t of ['financial', 'commercial', 'product', 'organization', 'price', 'scorecards', 'overview'] as const) {
     await page.getByTestId(`v2-tab-${t}`).click();

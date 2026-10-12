@@ -118,7 +118,7 @@ export function AttributionTable({ rows, quarter }: { rows: AttributionRow[]; qu
   return (
     <div className="ds-table-wrap" data-testid="v2-attribution">
       <table className="ds-table">
-        <thead><tr><th>Indicator</th><th className="num ds-hide-sm">{calendarShort(quarter - 1)}</th><th className="num ds-hide-sm">{calendarShort(quarter)}</th><th className="num">Movement</th><th>Main driver</th><th className="ds-sr">Detail</th></tr></thead>
+        <thead><tr><th>Indicator</th><th className="num ds-hide-sm">{calendarShort(quarter - 1)}</th><th className="num ds-hide-sm">{calendarShort(quarter)}</th><th className="num">Movement</th><th>Effect</th><th>Main driver</th><th className="ds-sr">Detail</th></tr></thead>
         <tbody>{shown.map(r => {
           const eps = r.unit === '$M' || r.unit === '%' ? 0.05 : 0.05;
           const tone = Math.abs(r.movement) < eps ? 'neutral' : (r.movement > 0) === (r.better === 'higher') ? 'good' : 'bad';
@@ -129,11 +129,12 @@ export function AttributionTable({ rows, quarter }: { rows: AttributionRow[]; qu
               <td className="num ds-muted ds-hide-sm">{formatAttr(r.unit, r.opening)}</td>
               <td className="num ds-hide-sm">{formatAttr(r.unit, r.closing)}</td>
               <td className="num"><Move d={r.movement} eps={eps} tone={tone} text={formatAttr(r.unit, r.movement, true)} /></td>
+              <td className={`ds-small ${TONE_CLASS[tone]}`}>{tone === 'good' ? 'Favourable' : tone === 'bad' ? 'Unfavourable' : '—'}</td>
               <td>{r.driver ? <span className={`ds-driver ds-driver-${r.driver === 'reversion' || r.driver === 'other' ? 'market' : r.driver}`}>{DRIVER_LABEL[r.driver]}</span> : <span className="ds-muted">—</span>}</td>
               <td><button className="ds-btn ds-btn-ghost" style={{ fontSize: 'var(--fs-note)' }} aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : r.id)} data-testid={`v2-attr-detail-${r.id}`}>{isOpen ? 'Hide' : 'Detail'}</button></td>
             </tr>,
             isOpen && (
-              <tr key={`${r.id}-d`}><td colSpan={6} style={{ background: 'var(--ds-surface-2)' }}>
+              <tr key={`${r.id}-d`}><td colSpan={7} style={{ background: 'var(--ds-surface-2)' }}>
                 <table className="ds-table ds-table-compact"><tbody>
                   {r.components.filter(c => Math.abs(c.amount) >= 0.005).map((c, i) => <tr key={i}><td>{DRIVER_LABEL[c.kind]}</td><td className="ds-muted ds-small">{c.detail}</td><td className="num">{formatAttr(r.unit, c.amount, true)}</td></tr>)}
                   <tr className="ds-row-total"><td>Recorded movement</td><td /><td className="num">{formatAttr(r.unit, r.movement, true)}</td></tr>
@@ -143,7 +144,7 @@ export function AttributionTable({ rows, quarter }: { rows: AttributionRow[]; qu
           ];
         })}</tbody>
       </table>
-      <p className="ds-method" style={{ margin: '6px 0 0' }}>Each movement is split into the components the simulation recorded; they add up exactly. Market effects were the same for every team. No alternative outcomes are estimated.</p>
+      <p className="ds-method" style={{ margin: '6px 0 0' }}>Arrows show direction; Effect shows whether the movement helps the business (a rising cost to win a customer is unfavourable). Each movement is split into the components the simulation recorded; they add up exactly. Market effects were the same for every team. No alternative outcomes are estimated.</p>
     </div>
   );
 }
@@ -168,6 +169,7 @@ export function ScorecardView({ card, mode, testId }: { card: Scorecard; mode: V
         <div className="ds-figure"><span className="ds-fig-label">Functional</span><span className="ds-fig-value">{card.functional.toFixed(0)}</span><div className="ds-fig-sub">this scorecard’s metrics</div></div>
         <div className="ds-figure"><span className="ds-fig-label">Company (shareholder value)</span><span className="ds-fig-value">{card.company.toFixed(0)}</span><div className="ds-fig-sub">from the share price; same for every role</div></div>
       </div>
+      {card.gate && <div className="ds-notice ds-notice-bad" data-testid="v2-scorecard-gate">{card.gate}</div>}
       <div className="ds-table-wrap">
         <table className="ds-table" data-testid="v2-scorecard-table">
           <thead><tr><th>Metric</th><th className="num">{calendarShort(0)}</th><th className="num">{q > 1 ? calendarShort(q - 1) : 'Previous'}</th><th className="num">{calendarShort(q)}</th><th className="num">Change</th><th>Interpretation</th><th className="num">Score</th></tr></thead>
@@ -192,7 +194,7 @@ export function ScorecardView({ card, mode, testId }: { card: Scorecard; mode: V
         <div data-testid="v2-scorecard-challenges"><p className="ds-h4">Challenges</p>{card.challenges.length ? <ul className="ds-list ds-small">{card.challenges.map(c => <li key={c}>{c}</li>)}</ul> : <p className="ds-small ds-muted" style={{ margin: 0 }}>No metric is materially below its starting position.</p>}</div>
         <div><p className="ds-h4">Strengths</p>{card.strengths.length ? <ul className="ds-list ds-small">{card.strengths.map(c => <li key={c}>{c}</li>)}</ul> : <p className="ds-small ds-muted" style={{ margin: 0 }}>No metric is clearly above its starting position yet.</p>}</div>
       </div>
-      <p className="ds-method" style={{ margin: 0 }}>Scorecards evaluate how the team handled each executive function, not any individual. Score: 50 = the {calendarLabel(0)} position, sustained improvement scores higher; thresholds give no extra credit for unused cash or idle capacity. Model {EXECUTIVE_VERSION}. Not part of the simulation’s final score.</p>
+      <p className="ds-method" style={{ margin: 0 }}>Scorecards show how the company performed under each function’s responsibilities — not any individual student’s contribution. Score: 50 = the {calendarLabel(0)} position, sustained improvement scores higher; thresholds give no extra credit for unused cash or idle capacity. Model {EXECUTIVE_VERSION}. Not part of the simulation’s final score.</p>
     </div>
   );
 }

@@ -1,5 +1,8 @@
 # Executive scoring methodology — NXLN-EXEC-1.0 (Batch 8 · Stage 2)
 
+> **Superseded by NXLN-EXEC-1.1 (Batch 8.1).** See `docs/BATCH8_1_SCORING_AUDIT.md` for the audit, the corrections and the current formulas. In particular, role awards now rank functional scores.
+
+
 Code: `src/production/v2/insights/executive.ts`. Tests: `src/production/v2/batch8.intelligence.test.ts`.
 
 ## Three separate measures

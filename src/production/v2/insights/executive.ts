@@ -22,10 +22,15 @@ import type { V2TeamState } from '../../../simulation/engineV2';
 import type { V2Role } from '../types';
 import { V2_FINANCING_CALIBRATION } from '../../../simulation/engineV2Financing';
 import { startingCompany, type QuarterRecord } from './history';
-import { alignedCapability, strategicFit, valuationSeries, type ValuationSeries } from './valuation';
+import { V2_DESTINATION_IDS, destinationReadiness, type V2DestinationId } from '../../../simulation/engineV2Destination';
+import { valuationSeries, type ValuationSeries } from './valuation';
 
-export const EXECUTIVE_VERSION = 'NXLN-EXEC-1.0' as const;
+export const EXECUTIVE_VERSION = 'NXLN-EXEC-1.1' as const;
 export const EXECUTIVE_WEIGHTS = { functional: 0.6, company: 0.4 } as const;
+/** Survival gate: if the company becomes insolvent, CEO and CFO functional scores are capped here. */
+export const SURVIVAL_GATE_CAP = 30;
+/** Distress gate: while the company is financially distressed, CEO and CFO functional scores are capped here. */
+export const DISTRESS_GATE_CAP = 45;
 
 /** '%' = a percentage value (85 = 85%); 'frac' = a fraction shown as a percentage (0.15 = 15%). */
 export type MetricUnit = '$M' | '%' | 'frac' | 'idx' | 'ratio' | 'share';
@@ -56,26 +61,43 @@ export interface MetricDef {
   marketIndicator?: string;
 }
 
+/** The businesses each strategic destination targets (from the destination's market-access uplift; balanced = all). */
+export const STRATEGY_SEGMENTS: Record<V2DestinationId, ('consumer' | 'enterprise' | 'university' | 'aiNative')[]> = {
+  'consumer-ai': ['consumer', 'aiNative'], 'enterprise-ai': ['enterprise', 'aiNative'], 'premium-human-ai': ['consumer', 'enterprise'],
+  'university-infrastructure': ['university'], 'balanced-marketplace': ['consumer', 'enterprise', 'university', 'aiNative'],
+};
 const margin = (s: V2TeamState) => (s.revenue > 0 ? s.operatingProfit / s.revenue : 0);
 const st = (ctx: MetricContext, i: number) => ctx.states[i];
 const loadRatio = (s: V2TeamState) => (s.organizationalCapacity > 0 ? s.transformationLoad / s.organizationalCapacity : 0);
 
 export const EXECUTIVE_METRICS: MetricDef[] = [
-  // CEO — enterprise leadership
-  { id: 'ceo-op', role: 'CEO', area: 'Financial performance', label: 'Operating profit', glossary: 'operating-profit', unit: '$M', better: 'higher', weight: 0.3, norm: { kind: 'change', range: 20 }, value: (c, i) => st(c, i).operatingProfit },
-  { id: 'ceo-fit', role: 'CEO', area: 'Strategic alignment', label: 'Capabilities behind the strategy', glossary: 'strategic-readiness', unit: 'idx', better: 'higher', weight: 0.3, norm: { kind: 'change', range: 30 }, value: (c, i) => { const d = st(c, c.t).destination?.id; return 100 * (d ? alignedCapability(st(c, i), d) : strategicFit(st(c, i))); } },
-  { id: 'ceo-pricing', role: 'CEO', area: 'Strategic position', label: 'Pricing power', glossary: 'pricing-power', unit: 'idx', better: 'higher', weight: 0.15, norm: { kind: 'change', range: 15 }, value: (c, i) => st(c, i).commercial.pricingPower, marketIndicator: 'pricingPower' },
-  { id: 'ceo-sustain', role: 'CEO', area: 'Organizational sustainability', label: 'Average change load vs capacity', glossary: 'org-load', unit: 'frac', better: 'lower', weight: 0.25, norm: { kind: 'target', lo: 0.6, hi: 0.95, max: 1.3, under: 40 },
-    value: (c, i) => (i === 0 ? null : c.states.slice(1, i + 1).reduce((a, s) => a + loadRatio(s), 0) / i) },
+  // CEO — enterprise leadership (NXLN-EXEC-1.1: strategy readiness, strategy delivery, market position, focus)
+  { id: 'ceo-fit', role: 'CEO', area: 'Strategic alignment', label: 'Readiness of the chosen strategy', glossary: 'strategic-readiness', unit: 'idx', better: 'higher', weight: 0.35, norm: { kind: 'change', range: 30 },
+    value: (c, i) => { const d = st(c, c.t).destination?.id; return 100 * (d ? destinationReadiness(d, st(c, i)).readiness : Math.max(...V2_DESTINATION_IDS.map(id => destinationReadiness(id, st(c, i)).readiness))); } },
+  { id: 'ceo-delivery', role: 'CEO', area: 'Strategy delivery', label: 'Net revenue delivered by the strategy (target-business growth less losses elsewhere, % of Q4 2022 revenue)', unit: 'frac', better: 'higher', weight: 0.35, norm: { kind: 'change', range: 0.15 },
+    value: (c, i) => {
+      const dest = st(c, c.t).destination;
+      if (!dest || c.t < dest.committedQuarter) return null;
+      const segs = STRATEGY_SEGMENTS[dest.id];
+      const s0 = c.states[0], si = st(c, i);
+      const all = ['consumer', 'enterprise', 'university', 'aiNative'] as const;
+      const dTarget = segs.reduce((a, k) => a + si.segmentRevenue[k] - s0.segmentRevenue[k], 0);
+      const dOther = all.filter(k => !segs.includes(k)).reduce((a, k) => a + si.segmentRevenue[k] - s0.segmentRevenue[k], 0);
+      return (dTarget + Math.min(0, dOther)) / s0.revenue;
+    } },
+  { id: 'ceo-pricing', role: 'CEO', area: 'Market position', label: 'Pricing power', glossary: 'pricing-power', unit: 'idx', better: 'higher', weight: 0.15, norm: { kind: 'change', range: 15 }, value: (c, i) => st(c, i).commercial.pricingPower, marketIndicator: 'pricingPower' },
+  { id: 'ceo-focus', role: 'CEO', area: 'Strategic focus', label: 'Strategic focus retained', unit: 'share', better: 'higher', weight: 0.15, norm: { kind: 'band', lo: 0.7, hi: 1 },
+    value: (c, i) => { const d = st(c, i).destination; return d ? 1 - (d.focusDilution ?? 0) : null; } },
   // CFO
   { id: 'cfo-margin', role: 'CFO', area: 'Operating profitability', label: 'Operating margin', glossary: 'operating-margin', unit: 'frac', better: 'higher', weight: 0.35, norm: { kind: 'change', range: 0.10 }, value: (c, i) => margin(st(c, i)) },
   { id: 'cfo-liquidity', role: 'CFO', area: 'Liquidity', label: 'Cash (credit up to the $40M comfort level)', glossary: 'liquidity', unit: '$M', better: 'higher', weight: 0.15, norm: { kind: 'band', lo: V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash, hi: V2_FINANCING_CALIBRATION.liquidity.comfortableCash }, value: (c, i) => st(c, i).cash },
-  { id: 'cfo-efficiency', role: 'CFO', area: 'Capital efficiency', label: 'Annualised revenue gained per $ of capital deployed', unit: 'ratio', better: 'higher', weight: 0.3, norm: { kind: 'band', lo: -0.5, hi: 1.0 },
+  { id: 'cfo-efficiency', role: 'CFO', area: 'Capital efficiency', label: 'Return on capital deployed (operating profit above the Q4 2022 run-rate ÷ capital deployed)', unit: 'ratio', better: 'higher', weight: 0.3, norm: { kind: 'band', lo: -0.25, hi: 0.5 },
     value: (c, i) => {
       if (i === 0) return null;
       // capital deployed = the strategic envelope each quarter, invested OR held in reserve (held cash earns no return)
       const deployed = c.records.slice(0, i).reduce((a, r) => a + r.consequence.ledger.strategicInvestment + (r.consequence.ledger.cashReserveRetained ?? 0), 0);
-      return deployed > 0 ? ((st(c, i).revenue - c.states[0].revenue) * 4) / deployed : null;
+      const extra = c.states.slice(1, i + 1).reduce((a, s) => a + (s.operatingProfit - c.states[0].operatingProfit), 0);
+      return deployed > 0 ? extra / deployed : null;
     } },
   { id: 'cfo-debt', role: 'CFO', area: 'Financing risk', label: 'Debt', unit: '$M', better: 'lower', weight: 0.07, norm: { kind: 'band', lo: 0, hi: 100 }, value: (c, i) => st(c, i).financing.debt },
   { id: 'cfo-ownership', role: 'CFO', area: 'Financing risk', label: 'Ownership retained by original shareholders', unit: 'share', better: 'higher', weight: 0.06, norm: { kind: 'band', lo: 0.7, hi: 1 }, value: (c, i) => st(c, i).financing.ownership },
@@ -84,7 +106,7 @@ export const EXECUTIVE_METRICS: MetricDef[] = [
   // CPO — Product
   { id: 'cpo-quality', role: 'Product', area: 'Product quality', label: 'Product quality', unit: 'idx', better: 'higher', weight: 0.3, norm: { kind: 'change', range: 20 }, value: (c, i) => st(c, i).productQuality },
   { id: 'cpo-readiness', role: 'Product', area: 'Innovation readiness', label: 'AI commercial readiness', unit: 'idx', better: 'higher', weight: 0.2, norm: { kind: 'change', range: 40 }, value: (c, i) => st(c, i).commercial.aiCommercialReadiness },
-  { id: 'cpo-capability', role: 'Product', area: 'Capability', label: 'AI and product capability', unit: 'idx', better: 'higher', weight: 0.2, norm: { kind: 'change', range: 40 }, value: (c, i) => st(c, i).capabilities.ai },
+  { id: 'cpo-monetization', role: 'Product', area: 'Monetization', label: 'AI product revenue (customers paying for AI products)', unit: '$M', better: 'higher', weight: 0.2, norm: { kind: 'change', range: 12 }, value: (c, i) => st(c, i).segmentRevenue.aiNative },
   { id: 'cpo-trust', role: 'Product', area: 'Trust and resilience', label: 'Customer trust', glossary: 'trust', unit: 'idx', better: 'higher', weight: 0.3, norm: { kind: 'change', range: 20 }, value: (c, i) => st(c, i).trust },
   // CGO — Growth
   { id: 'cgo-revenue', role: 'Growth', area: 'Revenue', label: 'Revenue', unit: '$M', better: 'higher', weight: 0.3, norm: { kind: 'change', range: 50 }, value: (c, i) => st(c, i).revenue },
@@ -94,11 +116,10 @@ export const EXECUTIVE_METRICS: MetricDef[] = [
   { id: 'cgo-winrate', role: 'Growth', area: 'Pipeline and conversion', label: 'Enterprise win rate', glossary: 'win-rate', unit: '%', better: 'higher', weight: 0.1, norm: { kind: 'change', range: 10 }, value: (c, i) => st(c, i).commercial.enterpriseWinRate, marketIndicator: 'enterpriseWinRate' },
   { id: 'cgo-renewal', role: 'Growth', area: 'Retention', label: 'University renewals', glossary: 'renewal', unit: '%', better: 'higher', weight: 0.1, norm: { kind: 'change', range: 8 }, value: (c, i) => st(c, i).commercial.universityRenewalRate, marketIndicator: 'universityRenewalRate' },
   // CPeO — People
-  { id: 'cpeo-culture', role: 'People', area: 'Culture', label: 'Culture', unit: 'idx', better: 'higher', weight: 0.25, norm: { kind: 'change', range: 15 }, value: (c, i) => st(c, i).culture },
-  { id: 'cpeo-talent', role: 'People', area: 'Talent', label: 'Talent', unit: 'idx', better: 'higher', weight: 0.25, norm: { kind: 'change', range: 25 }, value: (c, i) => st(c, i).capabilities.talent },
+  { id: 'cpeo-culture', role: 'People', area: 'Culture', label: 'Culture', unit: 'idx', better: 'higher', weight: 0.3, norm: { kind: 'change', range: 15 }, value: (c, i) => st(c, i).culture },
+  { id: 'cpeo-talent', role: 'People', area: 'Talent', label: 'Talent', unit: 'idx', better: 'higher', weight: 0.3, norm: { kind: 'change', range: 25 }, value: (c, i) => st(c, i).capabilities.talent },
   { id: 'cpeo-execution', role: 'People', area: 'Execution capacity', label: 'Execution capability', unit: 'idx', better: 'higher', weight: 0.15, norm: { kind: 'change', range: 20 }, value: (c, i) => st(c, i).capabilities.execution },
-  { id: 'cpeo-capacity', role: 'People', area: 'Execution capacity', label: 'Organizational capacity', glossary: 'execution-capacity', unit: 'idx', better: 'higher', weight: 0.15, norm: { kind: 'change', range: 20 }, value: (c, i) => st(c, i).organizationalCapacity },
-  { id: 'cpeo-load', role: 'People', area: 'Organizational load', label: 'Change load vs capacity (this quarter)', glossary: 'org-load', unit: 'frac', better: 'lower', weight: 0.2, norm: { kind: 'target', lo: 0.6, hi: 0.95, max: 1.3, under: 40 }, value: (c, i) => (i === 0 ? null : loadRatio(st(c, i))) },
+  { id: 'cpeo-load', role: 'People', area: 'Organizational load', label: 'Change load vs capacity (this quarter)', glossary: 'org-load', unit: 'frac', better: 'lower', weight: 0.25, norm: { kind: 'target', lo: 0.6, hi: 0.95, max: 1.3, under: 40 }, value: (c, i) => (i === 0 ? null : loadRatio(st(c, i))) },
 ];
 
 export const ROLE_SCORECARD_TITLE: Record<V2Role, string> = {
@@ -167,6 +188,8 @@ export interface ScorecardRow {
 export interface Scorecard {
   role: V2Role; title: string; quarter: number; rows: ScorecardRow[];
   functional: number; company: number; executive: number;
+  /** Set when the survival gate capped the functional score. */
+  gate: string | null;
   challenges: string[]; strengths: string[];
 }
 
@@ -217,10 +240,16 @@ export function buildScorecard(records: QuarterRecord[], role: V2Role, t = recor
   });
   const scored = rows.filter(r => r.score !== null);
   const wsum = scored.reduce((a, r) => a + r.weight, 0);
-  const functional = wsum > 0 ? scored.reduce((a, r) => a + r.weight * (r.score as number), 0) / wsum : 50;
+  const raw = wsum > 0 ? scored.reduce((a, r) => a + r.weight * (r.score as number), 0) / wsum : 50;
+  // Survival gate: the CEO and CFO are accountable for keeping the company solvent.
+  const insolvent = states.slice(1, t + 1).some(x => x.solvency.status === 'insolvent' || x.solvency.everInsolvent);
+  const distressed = !insolvent && states[t].solvency.distressed;
+  const cap = insolvent ? SURVIVAL_GATE_CAP : distressed ? DISTRESS_GATE_CAP : 100;
+  const gated = (role === 'CEO' || role === 'CFO') && raw > cap;
+  const functional = gated ? cap : raw;
   const company = companyComponent(val.points[t].price);
   return {
-    role, title: ROLE_SCORECARD_TITLE[role], quarter: t, rows, functional, company,
+    role, title: ROLE_SCORECARD_TITLE[role], quarter: t, rows, functional, company, gate: gated ? `The company ${insolvent ? 'became insolvent' : 'is financially distressed'}: the ${role} functional score is capped at ${cap}.` : null,
     executive: EXECUTIVE_WEIGHTS.functional * functional + EXECUTIVE_WEIGHTS.company * company,
     challenges: rows.filter(r => r.score !== null && r.score < 40).map(r => `${r.label}: ${r.interpretation.toLowerCase().replace(/\.$/, '')} (${r.current}).`),
     strengths: rows.filter(r => r.score !== null && r.score >= 65 && !/no further credit/.test(r.interpretation)).map(r => `${r.label} (${r.current}).`),
@@ -269,7 +298,9 @@ export function computeAwards(teams: AwardTeam[], rules = AWARD_RULES): AwardRes
   const rows = teams.map(team => {
     const recs = team.records.slice(0, quarter);
     const cards = allScorecards(recs, quarter);
-    const scores = Object.fromEntries(cards.map(c => [c.role, c.executive])) as Record<AwardId, number>;
+    // Functional awards rank the FUNCTIONAL component: the company component is identical for every role in a team, so
+    // including it would count shareholder value five times and cannot distinguish one function from another.
+    const scores = Object.fromEntries(cards.map(c => [c.role, c.functional])) as Record<AwardId, number>;
     scores.team = cards.reduce((a, c) => a + c.executive, 0) / cards.length;
     const s = recs[recs.length - 1].after;
     return { team, scores, price: valuationSeries(recs).points[quarter].price, insolvent: s.solvency.everInsolvent };
@@ -284,7 +315,7 @@ export function computeAwards(teams: AwardTeam[], rules = AWARD_RULES): AwardRes
     const next = sorted.find(r => top - r.scores[id] >= rules.shareWithin);
     return {
       id, label: AWARD_LABEL[id], winners, score: top, runnerUp: next ? next.scores[id] : null,
-      basis: id === 'team' ? 'Average of the five executive scores.' : `Executive score for the ${ROLE_SCORECARD_TITLE[id as V2Role]} scorecard (60% functional, 40% company).`,
+      basis: id === 'team' ? 'Average of the five executive scores (functional and shareholder value).' : `Functional score of the ${ROLE_SCORECARD_TITLE[id as V2Role]} scorecard (shareholder value is shared by every role, so it is used only for the team award).`,
     };
   });
   return {

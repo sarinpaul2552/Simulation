@@ -130,7 +130,11 @@ describe('executive scorecards', () => {
   it('the starting position scores 50 on change metrics', () => {
     const h = games['balanced'];
     const ctx = { states: [startingCompany(), ...h.map(r => r.after)], records: h, t: 0 };
-    for (const m of EXECUTIVE_METRICS.filter(m => m.norm.kind === 'change')) expect(metricScore(m, ctx, 0)).toBe(50);
+    for (const m of EXECUTIVE_METRICS.filter(m => m.norm.kind === 'change' && m.id !== 'ceo-delivery')) expect(metricScore(m, ctx, 0), m.id).toBe(50);
+    // strategy delivery is only measurable once a strategy has been committed (Q4 2023)
+    expect(metricScore(EXECUTIVE_METRICS.find(m => m.id === 'ceo-delivery')!, ctx, 0)).toBeNull();
+    const ctx8 = { states: ctx.states, records: h, t: 8 };
+    expect(metricScore(EXECUTIVE_METRICS.find(m => m.id === 'ceo-delivery')!, ctx8, 0)).toBe(50);
   });
   it('rows show start, previous, current, change and interpretation without NaN', () => {
     for (const c of allScorecards(games['aggressive'])) {

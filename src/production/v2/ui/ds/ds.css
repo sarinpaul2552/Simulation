@@ -516,3 +516,11 @@ select.ds-input { width: auto; }
 /* Quarter sequence */
 .ds-seq td:first-child { width: 220px; white-space: nowrap; }
 @media (max-width: 560px) { .ds-seq td { display: block; width: auto !important; white-space: normal; border-bottom: none; padding: 2px 0; } .ds-seq tr { display: block; border-bottom: 1px solid var(--ds-line); padding: 6px 0; } }
+
+/* Tables that become stacked rows on phones */
+@media (max-width: 560px) {
+  .ds-stack-sm thead { display: none; }
+  .ds-stack-sm tr { display: block; border-bottom: 1px solid var(--ds-line); padding: 6px 0; }
+  .ds-stack-sm td { display: inline-block; border-bottom: none; padding: 2px 10px 2px 0; text-align: left !important; }
+  .ds-stack-sm td:first-child { display: block; }
+}

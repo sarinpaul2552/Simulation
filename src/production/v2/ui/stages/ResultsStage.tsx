@@ -16,18 +16,14 @@ import { AttributionTable, HealthTable, MetricExplorer, Move, ScorecardView, Seg
 import { Term } from '../ds/glossary';
 import { calendarShort } from '../../content/calendar';
 import type { V2Role } from '../../types';
-import { quarterStory, whatToWatch, Impact } from '../../insights/explain';
+import { whatToWatch } from '../../insights/explain';
 import { cashBridge, decisionConsequences, executiveHeadline, CashBridge, DecisionConsequence } from '../../insights/consequences';
 import { reflectionEvidence, segmentReflection } from '../../insights/reflection';
+import { materialDevelopments, boardQuestion } from '../../insights/briefing';
 import { BELIEFS, LEARNING_OPTIONS, encodeReflection, decodeReflection } from '../../content/deliberationContent';
 import { AGREEMENTS } from './CommitStage';
 import { Card, ChoiceList, Figure, Icon, KpiTile, LineChart, Section, Segmented } from '../ds/components';
 
-const KIND_LABEL: Record<Impact['kind'], { title: string; ug: string; icon: string }> = {
-  market: { title: 'Market impact', ug: 'What the market did', icon: 'globe' },
-  decision: { title: 'Management decision impact', ug: 'What your decisions did', icon: 'flag' },
-  investment: { title: 'Delayed investment impact', ug: 'Earlier investments paying off', icon: 'clock' },
-};
 
 /** Stage 4 — Results & Learning: executive summary → explore the business → deep analysis, then the reflection. */
 export function ResultsStage({ ctl, mode }: { ctl: V2TeamController; mode: V2PresentationMode }) {
@@ -57,7 +53,7 @@ export function QuarterDashboard({ history, quarter, mode }: { history: QuarterR
   const val = useMemo(() => valuationSeries(history.slice(0, quarter)), [history, quarter]);
   const pp = val.points[quarter];
   const attribution = useMemo(() => quarterAttribution(rec), [rec]);
-  const wide = typeof window !== 'undefined' && window.matchMedia?.('(min-width: 960px)').matches;
+  const [deepOpen, setDeepOpen] = useState(false);
   return (
     <div className="ds-stack-lg" data-testid="v2-results">
       {/* Level 1 — the board paper headline */}
@@ -79,39 +75,71 @@ export function QuarterDashboard({ history, quarter, mode }: { history: QuarterR
       <span className="ds-sr" data-testid="v2-res-cash">{fmtM(rec.after.cash)}</span>
       <span className="ds-sr" data-testid="v2-res-solvency">{rec.after.solvency.status}{rec.after.solvency.distressed ? ' · distressed' : ''}</span>
 
-      <QuarterSequence rec={rec} quarter={quarter} attribution={attribution} pp={pp} prevPrice={val.points[quarter - 1].price} />
-
-      <div className="ds-grid ds-grid-main">
-        <div className="ds-stack-lg">
-          {top && <ConsequenceView c={top} />}
-          <Section eyebrow="What moved, and why" testId="v2-why">
-            <AttributionTable rows={attribution} quarter={quarter} />
-          </Section>
-        </div>
-        <div className="ds-stack-lg">
-          <div className="ds-next" data-testid="v2-next">
-            <Icon name="eye" size={18} />
-            <div><p className="ds-h4" style={{ marginBottom: 2 }}>What to watch next</p>
-              <div>{watch ? watch.text : 'Nothing unusual is building up. Keep an eye on cash and customers.'}</div>
-              <div className="ds-muted" style={{ marginTop: 4 }}>A leading indicator, not a forecast.</div></div>
-          </div>
-          <BridgeView bridge={bridge} mode={mode} />
-          <section>
-            <p className="ds-eyebrow">What moved the share price</p>
-            <ValuationBridgeView point={pp} previous={val.points[quarter - 1]} mode={mode} />
-          </section>
-        </div>
-      </div>
+      <QuarterBriefing history={history} rec={rec} quarter={quarter} mode={mode} />
 
       {/* Level 2 — executive intelligence */}
       <ExecutiveIntelligence history={history} quarter={quarter} mode={mode} />
 
-      {/* Level 3 — deep analysis */}
-      <details className="ds-fold" open={mode === 'mba' && wide} data-testid="v2-deep">
-        <summary><span>Deep analysis</span><span className="ds-fold-hint">{mode === 'mba' ? 'Diagnostics, market vs decisions, benchmarks, formulas' : 'More detail for the curious'}</span></summary>
-        <div className="ds-fold-body"><DeepAnalysis history={history} quarter={quarter} mode={mode} consequences={consequences} cards={cards} /></div>
+      {/* Level 3 — deep analysis, on demand */}
+      <details className="ds-fold" open={deepOpen} onToggle={e => setDeepOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-deep">
+        <summary><span>Deep analysis</span><span className="ds-fold-hint">The quarter in sequence, what moved and why, cash and share-price reconciliation, {mode === 'mba' ? 'diagnostics, benchmarks and formulas' : 'and more detail'}</span></summary>
+        <div className="ds-fold-body ds-stack-lg">
+          <QuarterSequence rec={rec} quarter={quarter} attribution={attribution} pp={pp} prevPrice={val.points[quarter - 1].price} />
+          <div className="ds-grid ds-grid-main">
+            <div className="ds-stack-lg">
+              {top && <ConsequenceView c={top} />}
+              <Section eyebrow="What moved, and why" testId="v2-why">
+                <AttributionTable rows={attribution} quarter={quarter} />
+              </Section>
+            </div>
+            <div className="ds-stack-lg">
+              <div className="ds-next" data-testid="v2-next">
+                <Icon name="eye" size={18} />
+                <div><p className="ds-h4" style={{ marginBottom: 2 }}>What to watch next</p>
+                  <div>{watch ? watch.text : 'Nothing unusual is building up. Keep an eye on cash and customers.'}</div>
+                  <div className="ds-muted" style={{ marginTop: 4 }}>A leading indicator, not a forecast.</div></div>
+              </div>
+              <BridgeView bridge={bridge} mode={mode} />
+              <section>
+                <p className="ds-eyebrow">What moved the share price</p>
+                <ValuationBridgeView point={pp} previous={val.points[quarter - 1]} mode={mode} />
+              </section>
+            </div>
+          </div>
+          <DeepAnalysis history={history} quarter={quarter} mode={mode} consequences={consequences} cards={cards} />
+        </div>
       </details>
     </div>
+  );
+}
+
+/** Level 1: three material developments from recorded results, and the board's question for the next decision. */
+function QuarterBriefing({ history, rec, quarter, mode }: { history: QuarterRecord[]; rec: QuarterRecord; quarter: number; mode: V2PresentationMode }) {
+  const devs = useMemo(() => materialDevelopments(rec, mode), [rec, mode]);
+  const q = useMemo(() => boardQuestion(history, quarter), [history, quarter]);
+  const KIND: Record<string, string> = { commercial: 'Commercial and market', decision: 'Management decision', capability: 'Capability and organization' };
+  return (
+    <section className="ds-grid ds-grid-main" data-testid="v2-briefing-quarter">
+      <div data-testid="v2-developments">
+        <p className="ds-eyebrow">Three material developments</p>
+        <table className="ds-table ds-stack-sm">
+          <thead><tr><th>Development</th><th className="num">Movement</th><th>Effect</th><th>Driver</th></tr></thead>
+          <tbody>{devs.map(d => (
+            <tr key={d.kind} data-kind={d.kind} data-testid={d.kind === 'decision' ? 'v2-consequence' : `v2-dev-${d.kind}`}>
+              <td><span className="ds-method" style={{ display: 'block' }}>{KIND[d.kind]}</span>{d.kind === 'decision' ? <b>{d.label}</b> : d.label}{d.kind === 'decision' && <span className="ds-small" style={{ display: 'block', color: 'var(--ds-ink-2)' }}>{d.detail}</span>}</td>
+              <td className="num" style={{ whiteSpace: 'nowrap' }}>{d.movement || '—'}</td>
+              <td className={d.effect === 'favourable' ? 'ds-tone-good' : d.effect === 'unfavourable' ? 'ds-tone-bad' : 'ds-tone-neutral'}>{d.effect === 'neutral' ? '—' : d.effect === 'favourable' ? 'Favourable' : 'Unfavourable'}</td>
+              <td className="ds-small">{d.driver}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+        <p className="ds-method" style={{ margin: '6px 0 0' }}>Selected from this quarter’s recorded results. Arrows show direction; whether a movement helps the business is shown separately.</p>
+      </div>
+      <div className="ds-chapter-question" data-testid="v2-board-question" data-rule={q.rule} style={{ marginTop: 0 }}>
+        <Icon name="target" size={18} />
+        <div><span className="ds-method" style={{ display: 'block', fontWeight: 500 }}>The board’s question for {quarter < 8 ? calendarLabel(quarter + 1) : 'the final report'}</span>{q.text}</div>
+      </div>
+    </section>
   );
 }
 
@@ -145,7 +173,7 @@ const fmtSigned = (x: number) => (Math.abs(x) < 0.05 ? '±$0.0M' : `${x > 0 ? '+
 
 function ConsequenceView({ c }: { c: DecisionConsequence }) {
   return (
-    <section className="ds-section ds-consequence" data-testid="v2-consequence" data-consequence={c.id}>
+    <section className="ds-section ds-consequence" data-testid="v2-consequence-detail" data-consequence={c.id}>
       <p className="ds-eyebrow">Your biggest decision consequence</p>
       <p className="ds-consequence-decision">{c.decision}</p>
       <div className="ds-consequence-rows">
@@ -287,10 +315,8 @@ export function ExecutiveIntelligence({ history, quarter, mode }: { history: Qua
 
 function DeepAnalysis({ history, quarter, mode, consequences, cards }: { history: QuarterRecord[]; quarter: number; mode: V2PresentationMode; consequences: DecisionConsequence[]; cards: KpiCard[] }) {
   const rec = history[quarter - 1];
-  const story = quarterStory(rec.consequence, rec.after, mode);
   const bm = benchmarks(history, quarter);
   const health = healthIndicators(rec.after);
-  const byKind = (k: Impact['kind']) => story.impacts.filter(i => i.kind === k).slice(0, mode === 'mba' ? 6 : 3);
   return (
     <div className="ds-stack-lg">
       <div>
@@ -300,26 +326,6 @@ function DeepAnalysis({ history, quarter, mode, consequences, cards }: { history
             <KpiTile key={c.id} testId={`v2-kpi-${c.id}`} label={<Termed label={c.label} />} value={c.display} explain={c.explain}
               delta={{ direction: c.direction, tone: c.tone, text: c.id === 'liquidity' ? c.deltaDisplay : deltaText(c) }}
               previous={`Last quarter: ${c.previousDisplay}`} footnote={c.id !== 'liquidity' ? c.vsStart : undefined} />
-          ))}
-        </div>
-      </div>
-      <div className="ds-grid ds-grid-3">
-        <StoryCard kind="challenge" title="Biggest challenge" icon="alert" impact={story.challenge} mode={mode} empty="No significant setback this quarter." />
-        <StoryCard kind="opportunity" title="Biggest boost" icon="star" impact={story.opportunity} mode={mode} empty="No significant gain this quarter." />
-        <div className="ds-story ds-story-watch" data-testid="v2-story-watch">
-          <span className="ds-row"><Icon name="eye" /><b>What to watch</b></span>
-          <span>{story.watch ? story.watch.text : 'Nothing unusual is building up.'}</span>
-          {mode === 'mba' && story.watch && <span className="ds-muted">Source: {story.watch.detail}</span>}
-        </div>
-      </div>
-      <div data-testid="v2-impacts">
-        <p className="ds-h4">{mode === 'mba' ? 'What drove the quarter' : 'Why it happened'}</p>
-        <div className="ds-grid ds-grid-3">
-          {(['market', 'decision', 'investment'] as const).map(k => (
-            <div key={k} data-testid={`v2-impacts-${k}`}>
-              <p className="ds-small ds-row" style={{ fontWeight: 700 }}><Icon name={KIND_LABEL[k].icon} size={14} />{mode === 'mba' ? KIND_LABEL[k].title : KIND_LABEL[k].ug}</p>
-              {byKind(k).length ? <ul className="ds-list ds-small">{byKind(k).map((i, n) => <li key={n}><span className={i.polarity > 0 ? 'ds-tone-good' : 'ds-tone-bad'}>{i.polarity > 0 ? '▲' : '▼'}</span> {i.text}{mode === 'mba' && i.detail ? <span className="ds-muted"> — {i.detail}</span> : null}</li>)}</ul> : <p className="ds-muted">Nothing significant.</p>}
-            </div>
           ))}
         </div>
       </div>
@@ -354,15 +360,6 @@ function DeepAnalysis({ history, quarter, mode, consequences, cards }: { history
   );
 }
 
-function StoryCard({ kind, title, icon, impact, mode, empty }: { kind: 'challenge' | 'opportunity'; title: string; icon: string; impact: Impact | null; mode: V2PresentationMode; empty: string }) {
-  return (
-    <div className={`ds-story ds-story-${kind}`} data-testid={`v2-story-${kind}`}>
-      <span className="ds-row"><Icon name={icon} /><b>{title}</b>{impact && <span className="ds-impact-kind">{mode === 'mba' ? KIND_LABEL[impact.kind].title : KIND_LABEL[impact.kind].ug}</span>}</span>
-      <span>{impact ? impact.text : empty}</span>
-      {mode === 'mba' && impact?.detail && <span className="ds-muted">Source: {impact.detail}</span>}
-    </div>
-  );
-}
 
 function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mode: V2PresentationMode; rec: ReturnType<typeof gameHistory>[number]; history: QuarterRecord[] }) {
   const game = ctl.game!;
