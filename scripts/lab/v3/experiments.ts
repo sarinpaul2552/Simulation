@@ -5,7 +5,7 @@
  */
 import { play, type LabConfig, type PlayOptions } from './player';
 import { metricsOf, type GameMetrics } from './metrics';
-import { V3_LAB_STRATEGIES, type V3LabStrategy } from './strategies';
+import { V3_LAB_STRATEGIES, ADAPTIVE_PATHS, type V3LabStrategy } from './strategies';
 import {
   V3_ECONOMICS, withV3Economics, ALL_MECHANISMS_OFF, type DeepPartial, type V3EconomicsConfig, type V3Mechanisms,
 } from '../../../src/simulationV3/engineV3Config';
@@ -151,4 +151,16 @@ export function marginal(paths: V3MarketPathId[] = ['A']) {
     }) };
   };
   return { v2: run(V2C), v3: run(v3c()), byPath: Object.fromEntries(paths.map(p => [p, run(v3c(p))])) as Record<V3MarketPathId, ReturnType<typeof run>> };
+}
+
+// ─────────────── 9. The three authored market paths (Batch 10D) ───────────────
+/** "Focus families": $12M in one market bucket + $12M AI + $6M People with the aligned destination (dominance probe). */
+export const FOCUS_FAMILIES: V3LabStrategy[] = ([
+  ['focus-consumer', 'consumer', 'consumer-ai'], ['focus-enterprise', 'enterprise', 'enterprise-ai'], ['focus-university', 'universityCredentials', 'university-infrastructure'],
+] as const).map(([id, b, d]) => ({ category: 'Diversified' as const, allocationText: `$12M ${b} + $12M AI + $6M People; ${d}`,
+  strategy: { id, name: id, description: id, allocate: () => a({ [b]: 12, aiProduct: 12, people: 6 }), destination: () => d } }));
+
+export function pathStudy() {
+  const set = [...V3_LAB_STRATEGIES, ADAPTIVE_PATHS, ...FOCUS_FAMILIES];
+  return { A: runSet(v3c('A'), set), B: runSet(v3c('B'), set), C: runSet(v3c('C'), set), marginal: marginal(['A', 'B', 'C']).byPath };
 }

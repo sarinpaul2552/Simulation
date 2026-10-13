@@ -7,7 +7,8 @@
  *
  * Rules:
  * - No option is labelled or implied to be correct (in particular the Q2 stance is neutral about AI).
- * - Q3 evidence labels name the source only. They carry no figures and no hint about which signal is reliable;
+ * - Q3 evidence labels name the source only, in words that fit all three V3 market paths (the eight Q3 signal ids are
+ *   shared by every path). They carry no figures and no hint about which signal is reliable;
  *   the assessment is shown only after Q4 is completed (see insights/signalReveal.ts).
  */
 import { mt, ModeText } from './modes';
@@ -80,9 +81,9 @@ export const DECISION_FRAMING: Record<number, DecisionFraming> = {
       { id: 'q3-enterprise-rfps', label: mt('Enterprise requests for proposals (shared)') },
       { id: 'q3-ai-engagement', label: mt('AI product engagement (Product brief)') },
       { id: 'q3-ai-wtp', label: mt('AI pilot-to-paid conversion estimates (shared)') },
-      { id: 'q3-university', label: mt('University renewals (CEO brief)') },
-      { id: 'q3-competition', label: mt('Competitor consolidation (shared)') },
-      { id: 'q3-people-strain', label: mt('AI talent market (People brief)') },
+      { id: 'q3-university', label: mt('University partners (CEO brief)') },
+      { id: 'q3-competition', label: mt('Competitor moves (shared)') },
+      { id: 'q3-people-strain', label: mt('Talent market (People brief)') },
     ],
   },
   4: MAJOR(mt('This commitment shapes the rest of the game. Agree what matters most, then choose and fund it.', 'An irreversible commitment: align on the objective before choosing.')),

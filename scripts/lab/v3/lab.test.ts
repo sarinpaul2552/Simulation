@@ -13,7 +13,7 @@ import { metricsOf, type GameMetrics } from './metrics';
 import { V3_LAB_STRATEGIES } from './strategies';
 import {
   comparison, attribution, sensitivity, marketSensitivity, recessionStances, cashStrainedStances, financingExpansion,
-  contractClaim, marginal, SENSITIVITY, v3c, V2C,
+  contractClaim, marginal, pathStudy, SENSITIVITY, v3c, V2C,
 } from './experiments';
 import { V3_ECONOMICS, withV3Economics, ALL_MECHANISMS_OFF } from '../../../src/simulationV3/engineV3Config';
 import { firstDifference } from '../../../src/production/v2/snapshot';
@@ -161,6 +161,16 @@ describe.runIf(WRITE)('V3 laboratory tables', () => {
     })));
     md.push('');
 
+    const ps = pathStudy();
+    md.push('\n## T11 · The three market paths (V3): Q8 price (rank) · revenue · enterprise / university / AI-native revenue · terminal · closing cash\n');
+    const cell = (ms: GameMetrics[], m: GameMetrics) => `${f1(m.price)} (#${rank(ms, x => x.price)(m.strategy)}) · ${f0(m.revenue)} · ${f0(m.segments.enterprise)}/${f0(m.segments.university)}/${f0(m.segments.aiNative)} · ${f1(m.terminal)} · ${f0(m.cash)}${m.everInsolvent ? ' · insolvent' : ''}`;
+    md.push(table(['Strategy', 'A · AI Acceleration', 'B · Enterprise Transformation', 'C · Economic Pressure'], ps.A.map((m, i) => [m.strategy, cell(ps.A, m), cell(ps.B, ps.B[i]), cell(ps.C, ps.C[i])])));
+    const named = (ms: GameMetrics[]) => ms.filter(m => !m.strategy.startsWith('focus-'));
+    md.push(`\nSpearman (price ranking, named strategies): A–B ${spearman(named(ps.A), named(ps.B)).toFixed(2)}, A–C ${spearman(named(ps.A), named(ps.C)).toFixed(2)}, B–C ${spearman(named(ps.B), named(ps.C)).toFixed(2)}. Top by price — A: ${top(ps.A, m => m.price).strategy}; B: ${top(ps.B, m => m.price).strategy}; C: ${top(ps.C, m => m.price).strategy}. Top named strategy — A: ${top(named(ps.A), m => m.price).strategy}; B: ${top(named(ps.B), m => m.price).strategy}; C: ${top(named(ps.C), m => m.price).strategy}. Insolvent games: ${[...ps.A, ...ps.B, ...ps.C].filter(m => m.everInsolvent).length}.\n`);
+    md.push('\n## T12 · Marginal $5M by path (from $6M in every bucket): Δ Q8 price / Δ cumulative operating profit\n');
+    md.push(table(['+$5M to', 'A', 'B', 'C'], ps.marginal.A.shift.map((s, i) => [s.bucket, ...(['A', 'B', 'C'] as const).map(p => { const r = ps.marginal[p]; const x = r.shift[i].m; return `${sg(x.price - r.base.price)} / ${sg(x.cumulativeOperatingProfit - r.base.cumulativeOperatingProfit, 0)}`; })])));
+    md.push('');
+
     mkdirSync('docs/v3lab', { recursive: true });
     writeFileSync('docs/v3lab/tables.md', md.join('\n'));
     const strip = (ms: GameMetrics[]) => ms.map(({ priceByQuarter, revenueByQuarter, cultureByQuarter, ...rest }) => ({ ...rest, priceByQuarter: priceByQuarter.map(x => +x.toFixed(2)) , revenueByQuarter: revenueByQuarter.map(x => +x.toFixed(2)), cultureByQuarter: cultureByQuarter.map(x => +x.toFixed(2)) }));
@@ -169,6 +179,7 @@ describe.runIf(WRITE)('V3 laboratory tables', () => {
       marketSensitivity: mkt.map(v => ({ id: v.id, label: v.label, v3: strip(v.v3) })),
       recessionStances: stance.map(r => ({ strategy: r.strategy, variant: r.variant, v2: strip([r.v2])[0], v3: strip([r.v3])[0] })),
       financingExpansion: fin.map(r => ({ X: r.X, metrics: strip(r.metrics) })),
+      paths: { A: strip(ps.A), B: strip(ps.B), C: strip(ps.C) },
     }, null, 1));
     expect(cmp.v3.length).toBe(V3_LAB_STRATEGIES.length);
   }, 600_000);

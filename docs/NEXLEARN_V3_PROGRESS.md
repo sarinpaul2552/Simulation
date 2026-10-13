@@ -4,7 +4,7 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 
 ## Current batch
 
-**10D — three market paths.** 10C is complete (798fff5).
+**10F — final validation.** 10D is complete (af0c8c4 plus the report commit).
 
 ## Repository facts (verified at start)
 
@@ -28,6 +28,7 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 - [x] 10B mechanisms E1–E4, valuation VAL-1.1 (E9), and engine rules E5–E7 (2b53e03)
 - [x] V3 laboratory `scripts/lab/v3/` with tables `docs/v3lab/tables.md` and `results.json`
 - [x] `docs/BATCH10B_V3_ECONOMIC_REPORT.md` and `docs/BATCH10B_V2_V3_COMPARISON.md`
+- [x] 10D: paths B and C, path-aware content (pathB.ts, pathC.ts, paths.ts), migration `MIGRATION_V3_MARKET_PATHS.sql` (local only), facilitator path selection, V3 DB tests, `docs/BATCH10D_MARKET_SCENARIOS.md`
 - [x] 10C UI (stance card, contract claim, expansion control), E8 saturation warning and ceiling feedback, decision summaries, `docs/BATCH10C_EXECUTIVE_DECISION_REPORT.md` (798fff5)
 
 ## Git commits (this assignment)
@@ -38,13 +39,15 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 | 2b53e03 | E1–E4 economics, E5–E7 rules, V3 laboratory |
 | ee504fa | 10B reports and progress update |
 | 798fff5 | 10C UI, E8, report |
+| af0c8c4 | 10D paths, content, migration, setup UI |
 
 ## Test results
 
 | Run | Result |
 |---|---|
-| Unit (full suite, after 798fff5) | 754 passed, 20 skipped |
-| Production build (after 10C) | passes |
+| Unit (full suite, after 10D) | 767 passed, 27 skipped (the DB suites skip without a DB) |
+| Production build (after 10D) | passes |
+| DB (local disposable, after V3 migration) | 21 passed (14 V2 + 7 V3) |
 | Laboratory invariants | 5 passed (plus the table writer under `V3LAB_WRITE=1`) |
 | Type-check | clean |
 | DB / E2E | not run yet in this assignment |
@@ -55,7 +58,7 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 
 ## Unresolved dependencies
 
-- Database support for V3 sessions (`econ_engine`, `market_path`, `v3_create_session`, V3 input check with expansion). To be prepared in 10D and tested only on the local disposable database.
+- `database/MIGRATION_V3_MARKET_PATHS.sql` must be applied to the production Supabase project before V3 can be used there. **This requires approval** and has been tested only locally.
 
 ## Decisions taken (within the brief)
 
@@ -68,10 +71,9 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 
 ## Next implementation task
 
-10D:
-1. Author paths B and C (scenario arcs in `src/simulationV3/engineV3PathB.ts` and `engineV3PathC.ts`; register them in `engineV3Paths.ts`).
-2. Make the content modules path-aware: chapters, quarter cards, plain-language signals, briefs, Q3 assessments.
-3. Migration `database/MIGRATION_V3_MARKET_PATHS.sql` (columns, immutability trigger, `v3_create_session`, V3 input check, game JSON and overview fields), applied in `scripts/v2-local/up.sh` only.
-4. Facilitator path selection when creating a session.
-5. 10A and 10E integration per path.
-6. Tests and report.
+10F:
+1. Browser E2E for V3: facilitator creates a path session; several teams on desktop and mobile; refresh; simultaneous commits; Q5 claim, Q6 stance, expansion; Q4 reveal; facilitator discussion and projector; board report.
+2. Full existing E2E suite (investigate stalls).
+3. Economic validation (H1–H13).
+4. Timing report.
+5. Release documents and final review.

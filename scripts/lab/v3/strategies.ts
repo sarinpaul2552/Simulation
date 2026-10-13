@@ -30,3 +30,26 @@ export const V3_LAB_STRATEGIES: V3LabStrategy[] = [
   { category: 'Deliberately weak', strategy: arc('wrong-way'), allocationText: 'Consumer Q1–Q2, then all-in AI; Enterprise destination without Enterprise capability' },
   { category: 'Deliberately weak', strategy: { id: 'all-reserve', name: 'All reserve', description: 'Holds the full $30M in reserve every quarter', allocate: () => a({ cashReserve: 30 }), destination: () => 'balanced-marketplace' }, allocationText: '$30M reserve (no investment)' },
 ];
+
+/**
+ * Lab-only: an evidence-reading team for the V3 market paths. It reads only signals players are shown (ids), never truth: Q1 balanced; from Q2 it tilts toward what the shared evidence emphasises.
+ */
+/** Signals seen so far (this quarter and every earlier briefing). */
+const sig = (ctx: { signals: { id: string }[]; history: { signals: { id: string }[] }[] }, id: string) =>
+  ctx.signals.some(s => s.id === id) || ctx.history.some(h => h.signals.some(s => s.id === id));
+export const ADAPTIVE_PATHS: V3LabStrategy = {
+  category: 'Adaptive', allocationText: 'Balanced Q1, then follows each path’s shared evidence',
+  strategy: {
+    id: 'adaptive-paths', name: 'Adaptive (reads the path’s evidence)', description: 'Evidence-reading play across market paths',
+    allocate: ctx => {
+      if (ctx.quarter === 1) return a({ consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 5, cashReserve: 5 });
+      const st = ctx.state as unknown as { destination: { id: string } | null; cash: number };
+      const d = st.destination?.id;
+      if (d === 'enterprise-ai' || sig(ctx, 'b-q2-enterprise-mandates') || sig(ctx, 'b-q4-market')) return a({ enterprise: 12, aiProduct: 10, people: 8 });
+      if (d === 'consumer-ai' && st.cash < 60) return a({ consumer: 12, aiProduct: 8, people: 5, cashReserve: 5 });
+      if (sig(ctx, 'c-q2-rates') || sig(ctx, 'c-q4-market')) return a({ consumer: 12, aiProduct: 8, people: 5, cashReserve: 5 });
+      return a({ consumer: 10, aiProduct: 12, people: 8 });
+    },
+    destination: ctx => (sig(ctx, 'b-q2-enterprise-mandates') ? 'enterprise-ai' : 'consumer-ai'),
+  },
+};
