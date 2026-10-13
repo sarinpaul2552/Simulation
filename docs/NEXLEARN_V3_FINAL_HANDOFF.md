@@ -149,7 +149,7 @@ See `BATCH10F_CLASSROOM_TIMING_REPORT.md`.
 | 798fff5, 4f5ce19 | 10C UI, E8, report |
 | af0c8c4, 7fc84a6 | 10D paths, content, migration, setup UI, report |
 | 8282ad3, ff0f2aa, f307126 | 10F browser tests, fixes, validation and release documents |
-| (final) | handoff and progress |
+| 2de6940 | handoff, test report and progress |
 
 The preserved branches are unchanged: `feature/batch10a-student-learning` (3f7fd16) and `feature/batch10e-facilitator` (7e103fa).
 
