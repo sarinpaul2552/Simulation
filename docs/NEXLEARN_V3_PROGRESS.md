@@ -4,11 +4,7 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 
 ## Current batch
 
-**10C — executive decisions.** The engine rules for E5, E6 and E7 are already implemented and tested (done during 10B, because the laboratory needed them). Remaining for 10C:
-- UI for the contract claim, recession stance and budget expansion;
-- E8 saturation warning;
-- decision transparency;
-- the 10C report.
+**10D — three market paths.** 10C is complete (798fff5).
 
 ## Repository facts (verified at start)
 
@@ -32,6 +28,7 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 - [x] 10B mechanisms E1–E4, valuation VAL-1.1 (E9), and engine rules E5–E7 (2b53e03)
 - [x] V3 laboratory `scripts/lab/v3/` with tables `docs/v3lab/tables.md` and `results.json`
 - [x] `docs/BATCH10B_V3_ECONOMIC_REPORT.md` and `docs/BATCH10B_V2_V3_COMPARISON.md`
+- [x] 10C UI (stance card, contract claim, expansion control), E8 saturation warning and ceiling feedback, decision summaries, `docs/BATCH10C_EXECUTIVE_DECISION_REPORT.md` (798fff5)
 
 ## Git commits (this assignment)
 
@@ -39,13 +36,15 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 |---|---|
 | 6681209 | V3 fork, engine facade, config-aware integration |
 | 2b53e03 | E1–E4 economics, E5–E7 rules, V3 laboratory |
-| (next) | 10B reports and progress update |
+| ee504fa | 10B reports and progress update |
+| 798fff5 | 10C UI, E8, report |
 
 ## Test results
 
 | Run | Result |
 |---|---|
-| Unit (full suite, after 2b53e03) | 753 passed, 20 skipped |
+| Unit (full suite, after 798fff5) | 754 passed, 20 skipped |
+| Production build (after 10C) | passes |
 | Laboratory invariants | 5 passed (plus the table writer under `V3LAB_WRITE=1`) |
 | Type-check | clean |
 | DB / E2E | not run yet in this assignment |
@@ -69,10 +68,10 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 
 ## Next implementation task
 
-10C UI:
-1. Decision stage: stance selector in Q6 (with the freeze → People-to-reserve conversion shown).
-2. Contract claim shown as "$X of your $30M".
-3. Expansion control in the CFO financing panel (budget shown as 30 + X).
-4. Saturation warning (E8) in both engines.
-5. Decision summaries and the board resolution show stance, claim and expansion.
-6. Report.
+10D:
+1. Author paths B and C (scenario arcs in `src/simulationV3/engineV3PathB.ts` and `engineV3PathC.ts`; register them in `engineV3Paths.ts`).
+2. Make the content modules path-aware: chapters, quarter cards, plain-language signals, briefs, Q3 assessments.
+3. Migration `database/MIGRATION_V3_MARKET_PATHS.sql` (columns, immutability trigger, `v3_create_session`, V3 input check, game JSON and overview fields), applied in `scripts/v2-local/up.sh` only.
+4. Facilitator path selection when creating a session.
+5. 10A and 10E integration per path.
+6. Tests and report.

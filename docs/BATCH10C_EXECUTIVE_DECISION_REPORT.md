@@ -131,5 +131,5 @@ Future consequences are not revealed in advance. The results "consequence" lines
 
 - `src/production/v3/v3mechanisms.test.ts`: 20 tests for E1, E3, E4, E5, E6, E7, V2 rejection of V3 fields, and snapshot version and replay.
 - `scripts/lab/v3/lab.test.ts`: identities, replay, parity, determinism, E8 warning before waste.
-- Full unit suite after 10C: 753 passed, 20 skipped; type-check clean; production build passes.
+- Full unit suite after 10C: 754 passed, 20 skipped; type-check clean; production build passes.
 - Browser tests of the V3 decision UI need a V3 session (10D migration) and are run in 10F.
