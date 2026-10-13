@@ -16,6 +16,8 @@ import { Icon, LineChart, Meter } from '../ds/components';
 import { Term } from '../ds/glossary';
 import { ScorecardView } from '../ds/intel';
 import { boardVerdict, defensePrompts, type DefensePrompt } from '../../insights/boardVerdict';
+import { ownTeam, intentOutcomeRows, rationalePrompts, type RationalePrompt } from '../../insights/intentOutcome';
+import type { TimelineRow } from '../../insights/facilitator';
 
 const GATE_TEXT: Record<string, string> = {
   'terminal-insolvency': 'The company ended the game insolvent, which caps the business performance score.',
@@ -35,6 +37,10 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
   const cards = useMemo(() => allScorecards(history), [history]);
   const verdict = useMemo(() => boardVerdict(history), [history]);
   const prompts = useMemo(() => defensePrompts(history), [history]);
+  // Batch 10E: the team's own recorded intent next to what it decided, what happened and what it learned.
+  const own = useMemo(() => ownTeam(game.teamName, game.resolutions), [game.teamName, game.resolutions]);
+  const intent = useMemo(() => intentOutcomeRows(own, mode), [own, mode]);
+  const rationale = useMemo(() => rationalePrompts(own, mode), [own, mode]);
   const s = game.snapshot.state;
   const s0 = val.points[0];
   const end = val.points[val.points.length - 1];
@@ -162,6 +168,11 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           <DecisionHistory report={report} agreementOf={agreementOf} prices={val.points.map(p => p.price)} />
         </section>
 
+        <section className="ds-report-section" data-testid="v2-report-intent">
+          <h2><span className="ds-sec-n">{sec()}</span>Intent and outcome</h2>
+          <IntentOutcome rows={intent} />
+        </section>
+
         <section className="ds-report-section" data-testid="v2-report-scorecards">
           <h2><span className="ds-sec-n">{sec()}</span>Executive scorecards</h2>
           <ScorecardSummary cards={cards} mode={mode} />
@@ -194,7 +205,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
         </section>
       </article>
 
-      <BoardDefense teamName={game.teamName} price={end.price} prompts={prompts} />
+      <BoardDefense teamName={game.teamName} price={end.price} prompts={prompts} rationale={rationale} />
     </div>
   );
 }
@@ -291,7 +302,7 @@ function FindingList({ title, items, empty, testId }: { title: string; items: Fi
 }
 
 /** Printable board defense: the board's question and a three-minute framework. */
-function BoardDefense({ teamName, price, prompts }: { teamName: string; price: number; prompts: DefensePrompt[] }) {
+function BoardDefense({ teamName, price, prompts, rationale }: { teamName: string; price: number; prompts: DefensePrompt[]; rationale: RationalePrompt[] }) {
   return (
     <section className="ds-defense" data-testid="v2-board-defense">
       <p className="ds-verdict-kicker">Board defense · {teamName}</p>
@@ -308,8 +319,37 @@ function BoardDefense({ teamName, price, prompts }: { teamName: string; price: n
         <p className="ds-h4">Questions the board will ask — from your recorded results</p>
         <ul className="ds-list-plain">{prompts.map(p => <li key={p.id} data-prompt={p.id}><b>{p.question}</b><span className="ds-small" style={{ display: 'block', color: 'var(--ds-ink-2)' }}>{p.evidence}</span></li>)}</ul>
       </div>
+      {rationale.length > 0 && (
+        <div style={{ marginTop: 14 }} data-testid="v2-defense-rationale">
+          <p className="ds-h4">Questions from your own recorded reasoning</p>
+          <ul className="ds-list-plain">{rationale.map(p => <li key={p.id} data-prompt={p.id}><b>{p.question}</b><span className="ds-small" style={{ display: 'block', color: 'var(--ds-ink-2)' }}>{p.evidence}</span></li>)}</ul>
+        </div>
+      )}
       <div className="ds-stack" style={{ marginTop: 14, gap: 0 }} aria-hidden>{Array.from({ length: 5 }, (_, i) => <div key={i} className="ds-lines" />)}</div>
       <div className="ds-actions ds-no-print"><button className="ds-btn ds-btn-secondary" onClick={() => window.print()} data-testid="v2-print-defense">Print the board pack</button></div>
     </section>
+  );
+}
+
+/** Batch 10E: per quarter, what the team intended, decided, saw happen and learned — recorded facts, no grade. */
+function IntentOutcome({ rows }: { rows: TimelineRow[] }) {
+  return (
+    <div className="ds-stack" style={{ gap: 8 }}>
+      <div className="ds-table-wrap">
+        <table className="ds-table ds-table-compact" data-testid="v2-intent-outcome">
+          <thead><tr><th>Quarter</th><th>What we intended</th><th>What we decided</th><th>What happened</th><th>What we learned</th></tr></thead>
+          <tbody>{rows.map(r => (
+            <tr key={r.quarter} data-quarter={r.quarter}>
+              <td style={{ whiteSpace: 'nowrap' }}><b>{calendarLabel(r.quarter)}</b></td>
+              <td className="ds-small"><b>{r.cols.intended.priority ?? 'Not recorded'}</b>{r.cols.intended.belief && <div>{r.cols.intended.belief}{r.cols.intended.confidence ? ` (${r.cols.intended.confidence.toLowerCase()} confidence)` : ''}</div>}{r.cols.intended.signals.length > 0 && <div>Signals: {r.cols.intended.signals.join(' · ')}</div>}{r.cols.intended.risk && <div>Biggest risk: {r.cols.intended.risk}</div>}</td>
+              <td className="ds-small">{r.cols.decided.allocation}{r.cols.decided.event && <div><b>{r.cols.decided.event}</b></div>}{r.pattern === 'adaptation' && <div className="ds-muted">{r.patternText}</div>}</td>
+              <td className="ds-small">Revenue {r.cols.happened.revenue}<div>Share price {r.cols.happened.price}</div></td>
+              <td className="ds-small">{r.cols.learned.choices.length ? r.cols.learned.choices.join(' · ') : <span className="ds-muted">Not recorded</span>}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <p className="ds-method" style={{ margin: 0 }}>Recorded intentions and results side by side. Results also reflect market conditions and earlier decisions; one quarter rarely proves a call right or wrong.</p>
+    </div>
   );
 }
