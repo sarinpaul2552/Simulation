@@ -4,6 +4,7 @@ import { V2_ROLES, workingQuarter, envelopeFor } from '../../adapter';
 import type { V2Deliberation, V2PlayerQuarterInput, V2Role, V2VoteValue } from '../../types';
 import type { V2Agreement, V2CommitmentMode, V2VotesResponse } from '../../api';
 import type { V2TeamController } from '../useV2Team';
+import { priorityLabel, evidenceLabel } from '../../content/decisionFraming';
 import { pick, V2PresentationMode } from '../../content/modes';
 import { BELIEFS, RISKS, CONFIDENCE_LEVELS } from '../../content/deliberationContent';
 import { CHAPTERS } from '../../content/chapters';
@@ -53,6 +54,8 @@ function Resolution({ input, deliberation, quarter, mode }: { input: V2PlayerQua
   const belief = BELIEFS[quarter]?.find(b => b.id === deliberation?.beliefId);
   const conf = CONFIDENCE_LEVELS.find(c => c.value === deliberation?.confidence)?.label;
   const risks = (deliberation?.riskIds ?? []).map(id => RISKS[quarter]?.find(r => r.id === id)).filter(Boolean);
+  const prio = priorityLabel(quarter, deliberation?.priorityId);
+  const evidence = (deliberation?.evidenceIds ?? []).map(id => evidenceLabel(quarter, id)).filter(Boolean);
   const strategic = [
     input.destination && `Commit to ${destinationName(input.destination)}`,
     input.opportunity && (input.opportunity.accept ? 'Accept the global contract' : 'Decline the global contract'),
@@ -76,9 +79,11 @@ function Resolution({ input, deliberation, quarter, mode }: { input: V2PlayerQua
         </dd>
         {financing.length > 0 && <><dt>Financing</dt><dd className="ds-small">{financing.join(' · ')}</dd></>}
         {strategic.length > 0 && <><dt>Strategic decision</dt><dd>{strategic.join(' · ')}</dd></>}
-        <dt>Primary belief</dt><dd>{belief ? pick(mode, belief.label) : '—'}</dd>
+        {prio && <><dt>{quarter === 2 ? 'Our stance' : 'Our strategic priority'}</dt><dd data-testid="v2-resolution-priority">{pick(mode, prio)}</dd></>}
+        {evidence.length > 0 && <><dt>Evidence we weighted most</dt><dd className="ds-small">{evidence.map(e => pick(mode, e!)).join(' · ')}</dd></>}
+        <dt>Our evidence</dt><dd>{belief ? pick(mode, belief.label) : '—'}</dd>
         <dt>Confidence</dt><dd>{conf ?? '—'}</dd>
-        <dt>Top two risks</dt><dd className="ds-small">{risks.length ? risks.map(r => pick(mode, r!.label)).join(' · ') : '—'}</dd>
+        <dt>{risks.length > 1 ? 'Top risks' : 'Our biggest risk'}</dt><dd className="ds-small">{risks.length ? risks.map(r => pick(mode, r!.label)).join(' · ') : '—'}</dd>
       </dl>
     </article>
   );

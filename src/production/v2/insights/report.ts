@@ -102,7 +102,7 @@ function findings(s: V2TeamState, history: ReturnType<typeof gameHistory>): { st
   if (dRet >= 2) strengths.push({ w: dRet * 2, title: 'Improved customer retention', evidence: `Consumer retention rose from ${s0.commercial.consumerRetention.toFixed(1)}% to ${s.commercial.consumerRetention.toFixed(1)}%.` });
   if (dRet <= -2) struggles.push({ w: -dRet * 2, title: 'Customer retention deteriorated', evidence: `Consumer retention fell from ${s0.commercial.consumerRetention.toFixed(1)}% to ${s.commercial.consumerRetention.toFixed(1)}%.` });
   const overloaded = history.filter(h => (h.consequence.capability as unknown as { loadToCapacityRatio: number }).loadToCapacityRatio > 1);
-  if (overloaded.length) struggles.push({ w: 4 + overloaded.length * 2, title: 'Organization was overstretched', evidence: `Change load exceeded capacity in ${overloaded.map(h => 'Q' + h.quarter).join(', ')}, so investments matured more slowly.` });
+  if (overloaded.length) struggles.push({ w: 4 + overloaded.length * 2, title: 'Organization was overstretched', evidence: `Change load exceeded capacity in ${overloaded.map(h => 'Q' + h.quarter).join(', ')}, so part of the investment in those quarters did not turn into capability.` });
   const dCulture = s.culture - s0.culture;
   if (dCulture <= -6) struggles.push({ w: -dCulture, title: 'Culture weakened', evidence: `Culture fell from ${s0.culture.toFixed(0)} to ${s.culture.toFixed(0)}.` });
   if (dCulture >= 0 && s.capabilities.talent >= s0.capabilities.talent + 10) strengths.push({ w: 6, title: 'Built organizational resilience', evidence: `Talent rose to ${s.capabilities.talent.toFixed(0)} while culture held at ${s.culture.toFixed(0)}.` });

@@ -45,6 +45,10 @@ export interface V2Deliberation {
   beliefId?: string;
   riskIds?: string[];
   note?: string;
+  /** Batch 10A: the team's strategic priority for the quarter (one tap; quarter-specific options). */
+  priorityId?: string;
+  /** Batch 10A: Q3 only — the one or two signals the team found most influential. */
+  evidenceIds?: string[];
   /** Each role's recommendation chosen from its private briefing (shared with the team in the discussion). */
   stances?: Partial<Record<V2Role, string>>;
 }

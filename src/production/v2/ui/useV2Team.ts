@@ -171,7 +171,16 @@ export function useV2Team(api: V2Api, teamCode: string) {
     await api.saveReflection(teamCode, game.record.completed_quarter, text);
   }), [api, game, teamCode, run]);
 
-  return { status, game, draft, error, busy, reload, updateDraft, flushDraft, go, advance, submitVote, getVotes, commit, commitTeam, saveReflection, setError };
+  /**
+   * Batch 10A: save the reflection in the background while the team writes it, so a refresh does not lose it.
+   * Uses the existing v2_save_reflection RPC (resolved quarter only; no phase change, no busy state).
+   */
+  const persistReflection = useCallback(async (quarter: number, text: string) => {
+    try { await api.saveReflection(teamCode, quarter, text); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+  }, [api, teamCode]);
+
+  return { status, game, draft, error, busy, reload, updateDraft, flushDraft, go, advance, submitVote, getVotes, commit, commitTeam, saveReflection, persistReflection, setError };
 }
 
 export type V2TeamController = ReturnType<typeof useV2Team>;

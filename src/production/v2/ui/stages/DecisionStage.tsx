@@ -10,6 +10,9 @@ import type { V2TeamController } from '../useV2Team';
 import type { V2CommitmentMode } from '../../api';
 import { defaultInput } from '../useV2Team';
 import { BELIEFS, RISKS, CONFIDENCE_LEVELS } from '../../content/deliberationContent';
+import { framingFor, rationaleMissing } from '../../content/decisionFraming';
+import { gameHistory } from '../../insights/history';
+import { canPrefill, prefillAllocation } from '../../insights/prefill';
 import { pick, V2PresentationMode } from '../../content/modes';
 import { CHAPTERS } from '../../content/chapters';
 import { calendarLabel } from '../../content/calendar';
@@ -65,17 +68,18 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
 
   const beliefs = BELIEFS[q] ?? [];
   const risks = RISKS[q] ?? [];
-  const riskIds = delib.riskIds ?? [];
-  const discussionMissing = [
-    ...(delib.beliefId ? [] : ['Choose what your strategy is based on']),
-    ...(delib.confidence ? [] : ['Choose your confidence']),
-    ...(riskIds.length === 2 ? [] : ['Choose your two most important risks']),
-  ];
+  // Batch 10A: one biggest risk (older drafts with two risks still display the first and remain valid).
+  const riskIds = (delib.riskIds ?? []).slice(0, 1);
+  const framing = framingFor(q);
+  const evidenceIds = delib.evidenceIds ?? [];
+  const discussionMissing = rationaleMissing(q, delib);
+  const previous = q > 1 ? gameHistory(snap)[q - 2]?.input.allocation : undefined;
+  const offerPrefill = canPrefill(input.allocation, previous);
   const finErrors = forecast ? checkFinancing(forecast.options, input.financing ?? [], snap.state.financing.debt, snap.state.financing.ownership).errors : [];
   const ready = errors.length === 0 && discussionMissing.length === 0 && finErrors.length === 0;
   const [showNote, setShowNote] = useState(mode === 'mba' || !!delib.note);
   const [beliefOpen, setBeliefOpen] = useState(!delib.beliefId || !delib.confidence);
-  const [riskOpen, setRiskOpen] = useState(riskIds.length < 2);
+  const [riskOpen, setRiskOpen] = useState(riskIds.length < 1);
   const beliefLabel = beliefs.find(b => b.id === delib.beliefId);
   const confLabel = CONFIDENCE_LEVELS.find(c => c.value === delib.confidence)?.label;
   const path = commitment === 'team_commitment' ? ['decide', 'belief', 'risk'] as const
@@ -87,7 +91,8 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
     <div className="ds-stack-lg" data-testid="v2-phase-decide">
       <header >
         <p className="ds-eyebrow">{calendarLabel(q)} · {CHAPTERS[q].title} · Discuss and decide</p>
-        <h1 className="ds-title" style={{ fontSize: 'var(--fs-page)' }}>{hasEvent ? (EVENT_HEADING[q] ?? 'Make the call, then fund it.') : `How will you deploy ${money(envelope, 0)}?`}</h1>
+        <h1 className="ds-title" style={{ fontSize: 'var(--fs-page)' }} data-testid="v2-decision-heading">{hasEvent ? (EVENT_HEADING[q] ?? 'Make the call, then fund it.') : (framing?.heading ?? `How will you deploy ${money(envelope, 0)}?`)}</h1>
+        {framing && <p className="ds-muted" style={{ margin: '4px 0 0' }} data-testid="v2-decision-prompt">{pick(mode, framing.prompt)} <span className="ds-small" data-testid="v2-pace" data-pace={framing.pace}>{framing.pace === 'fast' ? 'Fast quarter' : 'Major decision'} · suggested about {framing.minutes} minutes.</span></p>}
       </header>
 
       {hasEvent && (
@@ -142,40 +147,66 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
 
       <div className="ds-grid ds-grid-work">
         <div className="ds-stack">
+          {offerPrefill && previous && (
+            <div className="ds-callout" data-testid="v2-prefill-offer">
+              <Icon name="clock" />
+              <span>Last quarter you invested {BUCKETS.filter(b => previous[b] > 0).map(b => `${BUCKET_INFO[b].short} ${money(previous[b])}`).join(' · ')}. You can start from that allocation and adjust it.{' '}
+                <button className="ds-btn ds-btn-secondary" data-testid="v2-prefill" onClick={() => set({ allocation: prefillAllocation(previous, envelope) })}>Start from last quarter’s allocation</button>
+                <span className="ds-muted" style={{ display: 'block', marginTop: 4 }}>Copies the five investment amounts only{investedTotalOf(previous) > envelope ? `, scaled to this quarter’s ${money(envelope, 0)} budget` : ''}. Nothing is committed until the team commits.</span>
+              </span>
+            </div>
+          )}
           <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={forecast} />
           <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode} />
         </div>
 
         <div className="ds-stack" data-testid="v2-discussion">
           <p className="ds-eyebrow" style={{ marginBottom: 0 }}>Leadership discussion</p>
-          <p className="ds-muted" style={{ margin: 0 }}>Share what each of you saw in your brief. Where do your objectives pull in different directions?</p>
+          <p className="ds-muted" style={{ margin: 0 }}>Share what each of you saw in your brief. Where do your objectives pull in different directions? Three quick picks; nothing is graded.</p>
+          {framing && (
+            <div data-testid="v2-priority">
+              <p className="ds-h4" style={{ marginBottom: 6 }}>1 · {framing.priorityQuestion}</p>
+              <ChoiceList name="priority" testIdPrefix="v2-priority" value={delib.priorityId ? [delib.priorityId] : []}
+                onChange={v => setDelib({ priorityId: v[0] })}
+                options={framing.priorities.map(p => ({ id: p.id, label: pick(mode, p.label) }))} />
+            </div>
+          )}
           <details className="ds-fold" open={beliefOpen} onToggle={e => setBeliefOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-fold-belief">
-            <summary>1 · What is our strategy based on?{beliefLabel && <span className="ds-fold-hint">{pick(mode, beliefLabel.label)}{confLabel ? ` · ${confLabel} confidence` : ''}</span>}</summary>
+            <summary>2 · Our evidence: what is our strategy based on?{beliefLabel && <span className="ds-fold-hint">{framing?.evidence ? `${evidenceIds.length} signal${evidenceIds.length === 1 ? '' : 's'} cited · ` : ''}{pick(mode, beliefLabel.label)}{confLabel ? ` · ${confLabel} confidence` : ''}</span>}</summary>
             <div className="ds-fold-body">
+              {framing?.evidence && (
+                <div data-testid="v2-evidence" style={{ marginBottom: 12 }}>
+                  <p className="ds-small" style={{ fontWeight: 650, margin: '0 0 6px' }}>{framing.evidenceQuestion}</p>
+                  <ChoiceList multi max={2} name="evidence" testIdPrefix="v2-evidence" value={evidenceIds}
+                    onChange={v => setDelib({ evidenceIds: v })}
+                    options={framing.evidence.map(o => ({ id: o.id, label: pick(mode, o.label) }))} />
+                </div>
+              )}
+              <p className="ds-small" style={{ fontWeight: 650, margin: '0 0 6px' }}>{framing?.evidence ? 'What we conclude from it' : 'What we believe'}</p>
               <ChoiceList name="belief" testIdPrefix="v2-belief" value={delib.beliefId ? [delib.beliefId] : []}
                 onChange={v => { const b = beliefs.find(x => x.id === v[0]); setDelib({ beliefId: v[0], belief: b ? pick('mba', b.label) : undefined }); }}
                 options={beliefs.map(b => ({ id: b.id, label: pick(mode, b.label) }))} />
               <div className="ds-row" style={{ marginTop: 12 }}>
                 <span className="ds-small" style={{ fontWeight: 650 }}>How confident are we?</span>
-                <Segmented testIdPrefix="v2-confidence" value={delib.confidence} onChange={v => { setDelib({ confidence: v }); if (delib.beliefId) setBeliefOpen(false); }} options={CONFIDENCE_LEVELS.map(c => ({ id: c.value, label: c.label }))} />
+                <Segmented testIdPrefix="v2-confidence" value={delib.confidence} onChange={v => { setDelib({ confidence: v }); if (delib.beliefId && (!framing?.evidence || evidenceIds.length > 0)) setBeliefOpen(false); }} options={CONFIDENCE_LEVELS.map(c => ({ id: c.value, label: c.label }))} />
               </div>
             </div>
           </details>
           <details className="ds-fold" open={riskOpen} onToggle={e => setRiskOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-fold-risks">
-            <summary>2 · What could go wrong?<span className="ds-fold-hint">{riskIds.length === 2 ? riskIds.map(id => pick(mode, risks.find(r => r.id === id)!.label)).join(' · ') : 'choose two'}</span></summary>
+            <summary>3 · Our biggest risk<span className="ds-fold-hint">{riskIds.length ? riskIds.map(id => { const r = risks.find(x => x.id === id); return r ? pick(mode, r.label) : id; }).join(' · ') : 'choose one'}</span></summary>
             <div className="ds-fold-body">
-              <ChoiceList multi max={2} name="risks" testIdPrefix="v2-risk" value={riskIds}
+              <ChoiceList name="risks" testIdPrefix="v2-risk" value={riskIds}
                 onChange={v => setDelib({ riskIds: v, risks: v.map(id => pick('mba', risks.find(r => r.id === id)!.label)) })}
                 options={risks.map(r => ({ id: r.id, label: pick(mode, r.label) }))} />
               {showNote ? (
                 <label className="ds-stack" style={{ marginTop: 12, gap: 4 }}>
-                  <span className="ds-small" style={{ fontWeight: 650 }}>{mode === 'mba' ? 'Analysis (optional)' : 'Your note (optional)'}</span>
-                  <textarea className="ds-input" data-testid="v2-discussion-note" maxLength={1000} value={delib.note ?? ''} onChange={e => setDelib({ note: e.target.value })} placeholder={mode === 'mba' ? 'Key assumptions, evidence weighed, dissent…' : 'Anything else the team wants to remember?'} />
+                  <span className="ds-small" style={{ fontWeight: 650 }}>{mode === 'mba' ? 'Analysis (optional, one or two lines)' : 'Your note (optional, one line is enough)'}</span>
+                  <textarea className="ds-input" data-testid="v2-discussion-note" rows={2} maxLength={1000} value={delib.note ?? ''} onChange={e => setDelib({ note: e.target.value })} placeholder={mode === 'mba' ? 'Key assumption or dissent…' : 'Anything the team wants to remember?'} />
                 </label>
               ) : <button className="ds-btn ds-btn-ghost" onClick={() => setShowNote(true)}>+ Add a note</button>}
             </div>
           </details>
-          <Fold title="3 · Decision summary" hint={ready ? 'ready' : `${errors.length + discussionMissing.length + finErrors.length} to complete`} open testId="v2-ready">
+          <Fold title="4 · Decision summary" hint={ready ? 'ready' : `${errors.length + discussionMissing.length + finErrors.length} to complete`} open testId="v2-ready">
             <DecisionSummary input={input} deliberation={delib} quarter={q} mode={mode} />
             {(errors.length > 0 || discussionMissing.length > 0 || finErrors.length > 0) && (
               <ul className="ds-list ds-small" data-testid="v2-validation" style={{ marginTop: 10 }}>
@@ -195,6 +226,8 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
     </div>
   );
 }
+
+const investedTotalOf = (a: V2PlayerQuarterInput['allocation']) => BUCKETS.reduce((t, b) => t + (a[b] || 0), 0);
 
 function Fact({ label, value }: { label: string; value: string }) {
   return <div><div className="ds-muted">{label}</div><div style={{ fontWeight: 700, fontSize: '1.1em' }} className="ds-num">{value}</div></div>;

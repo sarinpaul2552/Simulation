@@ -105,16 +105,27 @@ export async function fillDecision(page: Page, input: V2PlayerQuarterInput) {
   }
 }
 
-/** The structured leadership discussion: one belief, a confidence level, two risks. Returns the chosen ids. */
+/**
+ * The structured decision rationale (Batch 10A): strategic priority, evidence (Q3: one or two signals, max two),
+ * belief, confidence and one biggest risk.
+ */
 export async function fillDiscussion(page: Page, q: number) {
+  await page.locator('[data-testid^="v2-priority-"]').first().click();
+  if (q === 3) {
+    const ev = page.locator('[data-testid^="v2-evidence-"]');
+    await ev.nth(0).click();
+    await ev.nth(1).click();
+    await expect(ev.nth(2).locator('input')).toBeDisabled(); // at most two signals
+  } else {
+    await expect(page.getByTestId('v2-evidence')).toHaveCount(0);
+  }
   const beliefId = `q${q}`;
   await page.locator(`[data-testid^="v2-belief-${beliefId}"]`).first().click();
   await page.getByTestId('v2-confidence-3').click();
   const risks = page.locator('[data-testid^="v2-risk-"]');
   await risks.nth(0).click();
-  await risks.nth(1).click();
-  // max two risks: the third is blocked
-  await expect(risks.nth(2).locator('input')).toBeDisabled();
+  await risks.nth(1).click(); // single choice: the second replaces the first
+  await expect(page.locator('[data-testid^="v2-risk-"] input:checked')).toHaveCount(1);
 }
 
 /** Walk through the five private briefings on the shared device. */
@@ -151,7 +162,9 @@ export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts:
     await refreshAndExpect(page, 'decide', q);
     await expect(page.getByTestId('v2-alloc-consumer')).toHaveValue(String(input.allocation.consumer));
     await expect(page.locator('[data-testid^="v2-belief-"] input:checked')).toHaveCount(1);
-    await expect(page.locator('[data-testid^="v2-risk-"] input:checked')).toHaveCount(2);
+    await expect(page.locator('[data-testid^="v2-risk-"] input:checked')).toHaveCount(1);
+    await expect(page.locator('[data-testid^="v2-priority-"] input:checked')).toHaveCount(1);
+    if (q === 3) await expect(page.locator('[data-testid^="v2-evidence-"] input:checked')).toHaveCount(2);
     await expect(page.getByTestId('v2-confidence-3')).toHaveAttribute('aria-checked', 'true');
   }
   try { await expect(page.getByTestId('v2-to-vote')).toBeEnabled({ timeout: 8000 }); }
@@ -200,12 +213,21 @@ export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts:
   await expect(page.getByTestId('v2-sequence')).toBeAttached();
   await expect(page.getByTestId('v2-attribution')).toBeAttached();
   await expect(page.getByTestId('v2-valuation-bridge').first()).toHaveAttribute('data-reconciles', 'true');
-  await expect(page.getByTestId('v2-expected')).not.toHaveText('No belief was recorded.');
+  await expect(page.getByTestId('v2-expected')).not.toHaveText('Not recorded');
+  await expect(page.getByTestId('v2-acc-priority')).not.toHaveText('Not recorded');
+  // Batch 10A: the Q3 signal reveal appears only once Q4 is completed
+  await expect(page.getByTestId('v2-signal-reveal')).toHaveCount(q >= 4 ? 1 : 0);
   if (opts.onResults) await opts.onResults(page);
   await expect(page.getByTestId('v2-next-quarter')).toBeDisabled(); // a learning choice is required
   await page.locator('[data-testid^="v2-learn-"]').first().click();
   const note = page.getByTestId('v2-reflection');
   if (await note.count()) await note.fill(opts.reflection ?? `Q${q}: what we learned`);
+  if (opts.refreshEveryPhase) {
+    // Batch 10A: the reflection is saved while it is written, so a refresh keeps it.
+    await page.waitForTimeout(1500);
+    await refreshAndExpect(page, 'results', q);
+    await expect(page.locator('[data-testid^="v2-learn-"] input:checked')).toHaveCount(1);
+  }
   await page.getByTestId('v2-next-quarter').click();
 }
 
