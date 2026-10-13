@@ -9,6 +9,7 @@
  * V3-only decision mechanics (10C) live here and in the engine fork: the Q5 contract's claim on the strategic budget,
  * the Q6 recession stance, and financing-expanded investment.
  */
+import { V3_ECONOMICS } from '../../simulationV3/engineV3Config';
 import {
   V2TeamState, V2QuarterInput, V2Consequence, V2Allocation, V2_INTEGRATED_MODE, V2_INVESTMENT_BUCKETS,
   getV2Baseline, calculateV2QuarterConsequence, applyV2Consequence, assessLiquidity, crisisView, finalView,
@@ -280,7 +281,9 @@ export function envelopeForInput(snap: V2GameSnapshot, input: V2PlayerQuarterInp
 
 /** The budget a stored decision allocates, from the decision alone (base budget + any financing expansion, 10C). */
 export function budgetForInput(input: V2PlayerQuarterInput, path: V3MarketPathId = 'A'): number {
-  return envelopeFor(input.quarter, input.finalOption, path);
+  const base = envelopeFor(input.quarter, input.finalOption, path);
+  const exp = input.expansion ?? 0;
+  return exp > 0 && Number.isFinite(exp) ? base + exp : base;
 }
 
 // ============ ENGINE INPUT (identical construction to the Test Lab arc runner) ============
@@ -312,6 +315,8 @@ export function toEngineInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput)
   if (sq?.events?.crisis && input.crisisResponse) decisions.crisisResponse = input.crisisResponse;
   if (sq?.events?.finalDecision && input.finalOption) decisions.finalOption = input.finalOption;
   if (input.financing && input.financing.length > 0) decisions.financing = canonical(input.financing);
+  if (sq?.events?.recessionResponse && input.recessionStance) decisions.recessionStance = input.recessionStance;
+  if (input.expansion !== undefined && input.expansion !== 0) decisions.expansion = input.expansion;
   const allocation: V2Allocation = {
     consumer: input.allocation.consumer, enterprise: input.allocation.enterprise, aiProduct: input.allocation.aiProduct,
     people: input.allocation.people, universityCredentials: input.allocation.universityCredentials, cashReserve: input.allocation.cashReserve,
@@ -319,7 +324,7 @@ export function toEngineInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput)
   return {
     quarter: q,
     allocation,
-    strategicEnvelope: envelopeFor(q, input.finalOption, path),
+    strategicEnvelope: budgetForInput(input, path),
     market: getScenarioMarket(q, path),
     revenueSource: V2_INTEGRATED_MODE.revenueSource,
     costSource: V2_INTEGRATED_MODE.costSource,
@@ -360,6 +365,10 @@ export function validateQuarterInput(snap: V2GameSnapshot, input: V2PlayerQuarte
     if (!input.finalOption || !V2_FINAL_OPTION_IDS.includes(input.finalOption)) errors.push('Choose a final strategic option');
   } else if (input.finalOption) errors.push('The final decision is only taken in Q8');
   for (const f of input.financing ?? []) if (!f || !FIN_KINDS.includes(f.kind)) errors.push('Unknown financing action');
+  if (sq.events?.recessionResponse && V3_ECONOMICS.mechanisms.recessionStance) {
+    if (!input.recessionStance || !['protect', 'slow', 'cut'].includes(input.recessionStance)) errors.push('Choose a recession stance: protect, slow or cut');
+  } else if (input.recessionStance) errors.push('A recession stance is only chosen in Q6');
+  if (input.expansion !== undefined && (typeof input.expansion !== 'number' || !Number.isFinite(input.expansion) || input.expansion < 0)) errors.push('Budget expansion must be a non-negative number');
   if (errors.length) return errors;
   const engineInput = toEngineInput(snap, input);
   try {
@@ -422,6 +431,8 @@ export function storedInput(input: V2PlayerQuarterInput, path: V3MarketPathId): 
   if (sq?.events?.crisis && input.crisisResponse) out.crisisResponse = input.crisisResponse;
   if (sq?.events?.finalDecision && input.finalOption) out.finalOption = input.finalOption;
   if (input.financing && input.financing.length > 0) out.financing = input.financing.map(f => ('amount' in f ? { ...f, amount: z(f.amount) } : { ...f }));
+  if (sq?.events?.recessionResponse && input.recessionStance) out.recessionStance = input.recessionStance;
+  if (input.expansion !== undefined && input.expansion > 0) out.expansion = z(input.expansion);
   return canonical(out);
 }
 
@@ -557,8 +568,12 @@ export function explainQuarter(before: V2TeamState, after: V2TeamState, c: V2Con
 
   // Organization: load vs capacity
   const cap = c.capability;
-  if (cap.loadToCapacityRatio > 1) push('organization', 'negative', `Your organization was overloaded: change load ${fmt(cap.transformationLoad, 0)} against capacity ${fmt(cap.effectiveCapacity, 0)}. Investments matured more slowly and Culture paid for it.`);
+  const org = cap.organization;
+  if (cap.loadToCapacityRatio > 1) push('organization', 'negative', `Your organization was overloaded: change load ${fmt(cap.transformationLoad, 0)} against capacity ${fmt(cap.effectiveCapacity, 0)}, so investments matured more slowly.`);
+  if (org && org.overloadLoss >= 0.5) push('organization', 'negative', `Sustained change pressure (load at ${fmt(org.loadRatio * 100, 0)}% of capacity) cost ${fmt(org.overloadLoss)} points of Culture.`);
   else if (cap.loadToCapacityRatio < 0.6 && cap.transformationLoad > 0) push('organization', 'positive', 'The organization absorbed this quarter\'s change comfortably, so investments matured at full effect.');
+  if (org && org.recovery >= 0.5) push('organization', 'positive', `With change pressure low, Culture recovered ${fmt(org.recovery)} points.`);
+  if (org && org.executionLoss + org.customerSuccessLoss + org.talentLoss >= 0.5) push('organization', 'negative', `Culture below its starting level strained the organization: Execution −${fmt(org.executionLoss)}, Customer Success −${fmt(org.customerSuccessLoss)}, Talent −${fmt(org.talentLoss)}.`);
   const dCulture = after.culture - before.culture;
   if (Math.abs(dCulture) >= 2) push('organization', dCulture > 0 ? 'positive' : 'negative', `Culture ${dCulture > 0 ? 'rose' : 'fell'} to ${fmt(after.culture, 0)}.`);
   const dTrust = after.trust - before.trust;

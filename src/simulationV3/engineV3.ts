@@ -32,6 +32,7 @@ import {
   V2CapabilityConsequence,
   V2InvestmentCohort,
   calculateV2CapabilityConsequence,
+  applyOrganizationalHealth,
 } from './engineV3Capabilities';
 
 import {
@@ -114,6 +115,7 @@ import {
 } from './engineV3Crisis';
 export type { V2CrisisState, V2CrisisResponseId, V2CrisisAssessment } from './engineV3Crisis';
 import { contractConcentration } from './engineV3Opportunity';
+import { V3_ECONOMICS } from './engineV3Config';
 import {
   V2FinalOptionId,
   V2FinalDecisionRecord,
@@ -286,7 +288,13 @@ export interface V2QuarterDecisions {
   crisisResponse?: V2CrisisResponseId;
   /** Q8: final strategic option (default 'continue'); must be available for the company built. */
   finalOption?: V2FinalOptionId;
+  /** V3 (E6) · Q6: the team's recession stance. */
+  recessionStance?: V3RecessionStance;
+  /** V3 (E7): addition to this quarter's strategic budget funded by capital raised this quarter ($M). */
+  expansion?: number;
 }
+
+export type V3RecessionStance = 'protect' | 'slow' | 'cut';
 
 export interface V2DecisionLogEntry {
   quarter: number;
@@ -862,6 +870,13 @@ function collectDecisionEffects(
     if (opp.accept) {
       const acc = acceptOpportunity(opp.offerId, opportunityView(opening), dest?.id ?? null, input.quarter);
       contracts = [...contracts, acc.contract];
+      if (V3_ECONOMICS.mechanisms.contractEnvelopeClaim) {
+        // E5: the implementation cost is paid from this quarter's strategic budget (held as reserve), counted once.
+        if (input.allocation.cashReserve + 0.01 < acc.terms.upfrontCash) {
+          throw new Error(`Accepting ${opp.offerId} claims $${acc.terms.upfrontCash.toFixed(1)}M of the strategic budget; hold at least that much in reserve (now $${input.allocation.cashReserve.toFixed(1)}M)`);
+        }
+        for (const ec of acc.effects.eventCosts) ec.description = `${ec.description} — paid from the strategic budget`;
+      }
       parts.push(acc.effects);
       if (dest && acc.terms.focusDilution > 0) {
         dest = {
@@ -875,6 +890,20 @@ function collectDecisionEffects(
       quarter: input.quarter, kind: 'opportunity', decision: opp.accept ? `accept ${opp.offerId}` : `decline ${opp.offerId}`,
       detail: `fit ${terms.fit.fit.toFixed(2)}; upfront $${terms.upfrontCash.toFixed(1)}M; load ${terms.orgLoadPerQuarter.toFixed(1)}/qtr; ${terms.aligned ? 'on strategy' : 'off strategy'}`,
     });
+  }
+
+  // V3 (E6): the recession stance must match the actions and the allocation.
+  const stance = input.decisions?.recessionStance;
+  if (stance !== undefined) {
+    if (!V3_ECONOMICS.mechanisms.recessionStance) throw new Error('A recession stance is not part of this engine configuration');
+    const m = input.decisions?.management ?? {};
+    const cuts = !!m.workforceReduction || m.hiringFreeze === true || (m.marketingLevel !== undefined && m.marketingLevel < 1) || m.closeWeakOfferings === true;
+    if (stance === 'cut' && !cuts) throw new Error('A "cut" stance needs at least one cost action (hiring freeze, workforce reduction, lower marketing or closing weak offerings)');
+    if (stance !== 'cut' && cuts) throw new Error(`A "${stance}" stance cannot include cost cuts; choose "cut"`);
+    if (stance === 'slow' && input.allocation.cashReserve + 1e-6 < V3_ECONOMICS.recession.slowMinimumReserve) {
+      throw new Error(`A "slow" stance holds at least $${V3_ECONOMICS.recession.slowMinimumReserve}M of the budget in reserve`);
+    }
+    log.push({ quarter: input.quarter, kind: 'management', decision: `stance ${stance}`, detail: cuts ? 'cost actions taken' : stance === 'slow' ? `reserve $${input.allocation.cashReserve.toFixed(1)}M` : 'investment protected' });
   }
 
   // Management actions (and previously committed aftershocks; persistent marketing level)
@@ -962,8 +991,24 @@ function collectDecisionEffects(
 
 // ============ QUARTER ============
 
-export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2QuarterInput): V2Consequence {
+/** V3 (E7): validate a financing-funded budget expansion before the quarter is computed. */
+function checkExpansion(input: V2QuarterInput): number {
+  const exp = input.decisions?.expansion ?? 0;
+  if (exp === 0) return 0;
+  const K = V3_ECONOMICS.financing;
+  if (!V3_ECONOMICS.mechanisms.financingExpansion) throw new Error('Budget expansion is not part of this engine configuration');
+  if (!(exp > 0) || !Number.isFinite(exp)) throw new Error(`Budget expansion must be a positive amount, got ${exp}`);
+  if (!K.quarters.includes(input.quarter) || input.finalDecision) throw new Error(`Budget expansion is not available in Q${input.quarter}`);
+  if (exp > K.maxExpansion + 1e-9) throw new Error(`Budget expansion is limited to $${K.maxExpansion}M`);
+  const raised = (input.decisions?.financing ?? []).reduce((t, f) => t + ((f.kind === 'debt' || f.kind === 'equity') ? f.amount : 0), 0);
+  if (exp > raised + 1e-9) throw new Error(`Budget expansion of $${exp.toFixed(1)}M must be funded by new debt or equity raised this quarter ($${raised.toFixed(1)}M raised)`);
+  if (Math.abs(input.strategicEnvelope - (K.baseEnvelope + exp)) > 0.01) throw new Error(`With a $${exp.toFixed(1)}M expansion the strategic budget is $${(K.baseEnvelope + exp).toFixed(1)}M, got ${input.strategicEnvelope}`);
+  return exp;
+}
+
+export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2QuarterInput, counterfactual = false): V2Consequence {
   const market = input.market ?? getNeutralMarket();
+  const expansion = counterfactual ? 0 : checkExpansion(input);
 
   // Strategic destination (Batch 2 · Q4): commit once; effects change focus, ceilings, access and transition only
   let destinationState = opening.destination;
@@ -998,7 +1043,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   // Capability consequence (Phase 2B) — never touches cash
   const eventLoad = effects.extraLoad.reduce((t, l) => t + l.load, 0);
   const hasFocus = destination.destinationId !== null || eventLoad > 0 || Object.keys(effects.bucketGainMultiplier).length > 0;
-  const capability = calculateV2CapabilityConsequence(
+  const capability = applyOrganizationalHealth(calculateV2CapabilityConsequence(
     pipelineOpening,
     input.allocation,
     input.quarter,
@@ -1013,7 +1058,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
           bucketGainMultiplier: effects.bucketGainMultiplier,
         }
       : undefined
-  );
+  ), input.allocation.people);
   const capabilityFlags: string[] = [];
   if (capability.absorptionFactor < 1) capabilityFlags.push('ABSORPTION_PENALTY');
   if (capability.loadToCapacityRatio > 1) capabilityFlags.push('LOAD_EXCEEDS_CAPACITY');
@@ -1066,6 +1111,9 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
     }
   );
   const identity = checkV2AccountingIdentity(ledger);
+  if (expansion > 0 && ledger.closingCash < V3_ECONOMICS.financing.cashFloor - 1e-9) {
+    throw new Error(`The expanded plan leaves $${ledger.closingCash.toFixed(1)}M of cash; an expansion must keep at least $${V3_ECONOMICS.financing.cashFloor}M`);
+  }
 
   // Contract bookkeeping after revenue
   const contracts = decided.contracts.map(c => {
@@ -1086,7 +1134,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   // Solvency: compare with the counterfactual of taking no financing/restructuring action this quarter
   const finActions = input.decisions?.financing ?? [];
   const projectedWithoutResolution = finActions.length > 0
-    ? calculateV2QuarterConsequence(opening, { ...input, decisions: { ...input.decisions, financing: [] } }).ledger.closingCash
+    ? calculateV2QuarterConsequence(opening, { ...input, decisions: { ...input.decisions, financing: [] } }, true).ledger.closingCash
     : ledger.closingCash;
   const resolving = finActions.some(a => a.kind !== 'repay');
   const solvency = assessSolvency(
@@ -1183,7 +1231,7 @@ export function assessLiquidity(opening: V2TeamState, input: V2QuarterInput): {
   options: V2FinancingOptions;
   consequence: V2Consequence;
 } {
-  const consequence = calculateV2QuarterConsequence(opening, { ...input, decisions: { ...input.decisions, financing: [] } });
+  const consequence = calculateV2QuarterConsequence(opening, { ...input, decisions: { ...input.decisions, financing: [] } }, true);
   const min = V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash;
   return {
     projectedClosingCash: consequence.ledger.closingCash,

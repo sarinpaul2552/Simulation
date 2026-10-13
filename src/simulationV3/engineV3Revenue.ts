@@ -21,6 +21,15 @@
 import type { V2CommercialConsequence, V2CommercialState, V2MarketConditions } from './engineV3Commercial';
 import type { V2Capabilities } from './engineV3Capabilities';
 import type { V2RevenueAdjustments } from './engineV3Effects';
+import { V3_ECONOMICS } from './engineV3Config';
+
+/** V3: recognition schedules in force (E2/E3 shorten time to go-live when their mechanism is on). */
+export function enterpriseRecognition(): readonly (readonly [number, number])[] {
+  return V3_ECONOMICS.mechanisms.enterpriseConversion ? V3_ECONOMICS.enterprise.recognition : V2_REVENUE_CALIBRATION.enterprise.recognition;
+}
+export function universityRecognition(): readonly (readonly [number, number])[] {
+  return V3_ECONOMICS.mechanisms.universityConversion ? V3_ECONOMICS.university.recognition : V2_REVENUE_CALIBRATION.university.recognition;
+}
 
 // ============ CALIBRATION (Draft 1, tunable) ============
 
@@ -223,6 +232,8 @@ export interface V2AINativeRevenueDiagnostic {
   retainedBase: number;
   newMonetization: number;
   closing: number;
+  /** V3 (E1): the revenue level adoption currently supports. */
+  target?: number;
 }
 
 export interface V2RevenueConsequence {
@@ -290,8 +301,8 @@ export function getV2RevenueBaseline(): V2RevenueState {
   const uniChurn = s.university * K.university.renewalExposure * (1 - 0.9);
   return {
     segments: { ...s },
-    enterpriseBacklog: steadyStateBacklog('E', entChurn, K.enterprise.recognition),
-    universityBacklog: steadyStateBacklog('U', uniChurn, K.university.recognition),
+    enterpriseBacklog: steadyStateBacklog('E', entChurn, enterpriseRecognition()),
+    universityBacklog: steadyStateBacklog('U', uniChurn, universityRecognition()),
   };
 }
 
@@ -349,9 +360,28 @@ export function enterpriseRenewalRate(company: V2RevenueCompanyInput, market: V2
   return clamp(raw, k.renewalBounds[0], k.renewalBounds[1]);
 }
 
-export function universityWinRate(trust: number): number {
+export function universityWinRate(trust: number, relativeCredential = 0): number {
   const k = V2_REVENUE_CALIBRATION.university;
+  if (V3_ECONOMICS.mechanisms.universityConversion) {
+    // E3: institutions choose the stronger credential offer, not only the more trusted brand.
+    const u = V3_ECONOMICS.university;
+    return clamp(k.winRateBase * (1 + k.winRatePerTrust * (trust - 70)) + u.winPerRelCredential * relativeCredential, u.winRateBounds[0], u.winRateBounds[1]);
+  }
   return clamp(k.winRateBase * (1 + k.winRatePerTrust * (trust - 70)), k.winRateBounds[0], k.winRateBounds[1]);
+}
+
+/**
+ * E1: the AI-native revenue level the current adoption supports. The starting customers ($4M) are kept at neutral
+ * demand and quality; each adoption point above the starting level supports `revenuePerAdoptionPoint` of quarterly
+ * revenue, gated by commercial readiness (40% at none, 100% at readiness ≥ 70). Capped by the accessible market.
+ */
+export function aiRevenueTarget(adoption: number, aiNativeDemand: number, qualityExecution: number, readiness: number, macroFactor: number, capacity: number): number {
+  const k = V2_REVENUE_CALIBRATION.aiNative;
+  const a = V3_ECONOMICS.ai;
+  const demand = Math.max(0, aiNativeDemand) * qualityExecution * macroFactor;
+  const gate = 0.4 + 0.6 * ramp(readiness, k.retentionReadinessRamp[0], k.retentionReadinessRamp[1]);
+  const t = (V2_REVENUE_CALIBRATION.start.aiNative + a.revenuePerAdoptionPoint * Math.max(0, adoption - k.adoptionBaseline) * gate) * demand;
+  return Math.min(t, 0.9 * capacity);
 }
 
 export function aiQualityExecutionFactor(productQuality: number, execution: number): number {
@@ -446,7 +476,7 @@ export function calculateV2RevenueConsequence(
   }));
   const contractBookingsRunRate = contractCohorts.reduce((t, c) => t + c.runRate, 0);
   const eAcquired = acquiredOf('enterprise');
-  const entRelease = releaseBacklog([...cancelled, ...(newRunRate > 0 ? [entNewCohort] : []), ...contractCohorts], ke.recognition, quarter);
+  const entRelease = releaseBacklog([...cancelled, ...(newRunRate > 0 ? [entNewCohort] : []), ...contractCohorts], enterpriseRecognition(), quarter);
   const E1 = Math.max(0, E0 - eChurn + eExpansion + entRelease.liveCurrent + entRelease.liveEarlier + eAcquired);
   const entBacklogRunRate = entRelease.cohorts.reduce((s, c) => s + c.remaining, 0);
 
@@ -460,7 +490,7 @@ export function calculateV2RevenueConsequence(
   const uChurn = uExposed * (1 - uRenewal);
   const uniPipe = commercial.indicators.find(i => i.indicator === 'universityPipeline')!;
   const uResolved = -uniPipe.decayOrAttrition;
-  const uWinRate = universityWinRate(company.trust);
+  const uWinRate = universityWinRate(company.trust, company.capabilities.credential - cc.competitorBenchmarks.credential);
   const uHeadroom = headroomMultiplier(U0, market.segmentCapacity.university, K.start.university);
   const winsACV = uResolved * uWinRate * uHeadroom;
   const uNewRunRate = winsACV * ku.acvToQuarterlyRunRate;
@@ -468,7 +498,7 @@ export function calculateV2RevenueConsequence(
     id: `U-Q${quarter}`, quarterBooked: quarter, bookingsACV: winsACV, runRate: uNewRunRate,
     liveThisQuarter: 0, liveToDate: 0, remaining: uNewRunRate,
   };
-  const uniRelease = releaseBacklog([...opening.universityBacklog, ...(uNewRunRate > 0 ? [uniNewCohort] : [])], ku.recognition, quarter);
+  const uniRelease = releaseBacklog([...opening.universityBacklog, ...(uNewRunRate > 0 ? [uniNewCohort] : [])], universityRecognition(), quarter);
   const uAcquired = acquiredOf('university');
   const U1 = Math.max(0, U0 - uChurn + uniRelease.liveCurrent + uniRelease.liveEarlier + uAcquired);
   const uniBacklogRunRate = uniRelease.cohorts.reduce((s, c) => s + c.remaining, 0);
@@ -482,11 +512,20 @@ export function calculateV2RevenueConsequence(
   const adoption = cc.aiAdoptionIndex;
   const aiRetention = ka.retentionBase + ka.retentionReadinessUplift * ramp(readiness, ka.retentionReadinessRamp[0], ka.retentionReadinessRamp[1]);
   const aExposed = A0 * ka.renewalExposure;
-  const aChurn = aExposed * (1 - aiRetention);
+  let aChurn = aExposed * (1 - aiRetention);
   const qe = aiQualityExecutionFactor(company.productQuality, company.capabilities.execution);
   const aHeadroom = headroomMultiplier(A0, market.segmentCapacity.aiNative, K.start.aiNative);
   const aMacro = Math.max(0, 1 - ka.macroMonetization * market.macroPressure);
-  const aNew = aiNewMonetization(adoption, market.aiNativeDemand, qe) * aHeadroom * aMacro;
+  let aNew = aiNewMonetization(adoption, market.aiNativeDemand, qe) * aHeadroom * aMacro;
+  let aTarget: number | undefined;
+  if (V3_ECONOMICS.mechanisms.aiRevenueLevel) {
+    // E1: revenue moves part of the way toward the level adoption supports. Gross new revenue replaces normal churn
+    // plus the move; when the target is below the base, the base shrinks faster than normal churn.
+    aTarget = aiRevenueTarget(adoption, market.aiNativeDemand, qe, readiness, aMacro, market.segmentCapacity.aiNative);
+    const move = V3_ECONOMICS.ai.convergenceSpeed * (aTarget - A0);
+    aNew = Math.max(0, aChurn + move);
+    aChurn = aNew - move;
+  }
   const aAcquired = acquiredOf('aiNative');
   const A1 = Math.max(0, A0 - aChurn + aNew + aAcquired);
 
@@ -513,7 +552,7 @@ export function calculateV2RevenueConsequence(
     aiNative: {
       opening: A0raw, eventLoss: aLoss, macroFactor: aMacro, acquired: aAcquired, readiness, adoption, aiNativeDemand: market.aiNativeDemand, qualityExecutionFactor: qe, headroom: aHeadroom,
       retentionRate: aiRetention, exposedBase: aExposed, churn: aChurn, retainedBase: A0 - aChurn,
-      newMonetization: aNew, closing: A1,
+      newMonetization: aNew, closing: A1, ...(aTarget !== undefined ? { target: aTarget } : {}),
     },
     closing: {
       segments,

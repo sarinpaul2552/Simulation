@@ -23,6 +23,7 @@
 import type { V2SegmentRevenue, V2RevenueConsequence } from './engineV3Revenue';
 import type { V2MarketConditions } from './engineV3Commercial';
 import { type V2CostAdjustments, V2_MINIMUM_FIXED_POOL } from './engineV3Effects';
+import { V3_ECONOMICS } from './engineV3Config';
 
 // ============ CALIBRATION ============
 
@@ -219,7 +220,8 @@ export function calculateV2CostConsequence(
         source: src,
         quarterCreated: quarter,
         amountInvested: investment[src],
-        quarterlyCost: k.perDollar * investment[src],
+        // E2: the Enterprise delivery commitment is lighter in V3 (implementation teams still cost money).
+        quarterlyCost: k.perDollar * (src === 'enterprise' && V3_ECONOMICS.mechanisms.enterpriseConversion ? V3_ECONOMICS.enterprise.deliveryCommitmentScale : 1) * investment[src],
         startQuarter: quarter + k.lag,
         endQuarter: quarter + k.lag + k.duration - 1,
       };

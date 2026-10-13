@@ -21,6 +21,8 @@ export interface V3Mechanisms {
   organizationalHealth: boolean;
   /** E5 · Q5 contract implementation cost is a claim on the quarter's strategic budget (counted once). */
   contractEnvelopeClaim: boolean;
+  /** E6 · The Q6 recession requires an explicit stance (protect, slow or cut). */
+  recessionStance: boolean;
   /** E7 · Financing raised in a quarter can expand that quarter's investment budget, within limits. */
   financingExpansion: boolean;
 }
@@ -33,33 +35,38 @@ export const V3_ECONOMICS = {
     universityConversion: true,
     organizationalHealth: true,
     contractEnvelopeClaim: true,
+    recessionStance: true,
     financingExpansion: true,
   } as V3Mechanisms,
   /** E1 — AI-native revenue level. target = base + perPoint × (adoption − 10) × demand × quality × macro; moves `speed` of the gap per quarter. */
-  ai: { revenuePerAdoptionPoint: 0.42, convergenceSpeed: 0.35 },
+  ai: { revenuePerAdoptionPoint: 0.3, convergenceSpeed: 0.35 },
   /** E2 — Enterprise conversion. */
   enterprise: {
     winPerRelCapability: 0.2,
     inflowCapabilityAmplitude: 2.4,
     recognition: [[1, 0.5], [2, 0.5]] as readonly (readonly [number, number])[],
-    /** Share of new contracted run-rate committed as recurring delivery cost (V2: see engineV2Costs). */
+    /** Multiplier on the Enterprise investment's recurring delivery commitment (V2: 4% of the investment per quarter for 6 quarters). */
     deliveryCommitmentScale: 0.5,
   },
   /** E3 — University conversion. win rate = base × (1 + perTrust × (trust − 70)) + perRelCredential × relative Credential (bounded). */
   university: {
     winPerRelCredential: 0.004,
     winRateBounds: [0.15, 0.55] as const,
-    inflowCapabilityAmplitude: 3,
+    inflowCapabilityAmplitude: 4,
+    /** Share of the University pipeline decided each quarter (V2: 0.2). */
+    resolutionRate: 0.3,
     recognition: [[1, 0.3], [2, 0.4], [3, 0.3]] as readonly (readonly [number, number])[],
   },
   /** E4 — Organizational health. */
   organization: {
     /** Load ÷ capacity above which overload erodes culture. */
-    overloadThreshold: 0.9,
+    overloadThreshold: 0.6,
     /** Culture points lost per 0.1 of load ratio above the threshold. */
-    overloadCulturePerTenth: 1.5,
+    overloadCulturePerTenth: 2,
+    /** Most culture overload can remove in one quarter. */
+    overloadMaxPerQuarter: 4,
     /** Load ratio below which culture recovers toward its starting level. */
-    recoveryBelow: 0.7,
+    recoveryBelow: 0.5,
     /** Share of the gap to the starting culture (72) recovered per quarter, scaled 0.5–1 by People investment ($0–10M). */
     recoveryShare: 0.12,
     /** Capability points lost per quarter per culture point below 72. */
@@ -71,10 +78,12 @@ export const V3_ECONOMICS = {
     /** Extra aftershocks of a workforce reduction on customer-facing capabilities (per aftershock quarter). */
     reductionAftershock: { targeted: { execution: -1.5, customerSuccess: -1 }, deep: { execution: -3, customerSuccess: -2.5 } },
   },
-  /** E5 — contract claim on the strategic budget. */
-  contract: { claimsEnvelope: true },
+  /** E6 — recession stance: 'slow' must hold at least this much of the budget in reserve ($M). */
+  recession: { slowMinimumReserve: 5 },
   /** E7 — financing-expanded investment budget. */
   financing: {
+    /** The base quarterly strategic budget ($M) that expansion adds to. */
+    baseEnvelope: 30,
     /** Largest addition to the quarterly budget that new capital can fund ($M). */
     maxExpansion: 10,
     /** Quarters in which expansion is allowed (Q8 options set their own budget). */
@@ -112,5 +121,5 @@ export function withV3Economics<T>(overrides: DeepPartial<V3EconomicsConfig>, fn
 }
 
 export const ALL_MECHANISMS_OFF: V3Mechanisms = {
-  aiRevenueLevel: false, enterpriseConversion: false, universityConversion: false, organizationalHealth: false, contractEnvelopeClaim: false, financingExpansion: false,
+  aiRevenueLevel: false, enterpriseConversion: false, universityConversion: false, organizationalHealth: false, contractEnvelopeClaim: false, recessionStance: false, financingExpansion: false,
 };

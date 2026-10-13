@@ -22,6 +22,7 @@
  */
 
 import { V2QuarterEffects, V2StateShock, emptyEffects, availableCut } from './engineV3Effects';
+import { V3_ECONOMICS } from './engineV3Config';
 
 export const V2_MANAGEMENT_CALIBRATION = {
   workforce: {
@@ -143,7 +144,9 @@ export function managementEffects(
     }
     if (protect) e.stateShocks.push({ source: src, target: 'consumer', delta: K.workforce.protectRnDConsumerShock[d] });
     for (let k = 1; k <= K.workforce.aftershockQuarters; k++) {
-      for (const sh of shocksFrom(`${src}: survivor attrition`, cfg.aftershock)) scheduled.push({ ...sh, quarter: quarter + k });
+      // E4: in V3 the survivors' strain also reaches customer-facing delivery (execution, customer success).
+      const after: Record<string, number> = V3_ECONOMICS.mechanisms.organizationalHealth ? { ...cfg.aftershock, ...V3_ECONOMICS.organization.reductionAftershock[d] } : cfg.aftershock;
+      for (const sh of shocksFrom(`${src}: survivor attrition`, after)) scheduled.push({ ...sh, quarter: quarter + k });
     }
   }
 

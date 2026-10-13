@@ -20,6 +20,8 @@
 // ============ TYPES ============
 
 /** Investment buckets that create capability (Cash Reserve creates nothing). */
+import { V3_ECONOMICS } from './engineV3Config';
+
 export type V2CapabilityBucket = 'consumer' | 'enterprise' | 'aiProduct' | 'people' | 'universityCredentials';
 
 /**
@@ -199,6 +201,8 @@ export interface V2CapabilityConsequence {
   /** Cohorts that finished maturing this quarter (snapshots). */
   completedCohorts: V2InvestmentCohort[];
   closing: Omit<V2CapabilityState, 'pendingCohorts'>;
+  /** V3 (E4): organizational-health adjustments applied to the closing state this quarter. */
+  organization?: V3OrganizationalHealth;
 }
 
 // ============ DRAFT 1 CALIBRATION ============
@@ -621,4 +625,51 @@ export function calculateV2CapabilityConsequence(
     completedCohorts: completedCohorts.map(cloneCohort),
     closing,
   };
+}
+
+// ============ V3 · E4 ORGANIZATIONAL HEALTH ============
+
+export interface V3OrganizationalHealth {
+  loadRatio: number;
+  cultureBefore: number;
+  /** Culture lost to overload (load above the threshold). */
+  overloadLoss: number;
+  /** Culture recovered (low load, scaled by People investment). */
+  recovery: number;
+  cultureAfter: number;
+  /** Culture points below the starting level that strain delivery. */
+  strain: number;
+  executionLoss: number;
+  customerSuccessLoss: number;
+  talentLoss: number;
+}
+
+/**
+ * E4 — after this quarter's capability maturation: sustained overload erodes culture; a calm organization recovers
+ * toward its starting culture (faster when People is funded); culture below its starting level slowly erodes
+ * Execution, Customer Success and Talent. Returns the consequence unchanged when the mechanism is off.
+ */
+export function applyOrganizationalHealth(c: V2CapabilityConsequence, peopleInvestment: number): V2CapabilityConsequence {
+  if (!V3_ECONOMICS.mechanisms.organizationalHealth) return c;
+  const k = V3_ECONOMICS.organization;
+  const ratio = c.loadToCapacityRatio;
+  const before = c.closing.culture;
+  const overloadLoss = ratio > k.overloadThreshold ? Math.min(k.overloadMaxPerQuarter, k.overloadCulturePerTenth * (ratio - k.overloadThreshold) * 10) : 0;
+  const peopleScale = 0.5 + 0.5 * Math.min(1, Math.max(0, peopleInvestment) / 10);
+  const recovery = ratio < k.recoveryBelow && before < V2_CULTURE_NEUTRAL ? k.recoveryShare * peopleScale * (V2_CULTURE_NEUTRAL - before) : 0;
+  const after = Math.min(100, Math.max(0, before - overloadLoss + recovery));
+  const strain = Math.max(0, V2_CULTURE_NEUTRAL - after);
+  const erode = (v: number, perPoint: number) => (v <= k.strainFloor ? 0 : Math.min(v - k.strainFloor, perPoint * strain));
+  const caps = c.closing.capabilities;
+  const executionLoss = erode(caps.execution, k.strainExecution);
+  const customerSuccessLoss = erode(caps.customerSuccess, k.strainCustomerSuccess);
+  const talentLoss = erode(caps.talent, k.strainTalent);
+  const organization: V3OrganizationalHealth = { loadRatio: ratio, cultureBefore: before, overloadLoss, recovery, cultureAfter: after, strain, executionLoss, customerSuccessLoss, talentLoss };
+  const closing = {
+    ...c.closing,
+    culture: after,
+    capabilities: { ...caps, execution: caps.execution - executionLoss, customerSuccess: caps.customerSuccess - customerSuccessLoss, talent: caps.talent - talentLoss },
+  };
+  // Target summaries keep describing investment maturation only; the strain is reported in `organization`.
+  return { ...c, closing, organization };
 }

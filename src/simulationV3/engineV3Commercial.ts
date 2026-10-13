@@ -16,6 +16,7 @@
  */
 
 import type { V2Capabilities } from './engineV3Capabilities';
+import { V3_ECONOMICS } from './engineV3Config';
 
 // ============ MARKET INPUT (independent of company state) ============
 
@@ -639,7 +640,9 @@ export function calculateV2CommercialConsequence(
   const ke = K.enterprise;
   const csScale = ke.inflowCsScaleFloor + (1 - ke.inflowCsScaleFloor) * ramp(caps.customerSuccess, ke.csRamp[0], ke.csRamp[1]);
   const effEntDemand = market.enterpriseDemand * (1 - ke.inflowMacro * market.macroPressure);
-  const entCapTerm = posScale(ke.inflowCapabilityAmplitude * Math.tanh(relativeCapability.enterprise / ke.inflowCapabilityScale), fc.enterprise);
+  const M = V3_ECONOMICS.mechanisms;
+  const entAmplitude = M.enterpriseConversion ? V3_ECONOMICS.enterprise.inflowCapabilityAmplitude : ke.inflowCapabilityAmplitude;
+  const entCapTerm = posScale(entAmplitude * Math.tanh(relativeCapability.enterprise / ke.inflowCapabilityScale), fc.enterprise);
   const entInflowMkt = ke.baseInflow * (effEntDemand - 1);
   const entInflowCap = ke.baseInflow * effEntDemand * entCapTerm;
   const entInflowCsDep = ke.baseInflow * effEntDemand * (scalePositive(entCapTerm, csScale) - entCapTerm);
@@ -673,7 +676,7 @@ export function calculateV2CommercialConsequence(
   // ---- Enterprise Win Rate ----
   const csLimit = ramp(caps.customerSuccess, ke.csLimitRamp[0], ke.csLimitRamp[1]);
   const entStrength = ramp(caps.enterprise, ke.enterpriseStrengthRamp[0], ke.enterpriseStrengthRamp[1]);
-  const winCapRaw = ke.winPerRelCapability * relativeCapability.enterprise;
+  const winCapRaw = (M.enterpriseConversion ? V3_ECONOMICS.enterprise.winPerRelCapability : ke.winPerRelCapability) * relativeCapability.enterprise;
   const winAiRaw = ke.winAiSynergy * aiEffect * entStrength;
   const winCap = posScale(scalePositive(winCapRaw, csLimit) + winAiRaw * csLimit, fc.enterprise);
   const winDep =
@@ -739,7 +742,8 @@ export function calculateV2CommercialConsequence(
   const ku = K.university;
   const trustSupport = ramp(trust, ku.trustRamp[0], ku.trustRamp[1]);
   const effUniDemand = market.universityDemand * (1 - ku.inflowMacro * market.macroPressure);
-  const uniCapTerm = posScale(ku.inflowCapabilityAmplitude * Math.tanh(relativeCapability.credential / ku.inflowCapabilityScale), fc.university);
+  const uniAmplitude = M.universityConversion ? V3_ECONOMICS.university.inflowCapabilityAmplitude : ku.inflowCapabilityAmplitude;
+  const uniCapTerm = posScale(uniAmplitude * Math.tanh(relativeCapability.credential / ku.inflowCapabilityScale), fc.university);
   const uniInflowMkt = ku.baseInflow * (effUniDemand - 1);
   const uniInflowCap = ku.baseInflow * effUniDemand * uniCapTerm;
   const uniInflowTrustDep = ku.baseInflow * effUniDemand * (scalePositive(uniCapTerm, trustSupport) - uniCapTerm);
@@ -747,7 +751,8 @@ export function calculateV2CommercialConsequence(
   // Batch 4: institutional network effect (partners refer partners); the segment still converts slowly
   const uniInflowNetwork = uniInflowBase * KC.spill.universityInflow * dCN;
   const uniInflowDep = uniInflowTrustDep + uniInflowNetwork;
-  const uniResolution = -ku.resolutionRate * opening.universityPipeline;
+  const uniResolutionRate = M.universityConversion ? V3_ECONOMICS.university.resolutionRate : ku.resolutionRate;
+  const uniResolution = -uniResolutionRate * opening.universityPipeline;
   const uniInflowTotal = ku.baseInflow + uniInflowMkt + uniInflowCap + uniInflowDep;
   const universityPipeline = finish({
     indicator: 'universityPipeline',
@@ -759,7 +764,7 @@ export function calculateV2CommercialConsequence(
     dependencyContribution: uniInflowDep,
     decayOrAttrition: uniResolution,
     bounds: [0, Number.POSITIVE_INFINITY],
-    target: uniInflowTotal / ku.resolutionRate,
+    target: uniInflowTotal / uniResolutionRate,
     drivers: [
       { label: 'relative Credential capability', value: relativeCapability.credential },
       { label: 'Trust support on capability upside', value: trustSupport },

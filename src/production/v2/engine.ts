@@ -68,8 +68,12 @@ export function budgetFor(input: V2PlayerQuarterInput, cfg: GameConfig = V2_CONF
   return cfg.engine === 'v3' ? V3.budgetForInput(input, cfg.path) : V2.envelopeFor(input.quarter, input.finalOption);
 }
 
-export const validateQuarterInput = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): string[] =>
-  (isV3(snap) ? V3.validateQuarterInput(snap, input) : V2.validateQuarterInput(snap, input));
+export function validateQuarterInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): string[] {
+  if (isV3(snap)) return V3.validateQuarterInput(snap, input);
+  // V2 games never accept V3-only decisions (they would be silently dropped by the frozen adapter).
+  if (input.recessionStance !== undefined || input.expansion !== undefined) return ['This decision is not available in this game'];
+  return V2.validateQuarterInput(snap, input);
+}
 export const forecastQuarter = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Forecast =>
   (isV3(snap) ? V3.forecastQuarter(snap, input) : V2.forecastQuarter(snap, input));
 export const resolveQuarter = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Resolution =>
