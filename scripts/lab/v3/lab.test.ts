@@ -17,6 +17,8 @@ import {
 } from './experiments';
 import { V3_ECONOMICS, withV3Economics, ALL_MECHANISMS_OFF } from '../../../src/simulationV3/engineV3Config';
 import { firstDifference } from '../../../src/production/v2/snapshot';
+import { saturationStatus } from '../../../src/production/v2/insights/saturation';
+import type { Bucket } from '../../../src/production/v2/insights/consequences';
 
 const WRITE = process.env.V3LAB_WRITE === '1';
 
@@ -46,6 +48,23 @@ describe('V3 laboratory invariants', () => {
   it('deterministic: replaying the laboratory gives identical numbers', () => {
     const a1 = metricsOf(play(V3_LAB_STRATEGIES[0].strategy, v3c())), a2 = metricsOf(play(V3_LAB_STRATEGIES[0].strategy, v3c()));
     expect(a2).toEqual(a1);
+  });
+
+  it('E8: the saturation warning appears before capability is wasted (single-bucket plans, both engines)', () => {
+    const singles: [string, Bucket][] = [['ai-only', 'aiProduct'], ['consumer-only', 'consumer'], ['enterprise-only', 'enterprise'], ['university-only', 'universityCredentials'], ['people-only', 'people']];
+    let cases = 0, ok = 0;
+    for (const [id, bucket] of singles) for (const cfg of [V2C, v3c()]) {
+      const g = play(V3_LAB_STRATEGIES.find(s => s.strategy.id === id)!.strategy, cfg);
+      const target = { consumer: 'consumer', enterprise: 'enterprise', aiProduct: 'ai', people: 'talent', universityCredentials: 'credential' }[bucket];
+      const firstWaste = g.quarters.find(q => (q.consequence.capability.targets.find(t => t.target === target)?.wastedSaturation ?? 0) > 0.5)?.quarter;
+      if (firstWaste === undefined) continue;
+      cases++;
+      const firstWarn = g.quarters.find(q => saturationStatus(q.before, bucket).near)?.quarter;
+      if (firstWarn !== undefined && firstWarn < firstWaste) ok++;
+    }
+    console.log(`E8 warning before waste: ${ok} of ${cases} wasting single-bucket games`);
+    expect(cases).toBeGreaterThan(0);
+    expect(ok / cases).toBeGreaterThanOrEqual(0.9);
   });
 
   it('withV3Economics restores the configuration', () => {

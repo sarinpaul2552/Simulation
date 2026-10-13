@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Term } from '../ds/glossary';
-import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, V2Forecast } from '../../engine';
+import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, V2Forecast } from '../../engine';
+import { V3_ECONOMICS } from '../../../../simulationV3/engineV3Config';
+import { saturationStatus } from '../../insights/saturation';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
 import type { V2Allocation } from '../../../../simulation/engineV2';
 import type { V2FinancingAction } from '../../../../simulation/engineV2Financing';
@@ -39,6 +41,23 @@ const EVENT_HEADING: Record<number, string> = {
 };
 const ROLE_SHORT: Record<string, string> = { CEO: 'CEO', CFO: 'CFO', Product: 'Product (CPO)', Growth: 'Growth (CGO)', People: 'People (CPeO)' };
 const r1 = (x: number) => Math.round(x * 100) / 100;
+const up1 = (x: number) => Math.ceil(x * 10 - 1e-9) / 10;
+/** Move `amount` of planned investment to cash, cutting every bucket in proportion (amounts kept to $0.1M). */
+function freeCash(a: V2Allocation, amount: number): V2Allocation {
+  const inv = BUCKETS.reduce((t, b) => t + a[b], 0);
+  if (inv <= 0 || amount <= 0) return a;
+  const share = Math.min(1, amount / inv);
+  const out = { ...a };
+  for (const b of BUCKETS) out[b] = Math.floor(a[b] * (1 - share) * 10 + 1e-9) / 10;
+  return out;
+}
+const CUT_KEYS: (keyof V2ManagementActions)[] = ['workforceReduction', 'hiringFreeze', 'marketingLevel', 'closeWeakOfferings'];
+const withoutCuts = (m: V2ManagementActions | undefined): V2ManagementActions | undefined => {
+  if (!m) return undefined;
+  const out = { ...m };
+  for (const k of CUT_KEYS) delete out[k];
+  return Object.keys(out).length ? out : undefined;
+};
 
 /** Stage 2 — Leadership Decision: the quarter's strategic choice, the resource-allocation workspace and the discussion. */
 export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController; mode: V2PresentationMode; commitment: V2CommitmentMode }) {
@@ -48,6 +67,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   const spec = getDecisionSpec(snap)!;
   const input: V2PlayerQuarterInput = { ...defaultInput(q), ...(ctl.draft?.input ?? {}), quarter: q } as V2PlayerQuarterInput;
   const delib: V2Deliberation = ctl.draft?.deliberation ?? {};
+  const v3 = isV3(snap);
   const envelope = envelopeForInput(snap, input);
   const invested = BUCKETS.reduce((t, b) => t + (input.allocation[b] || 0), 0);
 
@@ -134,12 +154,20 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
                   <Fact label="Our delivery readiness" value={pct(spec.opportunity.deliveryFit)} />
                 </div>
                 <p className="ds-muted">{spec.opportunity.aligned ? 'This contract fits your chosen strategy.' : `This contract does not fit your chosen strategy: it would reduce your strategic focus by ${pct(spec.opportunity.focusDilution)}.`}</p>
+                {v3 && <ContractClaim upfront={spec.opportunity.upfrontCash} envelope={envelope} accepted={input.opportunity?.accept === true} reserve={input.allocation.cashReserve}
+                  onMakeRoom={() => set({ allocation: freeCash(input.allocation, up1(spec.opportunity!.upfrontCash) - input.allocation.cashReserve) })} />}
                 <ChoiceList name="opp" testIdPrefix="v2-opp-choice" value={input.opportunity ? [input.opportunity.accept ? 'accept' : 'decline'] : []}
                   onChange={v => set({ opportunity: { offerId: spec.opportunity!.offerId, accept: v[0] === 'accept' } })}
                   options={[{ id: 'accept', label: <span data-testid="v2-opp-accept">Accept the contract</span> }, { id: 'decline', label: <span data-testid="v2-opp-decline">Decline</span> }]} />
               </Card>
             )}
-            {spec.management && <ManagementCard spec={spec.management} value={input.management ?? {}} onChange={m => set({ management: m })} mode={mode} />}
+            {spec.management && v3 && <StanceCard value={input.recessionStance} reserve={input.allocation.cashReserve} people={input.allocation.people}
+              onChange={st => set({ recessionStance: st, management: st === 'cut' ? input.management : withoutCuts(input.management) })}
+              onMoveToCash={x => set({ allocation: freeCash(input.allocation, x) })} />}
+            {spec.management && <ManagementCard spec={spec.management} value={input.management ?? {}} mode={mode}
+              cutsAllowed={!v3 || input.recessionStance === 'cut'}
+              peopleFunded={v3 ? input.allocation.people : 0}
+              onChange={m => set(v3 && m.hiringFreeze && input.allocation.people > 0 ? { management: m, allocation: { ...input.allocation, people: 0 } } : { management: m })} />}
             {spec.crisis && (
               <Card title={spec.crisis.title} sub={<span>Severity for your company: <b data-testid="v2-crisis-band">{spec.crisis.band}</b></span>} icon="alert" testId="v2-crisis">
                 <p style={{ marginTop: 0 }}>{spec.crisis.description}</p>
@@ -163,8 +191,9 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
             </div>
           )}
           {prefillAfterFinal && <p className="ds-muted" data-testid="v2-prefill-after-final" style={{ margin: 0 }}>Choose your final strategic decision first: the budget depends on it. You can then start from last quarter’s allocation.</p>}
-          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={forecast} />
-          <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode} />
+          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={forecast} expansion={input.expansion ?? 0} />
+          <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode}
+            expansion={v3 && V3_ECONOMICS.financing.quarters.includes(q) && !spec.final ? { value: input.expansion ?? 0, max: V3_ECONOMICS.financing.maxExpansion, floor: V3_ECONOMICS.financing.cashFloor, onChange: x => set({ expansion: x > 0 ? x : undefined }) } : undefined} />
         </div>
 
         <div className="ds-stack" data-testid="v2-discussion">
@@ -241,7 +270,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 /** The resource-allocation workspace: budget, visual mix, per-bucket guidance and an execution-capacity estimate. */
-function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null }) {
+function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast, expansion = 0 }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null; expansion?: number }) {
   const q = workingQuarter(snap)!;
   const invested = BUCKETS.reduce((t, b) => t + (allocation[b] || 0), 0);
   const kept = envelope - invested;
@@ -254,8 +283,8 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
       <p className="ds-eyebrow">Strategic budget</p>
       <div className="ds-budget">
         <div>
-          <div className="ds-budget-total ds-num">{money(envelope, 0)}</div>
-          <div className="ds-muted">to invest this quarter</div>
+          <div className="ds-budget-total ds-num">{money(envelope, envelope % 1 ? 1 : 0)}</div>
+          <div className="ds-muted">to invest this quarter{expansion > 0 && <span data-testid="v2-budget-expansion"> (including {money(expansion)} financed this quarter)</span>}</div>
         </div>
         <div className="ds-budget-left">
           <span className="ds-muted">{over ? 'Over budget by' : 'Kept as cash'}</span>
@@ -274,12 +303,14 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
           const amt = allocation[b] || 0;
           const tti = timeToImpact(b);
           const gain = nominalGain(b, amt);
+          const sat = saturationStatus(snap.state, b);
           return (
             <div className="ds-bucket" key={b} data-bucket={b}>
               <span className="ds-bucket-swatch" style={{ background: BUCKET_COLOR[b] }} />
               <div>
                 <label className="ds-bucket-name" htmlFor={`alloc-${b}`}>{info.name}<span className="ds-muted" style={{ fontWeight: 500 }} title="From the engine’s maturation schedule">· {tti.schedule[0] >= 0.5 ? 'pays off sooner' : 'pays off later'}</span></label>
                 <div className="ds-bucket-desc">{mode === 'mba' ? info.mba : info.ug}</div>
+                {sat.near && <div className="ds-small ds-tone-caution" data-testid={`v2-saturation-${b}`}><Icon name="alert" size={12} /> Close to what the organization can use: {info.builds.split(',')[0]} is near its ceiling once earlier investment lands. More here is likely to be wasted.</div>}
               </div>
               <input id={`alloc-${b}`} data-testid={`v2-alloc-${b}`} type="number" min={0} step={0.5} inputMode="decimal" value={allocation[b]} onChange={e => onChange(b, parseFloat(e.target.value))} aria-label={`${info.name} ($M)`} />
               <input type="range" min={0} max={Math.min(30, envelope)} step={0.5} value={Math.min(amt, 30)} onChange={e => onChange(b, parseFloat(e.target.value))} aria-label={`${info.name} slider`} tabIndex={-1} />
@@ -322,7 +353,40 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
   );
 }
 
-function ManagementCard({ spec, value, onChange, mode }: { spec: NonNullable<ReturnType<typeof getDecisionSpec>>['management'] & object; value: V2ManagementActions; onChange: (m: V2ManagementActions) => void; mode: V2PresentationMode }) {
+/** V3 (E5): the contract's implementation cost is paid from this quarter's budget. */
+function ContractClaim({ upfront, envelope, accepted, reserve, onMakeRoom }: { upfront: number; envelope: number; accepted: boolean; reserve: number; onMakeRoom: () => void }) {
+  const need = up1(upfront);
+  const short = accepted && reserve + 0.01 < upfront;
+  return (
+    <div className={short ? 'ds-notice ds-notice-bad' : 'ds-callout'} data-testid="v2-opp-claim" style={{ marginBottom: 12 }}>
+      <Icon name="cash" />
+      <span>Accepting uses <b>{money(need)} of your {money(envelope, 0)} budget</b> for implementation, so at most {money(envelope - need)} is left to invest this quarter. Keep at least {money(need)} as cash in the plan below.
+        {short && <> You are keeping {money(reserve)}. <button className="ds-btn ds-btn-secondary" data-testid="v2-opp-make-room" onClick={onMakeRoom}>Reduce every investment in proportion to make room</button></>}
+      </span>
+    </div>
+  );
+}
+
+/** V3 (E6): the recession stance, one required choice. */
+function StanceCard({ value, reserve, people, onChange, onMoveToCash }: { value?: 'protect' | 'slow' | 'cut'; reserve: number; people: number; onChange: (s: 'protect' | 'slow' | 'cut') => void; onMoveToCash: (x: number) => void }) {
+  const minRes = V3_ECONOMICS.recession.slowMinimumReserve;
+  return (
+    <Card title="Recession stance" sub="Required: choose one" icon="alert" testId="v2-stance">
+      <ChoiceList name="stance" testIdPrefix="v2-stance" value={value ? [value] : []} onChange={v => onChange(v[0] as 'protect' | 'slow' | 'cut')}
+        options={[
+          { id: 'protect', label: 'Protect: keep investing through the downturn', detail: 'No cost cuts. You accept a weaker cash position now to keep building.' },
+          { id: 'slow', label: 'Slow: hold back part of the budget', detail: `Keep at least ${money(minRes, 0)} of the budget as cash. No layoffs.` },
+          { id: 'cut', label: 'Cut: reduce costs', detail: 'Take at least one cost action below: hiring freeze, workforce reduction, lower marketing or closing weak offerings.' },
+        ]} />
+      {value === 'slow' && reserve + 0.01 < minRes && (
+        <p className="ds-small ds-tone-bad" data-testid="v2-stance-slow-short">You are keeping {money(reserve)} as cash. <button className="ds-btn ds-btn-secondary" data-testid="v2-stance-make-room" onClick={() => onMoveToCash(up1(minRes - reserve))}>Move {money(up1(minRes - reserve))} to cash</button></p>
+      )}
+      {value === 'cut' && people > 0 && <p className="ds-muted ds-small" style={{ margin: '6px 0 0' }}>A hiring freeze stops People investment: choosing it moves your {money(people)} People allocation to cash.</p>}
+    </Card>
+  );
+}
+
+function ManagementCard({ spec, value, onChange, mode, cutsAllowed = true, peopleFunded = 0 }: { spec: NonNullable<ReturnType<typeof getDecisionSpec>>['management'] & object; value: V2ManagementActions; onChange: (m: V2ManagementActions) => void; mode: V2PresentationMode; cutsAllowed?: boolean; peopleFunded?: number }) {
   const upd = (patch: Partial<V2ManagementActions>) => {
     const next: V2ManagementActions = { ...value, ...patch };
     for (const k of Object.keys(next) as (keyof V2ManagementActions)[]) if (next[k] === undefined || next[k] === false) delete next[k];
@@ -330,11 +394,11 @@ function ManagementCard({ spec, value, onChange, mode }: { spec: NonNullable<Ret
   };
   const desc = (id: string) => spec.options.find(o => o.id === id)?.description;
   return (
-    <Card title="Recession response" sub="Optional actions" icon="alert" testId="v2-management">
+    <Card title="Recession response" sub={cutsAllowed ? 'Optional actions' : 'Cost actions need the “Cut” stance; pricing is always available'} icon="alert" testId="v2-management">
       <div className="ds-stack">
         <div>
           <div className="ds-row"><b>Workforce reduction</b>
-            <select className="ds-input" data-testid="v2-mgmt-workforce" value={value.workforceReduction?.depth ?? 'none'}
+            <select className="ds-input" data-testid="v2-mgmt-workforce" disabled={!cutsAllowed} value={value.workforceReduction?.depth ?? 'none'}
               onChange={e => upd({ workforceReduction: e.target.value === 'none' ? undefined : { depth: e.target.value as 'targeted' | 'deep', protectRnD: value.workforceReduction?.protectRnD } })}>
               <option value="none">None</option><option value="targeted">Targeted</option><option value="deep">Deep</option>
             </select>
@@ -342,15 +406,15 @@ function ManagementCard({ spec, value, onChange, mode }: { spec: NonNullable<Ret
           </div>
           {mode === 'mba' && <p className="ds-muted" style={{ margin: '4px 0 0' }}>{desc('workforce-targeted')}</p>}
         </div>
-        <label className="ds-small"><input type="checkbox" data-testid="v2-mgmt-freeze" checked={value.hiringFreeze === true} onChange={e => upd({ hiringFreeze: e.target.checked })} /> <b>Hiring freeze</b> — {desc('hiring-freeze')}</label>
+        <label className="ds-small"><input type="checkbox" data-testid="v2-mgmt-freeze" disabled={!cutsAllowed} checked={value.hiringFreeze === true} onChange={e => upd({ hiringFreeze: e.target.checked })} /> <b>Hiring freeze</b> — {desc('hiring-freeze')}{peopleFunded > 0 && cutsAllowed && !value.hiringFreeze ? ` (moves your ${money(peopleFunded)} People investment to cash)` : ''}</label>
         <div className="ds-row"><b className="ds-small">Consumer pricing</b>
           <select className="ds-input" data-testid="v2-mgmt-pricing" value={value.pricing ?? 'none'} onChange={e => upd({ pricing: e.target.value === 'none' ? undefined : e.target.value as 'raise' | 'discount' })}>
             <option value="none">No change</option><option value="raise">Raise prices</option><option value="discount">Discount</option>
           </select>
         </div>
-        <label className="ds-small"><input type="checkbox" data-testid="v2-mgmt-close" checked={value.closeWeakOfferings === true} onChange={e => upd({ closeWeakOfferings: e.target.checked })} /> <b>Close weak offerings</b> — {desc('close-weak')}</label>
+        <label className="ds-small"><input type="checkbox" data-testid="v2-mgmt-close" disabled={!cutsAllowed} checked={value.closeWeakOfferings === true} onChange={e => upd({ closeWeakOfferings: e.target.checked })} /> <b>Close weak offerings</b> — {desc('close-weak')}</label>
         <div className="ds-row"><b className="ds-small">Consumer marketing</b>
-          <input type="range" min={spec.marketingLevelRange[0]} max={spec.marketingLevelRange[1]} step={0.1} value={value.marketingLevel ?? 1} data-testid="v2-mgmt-marketing"
+          <input type="range" min={cutsAllowed ? spec.marketingLevelRange[0] : 1} max={spec.marketingLevelRange[1]} step={0.1} value={value.marketingLevel ?? 1} data-testid="v2-mgmt-marketing"
             onChange={e => { const v = parseFloat(e.target.value); upd({ marketingLevel: Math.abs(v - 1) < 1e-9 ? undefined : v }); }} />
           <span className="ds-small">{(value.marketingLevel ?? 1).toFixed(1)}×</span>
         </div>
@@ -359,7 +423,9 @@ function ManagementCard({ spec, value, onChange, mode }: { spec: NonNullable<Ret
   );
 }
 
-function FinancingCard({ forecast, value, debt, ownership, onChange, mode }: { forecast: V2Forecast | null; value: V2FinancingAction[]; debt: number; ownership: number; onChange: (f: V2FinancingAction[]) => void; mode: V2PresentationMode }) {
+interface ExpansionControl { value: number; max: number; floor: number; onChange: (x: number) => void }
+
+function FinancingCard({ forecast, value, debt, ownership, onChange, mode, expansion }: { forecast: V2Forecast | null; value: V2FinancingAction[]; debt: number; ownership: number; onChange: (f: V2FinancingAction[]) => void; mode: V2PresentationMode; expansion?: ExpansionControl }) {
   const amt = (kind: 'debt' | 'equity' | 'repay') => value.filter(a => a.kind === kind).reduce((t, a) => t + ('amount' in a ? a.amount : 0), 0);
   const partner = value.some(a => a.kind === 'partner');
   const restructure = (value.find(a => a.kind === 'restructure') as { depth?: 'moderate' | 'deep' } | undefined)?.depth ?? 'none';
@@ -412,6 +478,17 @@ function FinancingCard({ forecast, value, debt, ownership, onChange, mode }: { f
             <label className="ds-small">Restructure <select className="ds-input" data-testid="v2-fin-restructure" value={restructure} onChange={e => build({ restructure: e.target.value })}>
               <option value="none">No</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label>
           </div>
+          {expansion && (
+            <div className="ds-callout" data-testid="v2-expansion">
+              <Icon name="cash" />
+              <span>
+                <b>Invest more than the base budget.</b> New money raised this quarter (borrowing or shares) can add up to {money(Math.min(expansion.max, amt('debt') + amt('equity')))} to this quarter’s budget (limit {money(expansion.max, 0)}). The plan must still leave at least {money(expansion.floor, 0)} of cash. Borrowed money costs interest; new shares dilute the owners.
+                <label className="ds-small" style={{ display: 'block', marginTop: 6 }}>Add to this quarter’s budget $M{' '}
+                  <input className="ds-input" style={{ width: 90 }} type="number" min={0} max={expansion.max} step={0.5} data-testid="v2-fin-expansion" value={expansion.value || ''} onChange={e => expansion.onChange(n(e.target.value))} />
+                </label>
+              </span>
+            </div>
+          )}
           {check && check.errors.length > 0 && <ul className="ds-list ds-small" data-testid="v2-fin-errors">{check.errors.map(e => <li key={e} className="ds-tone-bad">{e}</li>)}</ul>}
           {check && check.notes.length > 0 && <ul className="ds-list ds-small" data-testid="v2-fin-notes">{check.notes.map(e => <li key={e}>{e}</li>)}</ul>}
         </div>

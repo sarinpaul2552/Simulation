@@ -17,15 +17,17 @@ export function DecisionSummary({ input, deliberation, quarter, mode, config }: 
   const decision = [
     input.destination && `Strategy: ${destinationName(input.destination)}`,
     input.opportunity && `Contract: ${input.opportunity.accept ? 'accept' : 'decline'}`,
+    input.recessionStance && `Recession stance: ${({ protect: 'protect investment', slow: 'slow investment', cut: 'cut costs' })[input.recessionStance]}`,
     input.management && Object.keys(input.management).length > 0 && 'Recession actions selected',
     input.crisisResponse && `Crisis response: ${input.crisisResponse}`,
     input.finalOption && `Final decision: ${FINAL_LABELS[input.finalOption]}`,
     ...(input.financing ?? []).map(f => `Financing: ${f.kind}${'amount' in f ? ` ${money(f.amount)}` : ''}`),
+    (input.expansion ?? 0) > 0 && `Budget expanded by ${money(input.expansion!)} with new financing`,
   ].filter(Boolean) as string[];
   return (
     <div className="ds-stack" style={{ gap: 8 }} data-testid="v2-decision-summary">
       <div>
-        <p className="ds-h4">Investment ({money(env, 0)})</p>
+        <p className="ds-h4">Investment ({money(env, env % 1 ? 1 : 0)})</p>
         <div className="ds-small">{buckets.length ? buckets.map(b => `${BUCKET_LABELS[b]} ${money(input.allocation[b])}`).join(' · ') : 'Nothing invested'}{input.allocation.cashReserve > 0 ? ` · Kept as cash ${money(input.allocation.cashReserve)}` : ''}</div>
       </div>
       {decision.length > 0 && <div><p className="ds-h4">Decision</p><div className="ds-small">{decision.join(' · ')}</div></div>}

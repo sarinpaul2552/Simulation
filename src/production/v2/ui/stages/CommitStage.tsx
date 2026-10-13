@@ -59,17 +59,19 @@ function Resolution({ input, deliberation, quarter, mode, config }: { input: V2P
   const strategic = [
     input.destination && `Commit to ${destinationName(input.destination)}`,
     input.opportunity && (input.opportunity.accept ? 'Accept the global contract' : 'Decline the global contract'),
+    input.recessionStance && `Recession stance: ${({ protect: 'protect investment', slow: 'slow investment', cut: 'cut costs' })[input.recessionStance]}`,
     input.management && Object.keys(input.management).length > 0 && `Recession actions: ${[input.management.workforceReduction && `${input.management.workforceReduction.depth} workforce reduction`, input.management.hiringFreeze && 'hiring freeze', input.management.pricing && (input.management.pricing === 'raise' ? 'raise prices' : 'discount prices'), input.management.closeWeakOfferings && 'close weak offerings', input.management.marketingLevel !== undefined && `marketing ${input.management.marketingLevel.toFixed(1)}×`].filter(Boolean).join(', ')}`,
     input.crisisResponse && `Crisis response: ${input.crisisResponse}`,
     input.finalOption && `Final decision: ${FINAL_LABELS[input.finalOption]}`,
   ].filter(Boolean) as string[];
-  const financing = (input.financing ?? []).map(f => f.kind === 'debt' ? `Borrow ${money(f.amount)}` : f.kind === 'equity' ? `Sell shares for ${money(f.amount)}` : f.kind === 'repay' ? `Repay ${money(f.amount)} of debt` : f.kind === 'partner' ? 'Bring in a strategic partner' : `${f.depth} restructuring`);
+  const financing = [...(input.financing ?? []).map(f => f.kind === 'debt' ? `Borrow ${money(f.amount)}` : f.kind === 'equity' ? `Sell shares for ${money(f.amount)}` : f.kind === 'repay' ? `Repay ${money(f.amount)} of debt` : f.kind === 'partner' ? 'Bring in a strategic partner' : `${f.depth} restructuring`),
+    ...((input.expansion ?? 0) > 0 ? [`Add ${money(input.expansion!)} of the new money to this quarter’s investment budget`] : [])];
   return (
     <article className="ds-resolution" data-testid="v2-decision-summary">
       <p className="ds-eyebrow">Board resolution · {calendarLabel(quarter)} · {CHAPTERS[quarter].title}</p>
       <h2 className="ds-resolution-title">The leadership team resolves to…</h2>
       <dl>
-        <dt>Invest {money(env, 0)}</dt>
+        <dt>Invest {money(env, env % 1 ? 1 : 0)}</dt>
         <dd>
           <div className="ds-alloc-bar" style={{ height: 10, marginBottom: 8 }} aria-hidden>
             {invested.map(b => <span key={b} style={{ flex: `${input.allocation[b]} 0 0`, background: BUCKET_COLOR[b] }} />)}

@@ -69,8 +69,10 @@ export function decisionSummary(input: V2PlayerQuarterInput): string {
   if (a.cashReserve > 0.05) parts.push(`kept ${fmtM(a.cashReserve)} in reserve`);
   if (input.destination) parts.push(`committed to ${V2_DESTINATIONS[input.destination].name}`);
   if (input.opportunity) parts.push(input.opportunity.accept ? 'accepted the global contract' : 'declined the global contract');
+  if (input.recessionStance) parts.push(`recession stance: ${input.recessionStance}`);
   if (input.management && Object.keys(input.management).length) parts.push(`recession actions: ${managementText(input.management)}`);
   if (input.financing?.length) parts.push(`financing: ${input.financing.map(f => f.kind + ('amount' in f ? ` ${fmtM(f.amount)}` : '')).join(', ')}`);
+  if ((input.expansion ?? 0) > 0) parts.push(`expanded the investment budget by ${fmtM(input.expansion!)}`);
   if (input.crisisResponse) parts.push(`crisis response: ${input.crisisResponse}`);
   if (input.finalOption) parts.push(`chose to ${FINAL[input.finalOption]}`);
   return parts.join('; ');
