@@ -45,6 +45,26 @@ describe('V3 laboratory invariants', () => {
     });
   });
 
+  it('no impossible states in any path (all strategies, default policy and the maximum $10M financed expansion every quarter)', () => {
+    for (const path of ['A', 'B', 'C'] as const) for (const opts of [{}, { expansion: 10 }]) for (const s of V3_LAB_STRATEGIES) {
+      const g = play(s.strategy, v3c(path), opts);
+      const m = metricsOf(g);
+      const tag = `${path} ${s.strategy.id} ${JSON.stringify(opts)}`;
+      expect(m.identitiesHold, tag).toBe(true);
+      expect(m.replayVerified, tag).toBe(true);
+      for (const q of g.quarters) {
+        const st = q.after;
+        for (const v of Object.values(st.capabilities)) { expect(v, tag).toBeGreaterThanOrEqual(0); expect(v, tag).toBeLessThanOrEqual(125); }
+        expect(st.culture, tag).toBeGreaterThanOrEqual(0); expect(st.culture, tag).toBeLessThanOrEqual(100);
+        for (const v of Object.values(st.segmentRevenue)) expect(v, tag).toBeGreaterThanOrEqual(0);
+        expect(st.financing.ownership, tag).toBeGreaterThan(0); expect(st.financing.ownership, tag).toBeLessThanOrEqual(1);
+        expect(Number.isFinite(st.cash), tag).toBe(true);
+      }
+      // the share price never moves more than the documented 20% in a quarter
+      for (let i = 1; i < m.priceByQuarter.length; i++) expect(Math.abs(m.priceByQuarter[i] / m.priceByQuarter[i - 1] - 1), tag).toBeLessThanOrEqual(0.2 + 1e-9);
+    }
+  }, 300_000);
+
   it('deterministic: replaying the laboratory gives identical numbers', () => {
     const a1 = metricsOf(play(V3_LAB_STRATEGIES[0].strategy, v3c())), a2 = metricsOf(play(V3_LAB_STRATEGIES[0].strategy, v3c()));
     expect(a2).toEqual(a1);

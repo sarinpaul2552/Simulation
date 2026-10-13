@@ -82,6 +82,7 @@ The default policy accepts only when the contract is aligned and deliverable.
 - The expanded plan must leave closing cash ≥ $25M.
 - Q8 keeps its option-specific budgets ($45M / $60M).
 - Expansion is not available in Q1 or Q8.
+- Two arbitrage guards were added in 10F: debt repaid in the same quarter is netted against the capital raised (no borrow-and-repay round trip), and a "slow" recession stance cannot be combined with a financed expansion.
 - Every limit is enforced by the engine (`checkExpansion`) with a named error.
 
 **No unlimited spending.** Spending is bounded by:
@@ -94,7 +95,7 @@ The default policy accepts only when the contract is aligned and deliverable.
 **Counterfactual forecasts.** The CFO forecast ("before financing") and the solvency counterfactual evaluate the plan without the raise, so they never fail on the expansion rule.
 
 **X tested at 0 / 5 / 10 / 15** (T8):
-- With proportional spending, expansion **reduced** the Q8 price for all 7 strategies at X = 10 (−$3.8 to −$11.3). Net cash fell by about $30–36M for each $5M step in X, because the expansion repeats in each of six quarters. The smallest effect was Adaptive's: −$0.9 at X = 5.
+- With proportional spending, expansion **reduced** the Q8 price for all 7 strategies at X = 10 (−$3.8 to −$11.3). Net cash fell by about $30–36M for each $5M step in X, because the expansion repeats in each of six quarters. The smallest effect was Adaptive's: −$0.6 at X = 5.
 - In path A, extra investment mostly lands on capabilities near their ceilings, and debt costs interest.
 - **The default policy never uses expansion** (H7: at most 30%).
 - **X = $10M is the release value.** It keeps a real CFO decision (leverage against flexibility) while bounding the downside: −$59M net cash for the most leveraged strategy at X = 15 was judged too large for a classroom default.

@@ -40,7 +40,8 @@ export async function createSession(page: Page, teams: string[], opts: { mode?: 
 
 export async function joinTeam(page: Page, sessionCode: string, teamCode: string, role?: V2Role, opts: { keepIntro?: boolean } = {}) {
   await page.goto('/');
-  await page.getByTestId('v2-home-team').click();
+  // Fail fast if the app shell never renders (the recurring environment stall), instead of waiting for the test timeout.
+  await page.getByTestId('v2-home-team').click({ timeout: 60_000 });
   await page.getByTestId('v2-join-session').fill(sessionCode);
   await page.getByTestId('v2-join-team').fill(teamCode);
   await page.getByTestId('v2-join-go').click();

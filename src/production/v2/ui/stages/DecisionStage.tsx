@@ -490,7 +490,7 @@ function FinancingCard({ forecast, value, debt, ownership, onChange, mode, expan
             <div className="ds-callout" data-testid="v2-expansion">
               <Icon name="cash" />
               <span>
-                <b>Invest more than the base budget.</b> New money raised this quarter (borrowing or shares) can add up to {money(Math.min(expansion.max, amt('debt') + amt('equity')))} to this quarter’s budget (limit {money(expansion.max, 0)}). The plan must still leave at least {money(expansion.floor, 0)} of cash. Borrowed money costs interest; new shares dilute the owners.
+                <b>Invest more than the base budget.</b> New money raised this quarter (borrowing or shares) can add up to {money(Math.max(0, Math.min(expansion.max, amt('debt') + amt('equity') - amt('repay'))))} to this quarter’s budget (limit {money(expansion.max, 0)}). The plan must still leave at least {money(expansion.floor, 0)} of cash. Borrowed money costs interest; new shares dilute the owners.
                 <label className="ds-small" style={{ display: 'block', marginTop: 6 }}>Add to this quarter’s budget $M{' '}
                   <input className="ds-input" style={{ width: 90 }} type="number" min={0} max={expansion.max} step={0.5} data-testid="v2-fin-expansion" value={expansion.value || ''} onChange={e => expansion.onChange(n(e.target.value))} />
                 </label>

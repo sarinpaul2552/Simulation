@@ -115,7 +115,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
       <header className="ds-topbar">
         <div className="ds-topbar-inner">
           <span className="ds-company">Facilitator · {o.session_code}</span>
-          <span className="ds-muted ds-small" data-testid="v2-fac-market" data-path={o.market_path ?? 'v2'}>{o.econ_engine === 'v3' && o.market_path ? `Market path: ${PATH_INFO[o.market_path].name}` : 'Original NexLearn (V2 economics)'}</span>
+          <span className="ds-meta" data-testid="v2-fac-market" data-path={o.market_path ?? 'v2'}>{o.econ_engine === 'v3' && o.market_path ? `Market path: ${PATH_INFO[o.market_path].name}` : 'Original NexLearn (V2 economics)'}</span>
           <span className="ds-quarter">{o.pacing === 'self' ? 'Self-paced' : `Open: ${calendarLabel(o.open_quarter)}`}</span>
           <span className="ds-meta">{MODE_LABEL[mode]} mode{!projector && <> · PIN <b data-testid="v2-fac-pin">{adminPin}</b></>}</span>
           <span className="ds-spacer" />

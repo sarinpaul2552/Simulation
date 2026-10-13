@@ -146,6 +146,7 @@ test('NexLearn V3 path C: the recession stance is required and enforced in the U
     },
   });
   // the stored game is a V3 path C game and replays (the results stage verifies the stored snapshot on load)
+  await expectPhase(t, 'briefing', 7); // the move to Q7 is saved before the reload
   await t.reload();
   await expectPhase(t, 'briefing', 7);
 

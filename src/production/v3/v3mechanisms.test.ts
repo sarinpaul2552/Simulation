@@ -146,6 +146,10 @@ describe('E7 · financing-funded budget expansion', () => {
     expect(V3.validateQuarterInput(s1, plan(5, 3)).join(' ')).toMatch(/funded by new debt or equity/);
     expect(V3.validateQuarterInput(s1, plan(5, 5))).toEqual([]);
   });
+  it('no round trip: debt repaid in the same quarter does not fund an expansion', () => {
+    const rt: V2PlayerQuarterInput = { ...plan(5, 5), financing: [{ kind: 'debt', amount: 5 }, { kind: 'repay', amount: 5 }] };
+    expect(V3.validateQuarterInput(s1, rt).join(' ')).toMatch(/net of repayments/);
+  });
   it('an expansion is limited, and unavailable in Q1 and Q8', () => {
     const big = V3_ECONOMICS.financing.maxExpansion + 1;
     expect(V3.validateQuarterInput(s1, plan(big, big)).join(' ')).toMatch(/limited to/);

@@ -180,7 +180,7 @@ Cash-strained case (heavy spender, $30M invested every quarter):
 | enterprise-ai-pair | 145.2 / 65 / 100% / $0M | 140.9 / 31 / 100% / $30M | 135.0 / -5 / 100% / $60M | 129.0 / -43 / 100% / $90M |
 | university-led | 127.0 / 36 / 100% / $0M | 124.3 / 5 / 100% / $30M | 121.4 / -27 / 100% / $60M | 118.3 / -59 / 100% / $90M |
 | diversified | 136.8 / 88 / 100% / $0M | 131.0 / 53 / 100% / $30M | 125.5 / 17 / 100% / $60M | 120.4 / -19 / 100% / $90M |
-| adaptive | 150.3 / 92 / 100% / $0M | 149.4 / 62 / 100% / $30M | 145.7 / 29 / 100% / $60M | 143.5 / 6 / 100% / $90M |
+| adaptive | 150.3 / 92 / 100% / $0M | 149.7 / 68 / 100% / $25M | 146.6 / 40 / 100% / $50M | 144.0 / 11 / 100% / $75M |
 
 ## T9 · Q5 contract: accept vs decline (Q8 price / cumulative operating profit)
 

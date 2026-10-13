@@ -1000,8 +1000,11 @@ function checkExpansion(input: V2QuarterInput): number {
   if (!(exp > 0) || !Number.isFinite(exp)) throw new Error(`Budget expansion must be a positive amount, got ${exp}`);
   if (!K.quarters.includes(input.quarter) || input.finalDecision) throw new Error(`Budget expansion is not available in Q${input.quarter}`);
   if (exp > K.maxExpansion + 1e-9) throw new Error(`Budget expansion is limited to $${K.maxExpansion}M`);
-  const raised = (input.decisions?.financing ?? []).reduce((t, f) => t + ((f.kind === 'debt' || f.kind === 'equity') ? f.amount : 0), 0);
-  if (exp > raised + 1e-9) throw new Error(`Budget expansion of $${exp.toFixed(1)}M must be funded by new debt or equity raised this quarter ($${raised.toFixed(1)}M raised)`);
+  // Net new capital this quarter: debt drawn and equity issued, less any debt repaid in the same quarter (no round trip).
+  const fin = input.decisions?.financing ?? [];
+  const raised = fin.reduce((t, f) => t + ((f.kind === 'debt' || f.kind === 'equity') ? f.amount : f.kind === 'repay' ? -f.amount : 0), 0);
+  if (exp > raised + 1e-9) throw new Error(`Budget expansion of $${exp.toFixed(1)}M must be funded by new debt or equity raised this quarter, net of repayments ($${Math.max(0, raised).toFixed(1)}M raised)`);
+  if (input.decisions?.recessionStance === 'slow') throw new Error('A "slow" stance holds investment back; it cannot be combined with a financed budget expansion');
   if (Math.abs(input.strategicEnvelope - (K.baseEnvelope + exp)) > 0.01) throw new Error(`With a $${exp.toFixed(1)}M expansion the strategic budget is $${(K.baseEnvelope + exp).toFixed(1)}M, got ${input.strategicEnvelope}`);
   return exp;
 }
