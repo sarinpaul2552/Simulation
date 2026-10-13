@@ -82,8 +82,16 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   const setDelib = (patch: Partial<V2Deliberation>) => ctl.updateDeliberation(patch);
 
   const errors = useMemo(() => validateQuarterInput(snap, input), [snap, input]);
+  // While the plan is over budget (e.g. before a financed expansion is entered), the CFO panel still needs the terms on
+  // offer: forecast with the plan scaled down to the budget, so the financing and expansion controls stay available.
   const forecast: V2Forecast | null = useMemo(() => {
-    try { return invested <= envelope + 1e-9 ? forecastQuarter(snap, { ...input, financing: [] }) : null; } catch { return null; }
+    try {
+      if (invested <= envelope + 1e-9) return forecastQuarter(snap, { ...input, financing: [] });
+      const k = envelope / invested;
+      const scaled = { ...input.allocation, cashReserve: 0 };
+      for (const b of BUCKETS) scaled[b] = input.allocation[b] * k;
+      return forecastQuarter(snap, { ...input, allocation: scaled, financing: [] });
+    } catch { return null; }
   }, [snap, input, invested, envelope]);
 
   const beliefs = BELIEFS[q] ?? [];
@@ -191,7 +199,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
             </div>
           )}
           {prefillAfterFinal && <p className="ds-muted" data-testid="v2-prefill-after-final" style={{ margin: 0 }}>Choose your final strategic decision first: the budget depends on it. You can then start from last quarter’s allocation.</p>}
-          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={forecast} expansion={input.expansion ?? 0} />
+          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} />
           <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode}
             expansion={v3 && V3_ECONOMICS.financing.quarters.includes(q) && !spec.final ? { value: input.expansion ?? 0, max: V3_ECONOMICS.financing.maxExpansion, floor: V3_ECONOMICS.financing.cashFloor, onChange: x => set({ expansion: x > 0 ? x : undefined }) } : undefined} />
         </div>

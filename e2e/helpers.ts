@@ -11,7 +11,11 @@ export async function newPage(browser: Browser): Promise<{ ctx: BrowserContext; 
   return { ctx, page };
 }
 
-export async function createSession(page: Page, teams: string[], opts: { mode?: string; pacing?: string; presentation?: 'undergraduate' | 'mba'; commitment?: 'team_commitment' | 'private_vote' } = {}) {
+/**
+ * Create a session through the facilitator UI. `market`: a NexLearn V3 path ('A' | 'B' | 'C') or 'v2' (default — the
+ * pre-V3 suites test the original V2 economics, which stays available as "Original NexLearn").
+ */
+export async function createSession(page: Page, teams: string[], opts: { mode?: string; pacing?: string; presentation?: 'undergraduate' | 'mba'; commitment?: 'team_commitment' | 'private_vote'; market?: 'A' | 'B' | 'C' | 'v2' } = {}) {
   await page.goto('/');
   await page.getByTestId('v2-home-facilitator').click();
   await page.getByTestId('v2-setup-email').fill('facilitator@school.edu');
@@ -21,6 +25,7 @@ export async function createSession(page: Page, teams: string[], opts: { mode?: 
   if (opts.pacing) await page.getByTestId('v2-setup-pacing').selectOption(opts.pacing);
   if (opts.presentation) await page.getByTestId(`v2-setup-presentation-${opts.presentation}`).click();
   if (opts.commitment) await page.getByTestId(`v2-setup-commitment-${opts.commitment}`).click();
+  if (process.env.V2_COMPAT !== '1') await page.getByTestId(`v2-setup-market-${opts.market ?? 'v2'}`).click();
   await page.getByTestId('v2-setup-create').click();
   await expect(page.getByTestId('v2-fac-created')).toBeVisible();
   // On an older schema, requesting a mode it lacks (Undergraduate, or Team Commitment — the default) shows a warning
@@ -85,6 +90,7 @@ export async function fillDecision(page: Page, input: V2PlayerQuarterInput) {
   }
   if (input.destination) await page.getByTestId(`v2-dest-choice-${input.destination}`).click();
   if (input.opportunity) await page.getByTestId(input.opportunity.accept ? 'v2-opp-choice-accept' : 'v2-opp-choice-decline').click();
+  if (input.recessionStance) await page.getByTestId(`v2-stance-${input.recessionStance}`).click(); // V3: required before cost actions
   const m = input.management;
   if (m?.workforceReduction) {
     await page.getByTestId('v2-mgmt-workforce').selectOption(m.workforceReduction.depth);
@@ -103,6 +109,7 @@ export async function fillDecision(page: Page, input: V2PlayerQuarterInput) {
     if (f.kind === 'partner') await page.getByTestId('v2-fin-partner').check();
     if (f.kind === 'restructure') await page.getByTestId('v2-fin-restructure').selectOption(f.depth);
   }
+  if (input.expansion) await page.getByTestId('v2-fin-expansion').fill(String(input.expansion)); // V3 financed expansion
 }
 
 /**
