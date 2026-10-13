@@ -4,43 +4,75 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 
 ## Current batch
 
-**10B — V3 economic engine**: repository inspection complete; engine fork not started.
+**10C — executive decisions.** The engine rules for E5, E6 and E7 are already implemented and tested (done during 10B, because the laboratory needed them). Remaining for 10C:
+- UI for the contract claim, recession stance and budget expansion;
+- E8 saturation warning;
+- decision transparency;
+- the 10C report.
 
 ## Repository facts (verified at start)
 
 | Item | Finding |
 |---|---|
-| Integration branch | `feature/nexlearn-v3-integration`, created from `7e103fa` (Batch 10E tip). It contains Batch 10A (c5011f8, aac1a6b, d7ca7cf, 3f7fd16), Batch 10 design (bac387b) and Batch 9 (4b79a02). |
-| Preserved branches | `feature/batch10a-student-learning` (3f7fd16) and `feature/batch10e-facilitator` (7e103fa) are unchanged |
-| Frozen V2 engine | `src/simulation/*` and `src/production/v2/adapter.ts`. The freeze test is `scripts/lab/batch9/lab.test.ts` (`git diff --stat 003f697 -- src/simulation src/production/v2/adapter.ts` must be empty). **The whole `src/simulation` directory is frozen, so the V3 fork lives in `src/simulationV3/`.** |
-| Batch 9 lab | `scripts/lab/batch9/` (runner, strategies, experiments); `docs/batch9/`; `docs/BATCH9_ECONOMIC_BALANCE_REPORT.md` |
-| Batch 10 design | `docs/BATCH10_V3_ECONOMIC_DESIGN.md` (E1–E10), `BATCH10_V3_VALIDATION_PLAN.md` (H1–H13), `BATCH10_IMPLEMENTATION_ROADMAP.md`, `docs/batch10/diagnostics.json` |
-| Snapshot contract | `src/production/v2/snapshot.ts`: `engineVersion: 'v2-econ-batch4-frozen'`, strict `assertSnapshotContract` |
-| Server | Supabase RPCs (`SECURITY DEFINER`; block-all RLS). `sessions.engine_version` CHECK ('v1','v2'). `v2__check_input` requires the allocation total to equal `v2__envelope` (30; Q8 45/60). The client resolves quarters and stores snapshots (SEC-002). |
-| Local DB | `scripts/v2-local/up.sh`: PostgreSQL in `/tmp/v2pg`; the database is dropped and recreated on every run. **Confirmed disposable.** |
-| Facilitator/board integration | `ui/V2Facilitator.tsx`, `ui/FacilitatorDiscussion.tsx`, `insights/facilitator.ts`, `insights/intentOutcome.ts`, `ui/stages/FinalStage.tsx` |
+| Integration branch | `feature/nexlearn-v3-integration`, created from `7e103fa` (Batch 10E tip). |
+| Preserved branches | `feature/batch10a-student-learning` (3f7fd16) and `feature/batch10e-facilitator` (7e103fa) are unchanged. |
+| Frozen V2 engine | `src/simulation/*` and `src/production/v2/adapter.ts` (no diff vs `003f697`; asserted by `scripts/lab/batch9/lab.test.ts` and `scripts/lab/v3/lab.test.ts`). |
+| V3 engine | `src/simulationV3/engineV3*.ts` (fork). Switches and constants: `engineV3Config.ts`. Paths: `engineV3Paths.ts` (A/B/C all equal the V2 arc until 10D). |
+| V3 adapter | `src/production/v3/adapter.ts` (`engineVersion 'v3-econ-1.0'`, `marketPath`). |
+| Facade | `src/production/v2/engine.ts`: every UI, insight and service call dispatches on the snapshot. `GameConfig` = `{engine:'v2'}` or `{engine:'v3', path}`. |
+| Session config | `gameService.sessionConfig(session)` reads `econ_engine` and `market_path`; these columns come from the 10D migration and are absent today, which means V2. |
+| Server | `v2__check_input` requires the allocation total to equal `v2__envelope` (30; Q8 45/60). E7 expansion therefore needs a V3 branch in the migration (10D). |
+| Local DB | `scripts/v2-local/up.sh` recreates `/tmp/v2pg` on every run (disposable). |
 
 ## Completed work
 
-- [x] Master spec saved (`docs/NEXLEARN_V3_MASTER_SPEC.md`)
+- [x] Master spec saved
 - [x] Repository inspection
+- [x] V3 fork, facade and config-aware call sites (6681209)
+- [x] 10B mechanisms E1–E4, valuation VAL-1.1 (E9), and engine rules E5–E7 (2b53e03)
+- [x] V3 laboratory `scripts/lab/v3/` with tables `docs/v3lab/tables.md` and `results.json`
+- [x] `docs/BATCH10B_V3_ECONOMIC_REPORT.md` and `docs/BATCH10B_V2_V3_COMPARISON.md`
 
 ## Git commits (this assignment)
 
-_None yet._
+| Commit | Content |
+|---|---|
+| 6681209 | V3 fork, engine facade, config-aware integration |
+| 2b53e03 | E1–E4 economics, E5–E7 rules, V3 laboratory |
+| (next) | 10B reports and progress update |
 
 ## Test results
 
-_Not run yet in this assignment._ The historical 10E baseline was 727 unit passed / 18 skipped; 14 DB; E2E 24 / 1 skipped / 1 environment stall.
+| Run | Result |
+|---|---|
+| Unit (full suite, after 2b53e03) | 753 passed, 20 skipped |
+| Laboratory invariants | 5 passed (plus the table writer under `V3LAB_WRITE=1`) |
+| Type-check | clean |
+| DB / E2E | not run yet in this assignment |
 
 ## Known issues
 
-- E2E environment stalls (a page never loads or a fetch hangs for minutes). They recur about once per full run, on a different test each time. To be investigated in 10F.
+- E2E environment stalls: a page never loads, or a fetch hangs for minutes. They recur about once per full run, on a different test each time. To be investigated in 10F.
 
 ## Unresolved dependencies
 
-- A V3 session needs database support: `engine_version 'v3'` and a market-path column. Migration to be prepared and tested locally; production application needs approval.
+- Database support for V3 sessions (`econ_engine`, `market_path`, `v3_create_session`, V3 input check with expansion). To be prepared in 10D and tested only on the local disposable database.
+
+## Decisions taken (within the brief)
+
+| Decision | Rationale |
+|---|---|
+| V3 sessions keep `engine_version='v2'` (the platform and RPC family), with a separate `econ_engine` column | No existing RPC or check changes for V2 sessions. |
+| E5 contract claim | The upfront cost must be held in reserve: allocation still totals the budget, the cost is recorded once as an event cost tagged "paid from the strategic budget", and the tolerance is $0.01M. |
+| E6 recession stance | A stance is required in Q6 (V3): `protect` means no cost cuts; `slow` means ≥ $5M reserve; `cut` means at least one cost action. A hiring freeze with People funded is still rejected by the engine; the UI moves People to reserve first. |
+| E7 expansion | Budget = 30 + expansion, Q2–Q7 only, at most $10M. The expansion must be funded by debt or equity raised that quarter, and the expanded plan must keep closing cash ≥ $25M. |
 
 ## Next implementation task
 
-Fork the V2 engine into `src/simulationV3/` and implement the V3 mechanisms (E1–E4, E9).
+10C UI:
+1. Decision stage: stance selector in Q6 (with the freeze → People-to-reserve conversion shown).
+2. Contract claim shown as "$X of your $30M".
+3. Expansion control in the CFO financing panel (budget shown as 30 + X).
+4. Saturation warning (E8) in both engines.
+5. Decision summaries and the board resolution show stance, claim and expansion.
+6. Report.
