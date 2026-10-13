@@ -17,8 +17,9 @@ import { getRoleBrief, workingQuarter, initializeGame, replayInputs, configOf, t
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2Signal } from '../types';
 import { V2PresentationMode, ModeText, mt, pick } from './modes';
-import { evidenceKind, EvidenceKind, SIGNAL_PLAIN } from './scenarioContent';
-import { QUARTER_BRIEFS, ROLE_OBJECTIVES } from './briefings';
+import { evidenceKind, EvidenceKind } from './scenarioContent';
+import { ROLE_OBJECTIVES } from './briefings';
+import { signalPlainFor, quarterBriefFor, contentPath } from './paths';
 
 export interface RoleKnowledge { id: string; evidence: EvidenceKind; text: string; value?: string }
 export interface PositionRow { id: string; label: string; glossary?: string; value: string; start?: string; previous?: string; change?: { text: string; direction: 'up' | 'down' | 'flat' } }
@@ -143,8 +144,8 @@ export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2Pr
     };
   });
   const scenario = brief.signals.filter(x => x.kind !== 'measured');
-  const evidence: RoleKnowledge[] = scenario.map(s => ({ id: s.id, evidence: evidenceKind(s.kind as 'headline' | 'estimate' | 'lagging'), text: mode === 'undergraduate' && SIGNAL_PLAIN[s.id] ? SIGNAL_PLAIN[s.id] : s.label }));
-  const qb = QUARTER_BRIEFS[q]?.[role];
+  const evidence: RoleKnowledge[] = scenario.map(s => ({ id: s.id, evidence: evidenceKind(s.kind as 'headline' | 'estimate' | 'lagging'), text: mode === 'undergraduate' && signalPlainFor(s.id, contentPath(snap)) ? signalPlainFor(s.id, contentPath(snap))! : s.label }));
+  const qb = quarterBriefFor(q, role, contentPath(snap));
   return {
     role, title: ROLE_TITLES[role], perspective: PERSPECTIVE[role], responsibility: pick(mode, RESPONSIBILITY[role]),
     position, priority: priorityRows(role, position), evidence,

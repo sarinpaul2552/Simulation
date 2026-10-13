@@ -18,7 +18,9 @@ import { valuationSeries } from './valuation';
 import { decisionSummary } from './report';
 import { BELIEFS, CONFIDENCE_LEVELS, LEARNING_OPTIONS, RISKS, decodeReflection } from '../content/deliberationContent';
 import { DECISION_FRAMING, priorityLabel, evidenceLabel } from '../content/decisionFraming';
-import { Q3_SIGNAL_ASSESSMENTS, VERDICT_LABEL } from '../content/signalAssessments';
+import { VERDICT_LABEL } from '../content/signalAssessments';
+import { q3AssessmentsFor, contractShort } from '../content/paths';
+import type { MarketPathId } from '../snapshot';
 import { AGREEMENT_LABEL } from './debrief';
 import { destinationName, FINAL_LABELS } from '../ui/format';
 import { pick, V2PresentationMode } from '../content/modes';
@@ -51,7 +53,9 @@ export interface FacQuarter {
   cap: number | null;
 }
 
-export interface FacTeam { teamId: string; name: string; completed: number; quarters: FacQuarter[] }
+export interface FacTeam { teamId: string; name: string; completed: number; quarters: FacQuarter[]; /** Session market path (V2 sessions: 'A', the original arc). */ path?: MarketPathId }
+
+const assessmentOf = (path: MarketPathId | undefined, id: string) => q3AssessmentsFor(path ?? 'A').find(x => x.id === id);
 
 /** Build the per-team model from the facilitator debrief rows (resolved quarters only). */
 export function buildFacilitatorTeams(rows: V2DebriefRow[], cfg: GameConfig = V2_CONFIG): FacTeam[] {
@@ -60,7 +64,7 @@ export function buildFacilitatorTeams(rows: V2DebriefRow[], cfg: GameConfig = V2
     const history = inputs.length ? gameHistory(replayInputs(inputs, cfg)) : [];
     const prices = history.length ? valuationSeries(history).points : [];
     return {
-      teamId: r.team_id, name: r.team_name, completed: inputs.length,
+      teamId: r.team_id, name: r.team_name, completed: inputs.length, path: cfg.engine === 'v3' ? cfg.path : 'A',
       quarters: history.map((rec, i) => {
         const input = inputs[i];
         const dec = decodeReflection(r.reflections?.[i] ?? null);
@@ -111,7 +115,7 @@ export interface Q3SignalRow { id: string; label: string; citedBy: string[]; ver
 /** Which Q3 signals each team cited. Assessments are attached only when the gate is open. */
 export function q3SignalPanel(teams: FacTeam[], gateOpen: boolean, mode: V2PresentationMode): Q3SignalRow[] {
   return (DECISION_FRAMING[3].evidence ?? []).map(e => {
-    const a = Q3_SIGNAL_ASSESSMENTS.find(x => x.id === e.id);
+    const a = assessmentOf(teams[0]?.path, e.id);
     return {
       id: e.id, label: pick(mode, e.label),
       citedBy: teams.filter(t => t.quarters.find(q => q.quarter === 3)?.deliberation?.evidenceIds?.includes(e.id)).map(t => t.teamId),
@@ -140,7 +144,7 @@ export function fourColumns(q: FacQuarter, mode: V2PresentationMode): FourColumn
   const summary = decisionSummary(q.input);
   const event = [
     q.input.destination && `Destination: ${destinationName(q.input.destination)}`,
-    q.input.opportunity && (q.input.opportunity.accept ? 'Accepted the global contract' : 'Declined the global contract'),
+    q.input.opportunity && `${q.input.opportunity.accept ? 'Accepted' : 'Declined'} the ${contractShort(q.input.opportunity.offerId)}`,
     q.input.management && Object.keys(q.input.management).length > 0 && summary.split('; ').find(s => s.startsWith('recession actions')),
     q.input.crisisResponse && `Crisis response: ${q.input.crisisResponse}`,
     q.input.finalOption && `Final decision: ${FINAL_LABELS[q.input.finalOption]}`,
@@ -335,7 +339,7 @@ export function q3ToQ4(teams: FacTeam[], gateOpen: boolean, mode: V2Presentation
     return {
       teamId: t.teamId,
       signals: ids.map(id => evidenceLabel(3, id)).filter(Boolean).map(l => pick(mode, l!)),
-      verdicts: ids.map(id => { const a = Q3_SIGNAL_ASSESSMENTS.find(x => x.id === id); return gateOpen && a ? VERDICT_LABEL[a.verdict] : null; }),
+      verdicts: ids.map(id => { const a = assessmentOf(t.path, id); return gateOpen && a ? VERDICT_LABEL[a.verdict] : null; }),
       q4Priority: (() => { const l = priorityLabel(4, q4?.deliberation?.priorityId); return l ? pick(mode, l) : null; })(),
       destination: q4?.input.destination ? destinationName(q4.input.destination) : null,
     };

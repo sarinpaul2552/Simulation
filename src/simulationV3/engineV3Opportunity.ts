@@ -94,6 +94,46 @@ export const V2_OPPORTUNITIES: Record<string, V2OpportunityDefinition> = {
     focusDilution: 0.25,
     alignedDestinations: ['enterprise-ai'],
   },
+  /** Path B (Enterprise Transformation): a larger consortium programme in a strong enterprise market. */
+  'q5-enterprise-consortium': {
+    id: 'q5-enterprise-consortium',
+    quarter: 5,
+    name: 'Manufacturing consortium AI-reskilling programme',
+    description:
+      'Three global manufacturers want one AI reskilling programme across 25 countries within three quarters: $64M ACV, ' +
+      'strict SLAs, integration with three HR systems, a dedicated delivery team and roadmap commitments.',
+    acv: 64,
+    implementationCost: 7,
+    customizationCost: 6,
+    deliveryTeam: { quarterlyCost: 2, lag: 1, duration: 6 },
+    orgLoad: 16,
+    loadQuarters: 3,
+    alignedLoadFactor: 0.6,
+    roadmapDiversion: 0.25,
+    roadmapQuarters: 3,
+    focusDilution: 0.25,
+    alignedDestinations: ['enterprise-ai'],
+  },
+  /** Path C (Economic Pressure): a smaller, price-tight vendor-consolidation contract in a downturn. */
+  'q5-vendor-consolidation': {
+    id: 'q5-vendor-consolidation',
+    quarter: 5,
+    name: 'Retail vendor-consolidation training contract',
+    description:
+      'A global retailer consolidating its training suppliers offers a $32M ACV multi-year contract if we cut its training ' +
+      'costs by a fifth: tight pricing, SLAs, a dedicated delivery team and some product changes.',
+    acv: 32,
+    implementationCost: 4,
+    customizationCost: 3,
+    deliveryTeam: { quarterlyCost: 1.2, lag: 1, duration: 6 },
+    orgLoad: 10,
+    loadQuarters: 3,
+    alignedLoadFactor: 0.6,
+    roadmapDiversion: 0.15,
+    roadmapQuarters: 3,
+    focusDilution: 0.2,
+    alignedDestinations: ['enterprise-ai', 'balanced-marketplace'],
+  },
 };
 
 // ============ TYPES ============

@@ -16,7 +16,7 @@ import { framingFor, rationaleMissing } from '../../content/decisionFraming';
 import { gameHistory } from '../../insights/history';
 import { canPrefill, prefillAllocation, prefillLimit } from '../../insights/prefill';
 import { pick, V2PresentationMode } from '../../content/modes';
-import { CHAPTERS } from '../../content/chapters';
+import { chapterFor, contentPath } from '../../content/paths';
 import { calendarLabel } from '../../content/calendar';
 import { FINAL_LABELS, money, pct } from '../format';
 import { Card, ChoiceList, Fold, Icon, Section, Segmented } from '../ds/components';
@@ -116,7 +116,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-decide">
       <header >
-        <p className="ds-eyebrow">{calendarLabel(q)} · {CHAPTERS[q].title} · Discuss and decide</p>
+        <p className="ds-eyebrow">{calendarLabel(q)} · {chapterFor(q, contentPath(snap)).title} · Discuss and decide</p>
         <h1 className="ds-title" style={{ fontSize: 'var(--fs-page)' }} data-testid="v2-decision-heading">{hasEvent ? (EVENT_HEADING[q] ?? 'Make the call, then fund it.') : (framing?.heading ?? `How will you deploy ${money(envelope, 0)}?`)}</h1>
         {framing && <p className="ds-muted" style={{ margin: '4px 0 0' }} data-testid="v2-decision-prompt">{pick(mode, framing.prompt)} <span className="ds-small" data-testid="v2-pace" data-pace={framing.pace}>{framing.pace === 'fast' ? 'Fast quarter' : 'Major decision'} · about {framing.minutes} minutes for the whole quarter.</span></p>}
       </header>

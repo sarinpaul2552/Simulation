@@ -13,7 +13,7 @@ import type { V2CrisisResponseId } from '../../../simulation/engineV2Crisis';
 import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter, configOf, type GameConfig } from '../engine';
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2PlayerQuarterInput } from '../types';
-import { QUARTER_CARDS } from '../content/scenarioContent';
+import { quarterCardFor, contractShort, CONTRACT_LABEL } from '../content/paths';
 import { V2PresentationMode, pick, mt } from '../content/modes';
 import { gameHistory, startingCompany } from './history';
 import { quarterImpacts } from './explain';
@@ -68,7 +68,7 @@ export function decisionSummary(input: V2PlayerQuarterInput): string {
   if (ranked.length) parts.push(`Invested mostly in ${ranked.slice(0, 2).map(b => `${BUCKETS[b]} (${fmtM(a[b])})`).join(' and ')}`);
   if (a.cashReserve > 0.05) parts.push(`kept ${fmtM(a.cashReserve)} in reserve`);
   if (input.destination) parts.push(`committed to ${V2_DESTINATIONS[input.destination].name}`);
-  if (input.opportunity) parts.push(input.opportunity.accept ? 'accepted the global contract' : 'declined the global contract');
+  if (input.opportunity) parts.push(`${input.opportunity.accept ? 'accepted' : 'declined'} the ${contractShort(input.opportunity.offerId)}`);
   if (input.recessionStance) parts.push(`recession stance: ${input.recessionStance}`);
   if (input.management && Object.keys(input.management).length) parts.push(`recession actions: ${managementText(input.management)}`);
   if (input.financing?.length) parts.push(`financing: ${input.financing.map(f => f.kind + ('amount' in f ? ` ${fmtM(f.amount)}` : '')).join(', ')}`);
@@ -153,8 +153,8 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
     const alt = counterfactual(inputs, 5, { ...q5.input, opportunity: { ...q5.input.opportunity, accept: !accept } }, cfg);
     out.push({
       quarter: 5,
-      decision: accept ? 'Accepted the $48M global contract.' : 'Declined the $48M global contract.',
-      immediate: accept ? `Paid ${fmtM(upfront)} upfront and took on a delivery team and extra workload.` : 'Kept cash, people and roadmap focused on your own strategy.',
+      decision: `${accept ? 'Accepted' : 'Declined'} the $${CONTRACT_LABEL[q5.input.opportunity.offerId]?.acv ?? ''}M ${contractShort(q5.input.opportunity.offerId)}.`,
+      immediate: accept ? (q5.engine === 'v3' ? `Used ${fmtM(upfront)} of that quarter’s investment budget for implementation and took on a delivery team and extra workload.` : `Paid ${fmtM(upfront)} upfront and took on a delivery team and extra workload.`) : 'Kept cash, people and roadmap focused on your own strategy.',
       longerTerm: `Enterprise revenue went from ${fmtM(q5.before.segmentRevenue.enterprise)} (Q4 2023) to ${fmtM(s.segmentRevenue.enterprise)} (Q4 2024).`,
       counterfactual: alt ? pick(mode, mt(
         `Replaying your game with the opposite choice (everything else the same): Q4 2024 revenue ${fmtM(alt.revenue)} instead of ${fmtM(s.revenue)}, cash ${fmtM(alt.cash)} instead of ${fmtM(s.cash)}.`,
@@ -226,7 +226,7 @@ export function buildLearningReport(snap: V2GameSnapshot, mode: V2PresentationMo
   const timeline = h.map(x => {
     const top = quarterImpacts(x.consequence, x.after, mode)[0];
     return {
-      quarter: x.quarter, event: pick(mode, QUARTER_CARDS[x.quarter].headline), decision: decisionSummary(x.input),
+      quarter: x.quarter, event: pick(mode, quarterCardFor(x.quarter, x.path).headline), decision: decisionSummary(x.input),
       revenue: x.after.revenue, operatingProfit: x.after.operatingProfit, cash: x.after.cash,
       consequence: top ? top.text : `Revenue ${fmtM(x.after.revenue)}, cash ${fmtM(x.after.cash)}.`,
     };

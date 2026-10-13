@@ -7,7 +7,8 @@ import type { V2Deliberation, V2PlayerQuarterInput } from '../types';
 import type { GameConfig } from '../engine';
 import { buildFacilitatorTeams, teamTimeline, biggestChanges, type FacTeam, type TimelineRow } from './facilitator';
 import { evidenceLabel } from '../content/decisionFraming';
-import { Q3_SIGNAL_ASSESSMENTS, VERDICT_LABEL } from '../content/signalAssessments';
+import { VERDICT_LABEL } from '../content/signalAssessments';
+import { q3AssessmentsFor } from '../content/paths';
 import { destinationName } from '../ui/format';
 import { pick, V2PresentationMode } from '../content/modes';
 
@@ -37,7 +38,7 @@ export function rationalePrompts(team: FacTeam, mode: V2PresentationMode): Ratio
   const ids = q3?.deliberation?.evidenceIds ?? [];
   if (ids.length && q4) {
     const names = ids.map(id => evidenceLabel(3, id)).filter(Boolean).map(l => pick(mode, l!));
-    const verdicts = ids.map(id => { const a = Q3_SIGNAL_ASSESSMENTS.find(x => x.id === id); return a ? `${pick(mode, evidenceLabel(3, id)!)}: ${VERDICT_LABEL[a.verdict].toLowerCase()}` : null; }).filter(Boolean);
+    const verdicts = ids.map(id => { const a = q3AssessmentsFor(team.path ?? 'A').find(x => x.id === id); return a ? `${pick(mode, evidenceLabel(3, id)!)}: ${VERDICT_LABEL[a.verdict].toLowerCase()}` : null; }).filter(Boolean);
     out.push({
       id: 'q3-evidence',
       question: `In Q3 you cited ${names.join(' and ')}. How did that evidence shape your Q4 commitment to ${destinationName(q4.input.destination)}, and would you weight it the same way now?`,

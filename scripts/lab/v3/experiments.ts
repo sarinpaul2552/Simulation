@@ -138,7 +138,7 @@ export function contractClaim() {
 }
 
 // ─────────────── 8. Dominance: marginal $5M from a balanced base ───────────────
-export function marginal() {
+export function marginal(paths: V3MarketPathId[] = ['A']) {
   const base = a({ consumer: 6, enterprise: 6, aiProduct: 6, people: 6, universityCredentials: 6 });
   const buckets = ['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const;
   const strat = (id: string, alloc: ReturnType<typeof a>) => ({ id, name: id, description: id, allocate: () => alloc, destination: () => 'balanced-marketplace' });
@@ -150,5 +150,5 @@ export function marginal() {
       return { bucket: k, m: metricsOf(play(strat(`+5 ${k}`, alloc), cfg)) };
     }) };
   };
-  return { v2: run(V2C), v3: run(v3c()) };
+  return { v2: run(V2C), v3: run(v3c()), byPath: Object.fromEntries(paths.map(p => [p, run(v3c(p))])) as Record<V3MarketPathId, ReturnType<typeof run>> };
 }

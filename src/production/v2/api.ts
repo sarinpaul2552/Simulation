@@ -95,6 +95,8 @@ export interface V2CreatedSession {
   participation_mode: V2ParticipationMode;
   pacing: V2Pacing;
   commitment_mode?: V2CommitmentMode;
+  econ_engine?: 'v2' | 'v3';
+  market_path?: MarketPathId;
   teams: { team_id: string; team_code: string; team_name: string }[];
 }
 
@@ -148,8 +150,11 @@ export function createV2Api(client: SupabaseClient) {
     return data as T;
   }
   return {
-    createSession: (email: string, teamNames: string[], participationMode: V2ParticipationMode, pacing: V2Pacing) =>
-      call<V2CreatedSession>('v2_create_session', { p_facilitator_email: email, p_team_names: teamNames, p_participation_mode: participationMode, p_pacing: pacing }),
+    /** V2 session (original economics), or — with a market path — a NexLearn V3 session (requires the V3 migration). */
+    createSession: (email: string, teamNames: string[], participationMode: V2ParticipationMode, pacing: V2Pacing, marketPath?: MarketPathId) =>
+      marketPath
+        ? call<V2CreatedSession>('v3_create_session', { p_facilitator_email: email, p_team_names: teamNames, p_participation_mode: participationMode, p_pacing: pacing, p_market_path: marketPath })
+        : call<V2CreatedSession>('v2_create_session', { p_facilitator_email: email, p_team_names: teamNames, p_participation_mode: participationMode, p_pacing: pacing }),
     facilitatorOverview: (sessionCode: string, adminPin: string) =>
       call<V2FacilitatorOverview>('v2_facilitator_overview', { p_session_code: sessionCode, p_admin_pin: adminPin }),
     setOpenQuarter: (sessionCode: string, adminPin: string, quarter: number) =>

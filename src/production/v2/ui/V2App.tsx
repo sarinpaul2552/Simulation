@@ -7,7 +7,9 @@ import type { V2PresentationMode } from '../content/modes';
 import { teamSession, facilitatorSession } from './storage';
 import { V2TeamGame } from './V2TeamGame';
 import { V2Facilitator } from './V2Facilitator';
-import { ErrorBanner, Icon, Segmented } from './ds/components';
+import { ChoiceList, ErrorBanner, Icon, Segmented } from './ds/components';
+import { PATH_INFO } from '../content/paths';
+import type { MarketPathId } from '../snapshot';
 import './ds/ds.css';
 
 type Screen =
@@ -87,6 +89,8 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
   const [pacing, setPacing] = useState<V2Pacing>('facilitator');
   const [presentation, setPresentation] = useState<V2PresentationMode>('mba');
   const [commitment, setCommitment] = useState<'team_commitment' | 'private_vote'>('team_commitment');
+  /** NexLearn V3 market path ('A' | 'B' | 'C'), or 'v2' for the original V2 economics. Fixed once the session is created. */
+  const [market, setMarket] = useState<MarketPathId | 'v2'>('A');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setTeamCount = (n: number) => {
@@ -97,7 +101,15 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
   const create = async () => {
     setBusy(true); setError(null);
     try {
-      const created = await api.createSession(email.trim(), names.map(n => n.trim() || 'Team'), mode, pacing);
+      let created: V2CreatedSession;
+      try {
+        created = await api.createSession(email.trim(), names.map(n => n.trim() || 'Team'), mode, pacing, market === 'v2' ? undefined : market);
+      } catch (e) {
+        if (market !== 'v2' && /v3_create_session|function/i.test((e as Error).message)) {
+          throw new Error('NexLearn V3 market paths are not available on this database yet (the V3 migration has not been applied). Choose “Original NexLearn (V2)” or ask your administrator.');
+        }
+        throw e;
+      }
       const warnings: string[] = [];
       try { await api.setPresentationMode(created.session_code, created.admin_pin, presentation); }
       catch { if (presentation !== 'mba') warnings.push('Presentation modes are not available on this database yet, so this session uses MBA mode.'); }
@@ -122,6 +134,14 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
         <div className="ds-stack" style={{ gap: 4 }}><b>How teams commit each quarter</b>
           <Segmented testIdPrefix="v2-setup-commitment" value={commitment} onChange={setCommitment} options={[{ id: 'team_commitment', label: 'Team commitment' }, { id: 'private_vote', label: 'Private voting' }]} />
           <span className="ds-muted">{commitment === 'team_commitment' ? 'The team reviews its decision, records how it agreed, and one person commits it. Fastest for a 90-minute workshop.' : 'Each of the five leaders votes privately; votes are revealed together before the team commits.'} You can change this during the session.</span>
+        </div>
+        <div className="ds-stack" style={{ gap: 4 }} data-testid="v2-setup-market"><b>Market path</b>
+          <span className="ds-muted">Every team faces the same market. The path is fixed when the session is created and cannot be changed during the session.</span>
+          <ChoiceList name="market" testIdPrefix="v2-setup-market" value={[market]} onChange={v => setMarket(v[0] as MarketPathId | 'v2')}
+            options={[
+              ...(['A', 'B', 'C'] as const).map(p => ({ id: p, label: <span><b>{PATH_INFO[p].name}</b></span>, detail: `${PATH_INFO[p].theme} ${PATH_INFO[p].facilitatorNote}` })),
+              { id: 'v2', label: <span><b>Original NexLearn (V2 economics)</b></span>, detail: 'The previous economic model and its single market arc, for comparison with earlier classes.' },
+            ]} />
         </div>
         <label className="ds-stack" style={{ gap: 4 }}><b>Number of teams</b><input className="ds-input" style={{ width: 100 }} data-testid="v2-setup-count" type="number" min={1} max={30} value={count} onChange={e => setTeamCount(parseInt(e.target.value, 10))} /></label>
         <div className="ds-grid ds-grid-2">
@@ -157,6 +177,7 @@ function SessionCreated({ created, warning, onContinue }: { created: V2CreatedSe
           <div><div className="ds-muted">Session code</div><div className="ds-kpi-value" data-testid="v2-created-session-code">{created.session_code}</div></div>
           <div><div className="ds-muted">Admin PIN (keep private)</div><div className="ds-kpi-value" data-testid="v2-created-pin">{created.admin_pin}</div></div>
         </div>
+        <p style={{ margin: 0 }} data-testid="v2-created-market" data-path={created.market_path ?? 'v2'}><span className="ds-muted">Market path: </span><b>{created.market_path ? PATH_INFO[created.market_path].name : 'Original NexLearn (V2 economics)'}</b> <span className="ds-muted">— the same for every team; fixed for this session.</span></p>
         <table className="ds-table">
           <thead><tr><th>Team</th><th>Team code</th></tr></thead>
           <tbody>{created.teams.map(t => <tr key={t.team_id} data-testid="v2-created-team"><td>{t.team_name}</td><td><code data-testid="v2-created-team-code">{t.team_code}</code></td></tr>)}</tbody>

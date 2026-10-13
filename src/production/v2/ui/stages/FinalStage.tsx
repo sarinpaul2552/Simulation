@@ -5,6 +5,7 @@ import type { V2PresentationMode } from '../../content/modes';
 import { buildLearningReport, Finding } from '../../insights/report';
 import { gameHistory } from '../../insights/history';
 import { configOf } from '../../engine';
+import { PATH_INFO } from '../../content/paths';
 import { fmtM } from '../../insights/dashboard';
 import { kpiDashboard, type KpiDashboardRow } from '../../insights/intelligence';
 import { valuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, FACTOR_INFO } from '../../insights/valuation';
@@ -61,6 +62,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           <div className="ds-report-meta">
             <span>Strategy: <b>{strategy}</b></span>
             <span>Final decision: <b data-testid="v2-final-option">{finalMove}</b></span>
+            <span data-testid="v2-final-market">Market: <b>{game.snapshot.marketPath ? PATH_INFO[game.snapshot.marketPath].name : 'Original NexLearn'}</b></span>
             <span>Prepared from recorded simulation results</span>
           </div>
           <div className="ds-actions ds-no-print" style={{ marginTop: 10, justifyContent: 'flex-start' }}>

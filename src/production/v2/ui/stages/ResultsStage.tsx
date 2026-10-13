@@ -24,7 +24,7 @@ import { LEARNING_OPTIONS, encodeReflection, decodeReflection } from '../../cont
 import { AGREEMENTS } from './CommitStage';
 import { accountabilityRows, ACCOUNTABILITY_CAVEAT } from '../../insights/accountability';
 import { buildSignalReveal, signalRevealAvailable } from '../../insights/signalReveal';
-import { SIGNAL_REVEAL_SUMMARY } from '../../content/signalAssessments';
+import { revealSummaryFor } from '../../content/paths';
 import type { V2Deliberation } from '../../types';
 import { Card, ChoiceList, Figure, Icon, KpiTile, LineChart, Section, Segmented } from '../ds/components';
 
@@ -490,7 +490,7 @@ function SignalReveal({ history, quarter, cited }: { history: QuarterRecord[]; q
     <details className="ds-fold" open={open} onToggle={e => setOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-signal-reveal">
       <summary><span>Looking back: which signals mattered?</span><span className="ds-fold-hint">The {calendarLabel(3)} evidence, compared with what the market did</span></summary>
       <div className="ds-fold-body ds-stack">
-        <p style={{ margin: 0 }}>{SIGNAL_REVEAL_SUMMARY}</p>
+        <p style={{ margin: 0 }}>{revealSummaryFor(history[0]?.path ?? 'A')}</p>
         <div data-testid="v2-reveal-rows">{rows.map(r => (
           <div className="ds-reveal-row" key={r.id} data-signal={r.id} data-verdict={r.verdict}>
             <div><span className="ds-muted ds-small" style={{ display: 'block' }}>{r.source}{r.cited ? ' · you cited this' : ''}</span>{r.headline}</div>

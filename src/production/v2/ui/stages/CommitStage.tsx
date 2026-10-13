@@ -7,7 +7,7 @@ import type { V2TeamController } from '../useV2Team';
 import { priorityLabel, evidenceLabel } from '../../content/decisionFraming';
 import { pick, V2PresentationMode } from '../../content/modes';
 import { BELIEFS, RISKS, CONFIDENCE_LEVELS } from '../../content/deliberationContent';
-import { CHAPTERS } from '../../content/chapters';
+import { chapterFor, contractShort } from '../../content/paths';
 import { BUCKETS, BUCKET_INFO } from '../../insights/consequences';
 import { FINAL_LABELS, destinationName, money } from '../format';
 import { ChoiceList, ConfirmDialog, Icon } from '../ds/components';
@@ -58,7 +58,7 @@ function Resolution({ input, deliberation, quarter, mode, config }: { input: V2P
   const evidence = (deliberation?.evidenceIds ?? []).map(id => evidenceLabel(quarter, id)).filter(Boolean);
   const strategic = [
     input.destination && `Commit to ${destinationName(input.destination)}`,
-    input.opportunity && (input.opportunity.accept ? 'Accept the global contract' : 'Decline the global contract'),
+    input.opportunity && `${input.opportunity.accept ? 'Accept' : 'Decline'} the ${contractShort(input.opportunity.offerId)}`,
     input.recessionStance && `Recession stance: ${({ protect: 'protect investment', slow: 'slow investment', cut: 'cut costs' })[input.recessionStance]}`,
     input.management && Object.keys(input.management).length > 0 && `Recession actions: ${[input.management.workforceReduction && `${input.management.workforceReduction.depth} workforce reduction`, input.management.hiringFreeze && 'hiring freeze', input.management.pricing && (input.management.pricing === 'raise' ? 'raise prices' : 'discount prices'), input.management.closeWeakOfferings && 'close weak offerings', input.management.marketingLevel !== undefined && `marketing ${input.management.marketingLevel.toFixed(1)}×`].filter(Boolean).join(', ')}`,
     input.crisisResponse && `Crisis response: ${input.crisisResponse}`,
@@ -68,7 +68,7 @@ function Resolution({ input, deliberation, quarter, mode, config }: { input: V2P
     ...((input.expansion ?? 0) > 0 ? [`Add ${money(input.expansion!)} of the new money to this quarter’s investment budget`] : [])];
   return (
     <article className="ds-resolution" data-testid="v2-decision-summary">
-      <p className="ds-eyebrow">Board resolution · {calendarLabel(quarter)} · {CHAPTERS[quarter].title}</p>
+      <p className="ds-eyebrow">Board resolution · {calendarLabel(quarter)} · {chapterFor(quarter, config?.engine === 'v3' ? config.path : 'A').title}</p>
       <h2 className="ds-resolution-title">The leadership team resolves to…</h2>
       <dl>
         <dt>Invest {money(env, env % 1 ? 1 : 0)}</dt>

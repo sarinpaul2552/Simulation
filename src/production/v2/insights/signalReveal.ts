@@ -8,9 +8,10 @@
  * the team's own recorded values at the start of Q3 and the end of Q4. Recorded values are reported, not
  * interpreted: the team's own decisions also moved them.
  */
-import { getScenarioQuarter } from '../../../simulation/engineV2Scenario';
+import { pathArc } from '../../../simulationV3/engineV3Paths';
 import type { V2TeamState } from '../../../simulation/engineV2';
-import { Q3_SIGNAL_ASSESSMENTS, SignalAssessment, VERDICT_LABEL } from '../content/signalAssessments';
+import { SignalAssessment, VERDICT_LABEL } from '../content/signalAssessments';
+import { q3AssessmentsFor } from '../content/paths';
 import type { QuarterRecord } from './history';
 
 export const SIGNAL_REVEAL_QUARTER = 3;
@@ -54,8 +55,10 @@ export function buildSignalReveal(history: QuarterRecord[], completedQuarter: nu
   if (!signalRevealAvailable(completedQuarter)) return null;
   const q3 = history[SIGNAL_REVEAL_QUARTER - 1], q4 = history[SIGNAL_REVEAL_AFTER - 1];
   if (!q3 || !q4) return null;
-  const signals = getScenarioQuarter(SIGNAL_REVEAL_QUARTER)?.signals ?? [];
-  return Q3_SIGNAL_ASSESSMENTS.flatMap(a => {
+  // The game's own market path (V2 games: the original arc, identical to path A).
+  const path = q3.path ?? 'A';
+  const signals = pathArc(path).find(s => s.quarter === SIGNAL_REVEAL_QUARTER)?.signals ?? [];
+  return q3AssessmentsFor(path).flatMap(a => {
     const sig = signals.find(s => s.id === a.id);
     if (!sig) return [];
     return [{
