@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ARC_STRATEGIES, runArc, V2ArcRun } from '../../testlab/utils/v2ScenarioArc';
 import { getScenarioQuarter } from '../../simulation/engineV2Scenario';
-import { initializeGame, resolveQuarter, envelopeFor } from './adapter';
+import { initializeGame, resolveQuarter, envelopeFor, getDecisionSpec, validateQuarterInput } from './adapter';
 import type { V2Deliberation, V2PlayerQuarterInput } from './types';
 import { DECISION_FRAMING, rationaleMissing } from './content/decisionFraming';
 import { LEARNING_OPTIONS, encodeReflection, decodeReflection, RISKS, BELIEFS } from './content/deliberationContent';
@@ -13,7 +13,7 @@ import { Q3_SIGNAL_ASSESSMENTS } from './content/signalAssessments';
 import { gameHistory } from './insights/history';
 import { buildSignalReveal, signalRevealAvailable } from './insights/signalReveal';
 import { accountabilityRows, NOT_RECORDED, ACCOUNTABILITY_CAVEAT } from './insights/accountability';
-import { canPrefill, prefillAllocation, investedTotal } from './insights/prefill';
+import { canPrefill, prefillAllocation, prefillLimit, investedTotal } from './insights/prefill';
 import type { V2GameSnapshot } from './snapshot';
 
 function inputsOf(run: V2ArcRun): V2PlayerQuarterInput[] {
@@ -41,6 +41,8 @@ describe('Batch 10A · quarter framing (Q1–Q3 distinct, Q4–Q8 major)', () =>
     expect(h[0]).toBe('Where should we place our initial bets?');
     expect(h[2]).toBe('Which evidence do we trust?');
     for (const q of [1, 2, 3]) expect(DECISION_FRAMING[q].pace).toBe('fast');
+    // 90-minute plan: 3 × 6 + 5 × 9 = 63 minutes of quarters, leaving time for opening and a 20-minute board report and debrief
+    expect([1, 2, 3].reduce((t, q) => t + DECISION_FRAMING[q].minutes, 0) + [4, 5, 6, 7, 8].reduce((t, q) => t + DECISION_FRAMING[q].minutes, 0)).toBe(63);
     for (const q of [4, 5, 6, 7, 8]) { expect(DECISION_FRAMING[q].pace).toBe('major'); expect(DECISION_FRAMING[q].heading).toBeUndefined(); }
     const ids = [1, 2, 3].map(q => DECISION_FRAMING[q].priorities.map(p => p.id).join());
     expect(new Set(ids).size).toBe(3);
@@ -184,6 +186,70 @@ describe('Batch 10A · optional allocation prefill', () => {
       const out = resolveQuarter(s1, { quarter: 2, allocation: alloc });
       expect(out.snapshot.state.quarter).toBe(2);
     }
+  });
+
+  it('Q8: the offered plan never exceeds the chosen option’s investment cap or budget', () => {
+    const full = { consumer: 10, enterprise: 8, aiProduct: 7, people: 5, universityCredentials: 0, cashReserve: 0 }; // $30M invested
+    expect(prefillLimit(30, 10)).toBe(10);
+    expect(prefillLimit(30, undefined)).toBe(30);
+    expect(prefillLimit(20, 25)).toBe(20);
+    const capped = prefillAllocation(full, 30, 10);
+    expect(investedTotal(capped)).toBeLessThanOrEqual(10);
+    expect(capped.cashReserve).toBeCloseTo(30 - investedTotal(capped), 6);
+  });
+
+  it('Q8: for every strategy and every available final option, the prefilled plan passes the engine’s own validation', () => {
+    let checked = 0, capsSeen = 0;
+    for (const g of games) {
+      const snap = play(g.inputs, 7);
+      const spec = getDecisionSpec(snap)!;
+      expect(spec.final).toBeDefined();
+      const previous = g.inputs[6].allocation;
+      for (const o of spec.final!.options) {
+        const cap = o.terms.investmentCap;
+        if (cap !== undefined) capsSeen++;
+        const env = envelopeFor(8, o.id);
+        // A heavy previous plan as well as the strategy's own, to force scaling.
+        for (const prev of [previous, { consumer: 10, enterprise: 8, aiProduct: 7, people: 5, universityCredentials: 0, cashReserve: 0 }]) {
+          const alloc = prefillAllocation(prev, env, cap);
+          expect(investedTotal(alloc)).toBeLessThanOrEqual(prefillLimit(env, cap) + 1e-9);
+          if (!o.available) continue;
+          expect(validateQuarterInput(snap, { quarter: 8, allocation: alloc, finalOption: o.id }), `${g.id} ${o.id}`).toEqual([]);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(capsSeen).toBeGreaterThan(0); // the stabilize option's cap is present in the spec
+  });
+
+  it('Q8 stabilize-and-restructure: the uncapped plan breaks the engine cap, the offered (capped) plan does not', () => {
+    // A distressed company (all-in People every quarter, contract declined, crisis absorbed) has the option available.
+    const inputs: V2PlayerQuarterInput[] = [];
+    for (let q = 1; q <= 7; q++) {
+      const inp: V2PlayerQuarterInput = { quarter: q, allocation: { consumer: 0, enterprise: 0, aiProduct: 0, people: 30, universityCredentials: 0, cashReserve: 0 } };
+      if (q === 4) inp.destination = 'consumer-ai';
+      if (q === 5) inp.opportunity = { offerId: 'q5-global-enterprise', accept: false };
+      if (q === 7) inp.crisisResponse = 'absorb';
+      inputs.push(inp);
+    }
+    const snap = play(inputs, 7);
+    const opt = getDecisionSpec(snap)!.final!.options.find(o => o.id === 'stabilize-restructure')!;
+    expect(opt.available).toBe(true);
+    const cap = opt.terms.investmentCap!;
+    const env = envelopeFor(8, 'stabilize-restructure');
+    expect(cap).toBeLessThan(env);
+    const previous = inputs[6].allocation;
+    const uncapped = validateQuarterInput(snap, { quarter: 8, allocation: prefillAllocation(previous, env), finalOption: 'stabilize-restructure' });
+    expect(uncapped.join(' ')).toMatch(/caps Q8 strategic investment/);
+    const offered = prefillAllocation(previous, env, cap);
+    expect(investedTotal(offered)).toBeLessThanOrEqual(cap);
+    expect(validateQuarterInput(snap, { quarter: 8, allocation: offered, finalOption: 'stabilize-restructure' })).toEqual([]);
+  });
+
+  it('prefill is never re-offered over a plan the team has entered (no silent change after switching the Q8 option)', () => {
+    const entered = { consumer: 12, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0, cashReserve: 18 };
+    expect(canPrefill(entered, { consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 0, cashReserve: 10 })).toBe(false);
   });
 });
 

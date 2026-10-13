@@ -35,7 +35,7 @@ Every statement below was checked against the code at bac387b. File references a
 
 ## 3. Security findings
 
-1. **Scenario truth is already in the browser bundle.** The V2 engine runs client-side, so `engineV2Scenario.ts`, including every quarter's `truthReference`, ships in the JS bundle today. This predates Batch 10A. The reveal panel adds UI gating (authoritative `completed_quarter` from the server), but a determined student could read the bundle.
+1. **Scenario truth is already in the browser bundle** (now tracked as **SEC-001**, a commercial-release blocker: `SECURITY_ISSUE_SEC-001_SCENARIO_DATA_IN_BROWSER.md`). The V2 engine runs client-side, so `engineV2Scenario.ts`, including every quarter's `truthReference`, ships in the JS bundle today. This predates Batch 10A. The reveal panel adds UI gating (authoritative `completed_quarter` from the server), but a determined student could read the bundle.
    - **Proposed later fix (not in 10A; needs RPC and migration approval):** serve reveal content from a `SECURITY DEFINER` RPC that returns it only when the team's `completed_quarter ≥ 4`, and strip `truthReference` from the client build.
    - The new assessment text in `content/signalAssessments.ts` adds no information beyond what the bundle already contains.
 2. **Role-private signals in the reveal.** After Q4, the reveal names which role received each Q3 signal (for example "CFO brief"). This exposes *past* private information to the whole team. It is pedagogically intended, but it needs **product-owner confirmation**.

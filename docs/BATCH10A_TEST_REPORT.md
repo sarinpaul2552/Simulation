@@ -72,3 +72,39 @@ The reveal was first built as a four-column table, which was cramped at 375px. I
 - Classroom timing (estimates only; see the timing plan).
 - Concurrent reflection edits from several individual devices beyond "last save wins".
 - Production deployment (not performed).
+
+---
+
+## Correction round (after product-owner approval in principle)
+
+All items below were **executed** on the correction commit.
+
+| Check | Result |
+|---|---|
+| Type-check | Pass |
+| `npx vitest run` | **708 passed**, 18 skipped, 0 failed (+4 new tests: Q8 cap, Q8 engine validation for every strategy and option, distressed-company stabilize case, no re-offer over an entered plan; plus a 90-minute pace check) |
+| `npm run test:db` | **14 passed**. The first attempt failed 7 of 14 because the local stack had stopped while the container was idle; it passed after restarting the stack. |
+| `npm run build` | Pass |
+| Engine freeze diff | Empty |
+| Full E2E, correction run 1 | 23 passed, 1 skipped, 1 failed: `integrity › team commitment on individual devices` (commit button stayed disabled for 10 minutes). It then passed 6/6 with `--repeat-each 6`. |
+| Full E2E, correction run 2 (after the reliability fix below) | 23 passed, 1 skipped, 1 failed: `integrity › facilitator switches…` failed at its **first step**, because the home page never rendered the facilitator button in 10 minutes (a local-server stall, as in the earlier runs). |
+| Re-run `integrity.e2e.ts` + `batch10a.e2e.ts` | **9 passed** |
+
+### Reliability fix found during verification
+
+Investigating correction run 1 exposed a pre-existing race on individual devices, which Batch 10A's extra taps make more likely:
+1. A background poll (every 5 s) could replace the local draft while a draft save was still in flight.
+2. Each pick was merged into a render-time copy of the deliberation.
+
+Either could silently drop a just-made pick and leave "Review and commit" disabled.
+
+**Fix (`ui/useV2Team.ts`, `DecisionStage.tsx`):**
+- A poll no longer replaces local edits while a save is in flight; the next poll adopts the saved server copy.
+- Deliberation picks merge into the latest local draft (`updateDeliberation`).
+
+No server or data-model change was made. It is not proven that this race caused that particular failure: the environment also showed unrelated stalls.
+
+### Q8 prefill: what the new tests prove
+
+- For all 14 arc strategies and every available final option, the offered prefill passes the engine's own `validateQuarterInput` (both the strategy's own Q7 plan and a $30M plan).
+- For a distressed company where "stabilize and restructure" is available, the old uncapped prefill fails the engine's cap ("caps Q8 strategic investment at $10M"); the new capped offer passes.

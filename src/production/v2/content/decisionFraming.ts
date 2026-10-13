@@ -17,7 +17,7 @@ export type QuarterPace = 'fast' | 'major';
 
 export interface DecisionFraming {
   pace: QuarterPace;
-  /** Suggested discussion time on the decision screen (minutes; guidance only, not measured). */
+  /** Suggested time for the whole quarter, all four stages (minutes; 90-minute session plan; guidance only, not measured). */
   minutes: number;
   /** Heading for quarters without an event card (Q1–Q3). Event quarters keep their event heading. */
   heading?: string;
@@ -36,11 +36,11 @@ const GENERIC_PRIORITIES: Choice[] = [
   { id: 'organization', label: mt('Protect our people and organization', 'Organizational health and capacity') },
 ];
 
-const MAJOR = (prompt: ModeText): DecisionFraming => ({ pace: 'major', minutes: 12, prompt, priorityQuestion: 'What matters most this quarter?', priorities: GENERIC_PRIORITIES });
+const MAJOR = (prompt: ModeText): DecisionFraming => ({ pace: 'major', minutes: 9, prompt, priorityQuestion: 'What matters most this quarter?', priorities: GENERIC_PRIORITIES });
 
 export const DECISION_FRAMING: Record<number, DecisionFraming> = {
   1: {
-    pace: 'fast', minutes: 8,
+    pace: 'fast', minutes: 6,
     heading: 'Where should we place our initial bets?',
     prompt: mt('You cannot fund everything. Agree what matters most first, then size the bets.', 'Capital is constrained. Agree the objective first, then allocate against it.'),
     priorityQuestion: 'Our strategic priority',
@@ -52,7 +52,7 @@ export const DECISION_FRAMING: Record<number, DecisionFraming> = {
     ],
   },
   2: {
-    pace: 'fast', minutes: 8,
+    pace: 'fast', minutes: 6,
     heading: 'Accelerate, maintain or reconsider?',
     prompt: mt('The market is changing fast. Agree your stance first. There is no single correct answer — defend yours with evidence.', 'Take a position on the disruption and defend it with evidence. No stance is correct by default.'),
     priorityQuestion: 'Our stance on the disruption',
@@ -63,7 +63,7 @@ export const DECISION_FRAMING: Record<number, DecisionFraming> = {
     ],
   },
   3: {
-    pace: 'fast', minutes: 8,
+    pace: 'fast', minutes: 6,
     heading: 'Which evidence do we trust?',
     prompt: mt('Your briefs disagree. Name the one or two signals that most shape your decision, then fund it.', 'The signals conflict. Identify the evidence you weight most heavily, then allocate.'),
     priorityQuestion: 'Our strategic priority',

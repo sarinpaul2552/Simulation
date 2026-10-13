@@ -1,6 +1,6 @@
 # Batch 10A — handoff
 
-**Status:** implemented and tested on branch `feature/batch10a-student-learning`. It is **not pushed, not merged and not deployed**, pending product-owner approval. Do not begin 10E until approved.
+**Status:** approved in principle; correction applied; implemented and tested on branch `feature/batch10a-student-learning`. It is **not pushed, not merged and not deployed**, pending product-owner approval. Do not begin 10E until approved.
 
 ## What changed
 
@@ -19,7 +19,7 @@ See `BATCH10A_STUDENT_EXPERIENCE_CHANGES.md`. In short:
 |---|---|
 | New | `content/decisionFraming.ts`, `content/signalAssessments.ts`, `insights/signalReveal.ts`, `insights/accountability.ts`, `insights/prefill.ts`, `batch10a.test.ts`, `e2e/batch10a.e2e.ts` |
 | Modified | `types.ts` (two optional deliberation keys), `content/deliberationContent.ts` (one learning chip), `ui/useV2Team.ts` (`persistReflection`), `ui/stages/DecisionStage.tsx`, `DecisionSummary.tsx`, `CommitStage.tsx`, `ResultsStage.tsx`, `ui/ds/ds.css` (reveal layout only), `insights/report.ts`, `insights/explain.ts`, `insights/briefing.ts`, `e2e/helpers.ts` (one risk; priority; Q3 evidence; reflection refresh check) |
-| Docs | `docs/BATCH10A_*.md` (5) |
+| Docs | `docs/BATCH10A_*.md` (5), `docs/SECURITY_ISSUE_SEC-001_SCENARIO_DATA_IN_BROWSER.md` |
 
 All application paths are under `src/production/v2/`.
 
@@ -29,17 +29,34 @@ All application paths are under `src/production/v2/`.
 - `package.json`;
 - environment variables, Vercel and Supabase.
 
-## Decisions for the product owner
+## Product-owner decisions (approved in principle) and how they are applied
 
-1. **Role-private signals in the reveal.** After Q4 the reveal names the brief each Q3 signal came from (for example "CFO brief"), so the whole team sees what each role was told in Q3. **Approve or ask for anonymized sources.**
-2. **One risk instead of two.** This is a requirement change, made as the Batch 10 brief recommended. Old two-risk records still display.
-3. **Reflection requirement kept.** At least one learning chip is still required to continue; text stays optional. Relaxing it to fully optional is a one-line change, if wanted.
-4. **"Culture paid for it" (`adapter.ts:539`).** No freeze exception is needed: the text is never rendered (verified; a guard test is added). Recommendation: leave the frozen file untouched and remove the string in V3.
-5. **Prefill in Q8.** Prefill copies only buckets, but some Q8 final options cap investment. The engine's existing validation still blocks an over-cap plan with a plain message. Accept, or hide prefill in Q8.
+| # | Decision | Status |
+|---|---|---|
+| 1 | Keep the Q3 signal-source executive names visible in the reveal | Kept as built ("CFO brief", "Growth brief"…) |
+| 2 | Single biggest risk | Confirmed as built; older two-risk records still display |
+| 3 | One required structured learning choice | Kept: "Save and continue" stays disabled until one choice is made; the written line is optional |
+| 4 | Q8 prefill must never offer a plan that breaks the investment cap; no silent changes | **Fixed in the correction commit**, see below |
+| 5 | Preserve engine, database and scoring | Freeze diff empty; no database, RLS, RPC or scoring change |
+| 6 | Browser exposure of future scenario data | Recorded as **SEC-001**, a release blocker for commercial use (`SECURITY_ISSUE_SEC-001_SCENARIO_DATA_IN_BROWSER.md`) |
+| 7 | 90-minute timing with at least 20 minutes for the board report and debrief | `BATCH10A_CLASSROOM_TIMING_PLAN.md` revised; on-screen pace hints now 6 and 9 minutes per quarter |
+
+### Q8 prefill correction
+
+- In Q8, prefill is offered only **after** a final option is chosen, because the budget and the cap depend on it.
+- The offered plan is fitted to the lower of the option's budget and its investment cap ($10M for "stabilize and restructure").
+- Switching the option after prefilling never rewrites the plan. Prefill is not re-offered over an entered plan, and the engine's existing message asks the team to reduce the plan if it exceeds the new cap.
+- **Tests:**
+  - for every strategy and every available final option, the offered plan passes the engine's own validation;
+  - for a distressed company where "stabilize and restructure" is available, the old uncapped plan fails the engine's cap and the new capped plan passes.
+
+### Reliability fix (found while verifying)
+
+On individual devices, a background poll could overwrite picks that were still being saved. That could leave "Review and commit" disabled. The fix keeps local edits until the save completes, and merges each pick into the latest draft. It touches only `ui/useV2Team.ts` and `DecisionStage.tsx`; there is no server change. See the test report.
 
 ## Security notes
 
-- **Pre-existing: scenario truth ships in the client bundle.** The V2 engine runs in the browser, so `engineV2Scenario.ts`, including `truthReference`, is in the JS bundle, as it was before 10A. The reveal gate is UI-level, using the authoritative server `completed_quarter`.
+- **SEC-001 (open, blocks commercial release).** Future scenario data, hidden truth, design notes and role-private brief content are in the production JS bundle because the V2 engine runs in the browser. This predates 10A and was verified on a production build. The reveal gate is UI-level, using the authoritative server `completed_quarter`. The resolution plan and acceptance criteria are in `SECURITY_ISSUE_SEC-001_SCENARIO_DATA_IN_BROWSER.md`.
 - **Proposed for later (needs RPC and migration approval, so it is not done here):** a `SECURITY DEFINER` RPC `v2_get_signal_reveal(team_code)` that returns the assessments only when the team's `completed_quarter ≥ 4`, plus stripping `truthReference` and `designNotes` from the client build. The latter needs either a build-time transform or moving the scenario truth server-side; it touches the frozen scenario file, so it should be decided together with V3.
 - No new write path. Reflection saves use the existing `v2_save_reflection` RPC with the team code: no phase restriction, and the quarter must be resolved.
 - Nothing here exposes future-quarter information: the reveal uses Q3 truth plus the team's Q3–Q4 records only, and is tested to be identical at Q4 and Q8.

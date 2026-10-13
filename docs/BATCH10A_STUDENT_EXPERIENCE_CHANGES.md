@@ -31,7 +31,7 @@ Taps per quarter: 4 before (belief, confidence, two risks), 4 after (priority, b
 | Q3 | Which evidence do we trust? | Get ready for the likely direction · Keep options open · Protect current revenue · Test small. **Plus the evidence pick**: eight sources, named by brief only (for example "Paying-subscriber cohort analysis (CFO brief)"). They carry no figures and no hint of reliability. |
 | Q4–Q8 | The existing event headings | Generic priorities: grow revenue · protect cash and resilience · build capability · protect people and organization |
 
-- Each quarter shows a one-line prompt and a pace hint: "Fast quarter · suggested about 8 minutes" (Q1–Q3) or "Major decision · about 12 minutes" (Q4–Q8). These times are guidance, not measured.
+- Each quarter shows a one-line prompt and a pace hint for the whole quarter, taken from the 90-minute plan: "Fast quarter · about 6 minutes" (Q1–Q3) and "Major decision · about 9 minutes" (Q4–Q8). These times are guidance, not measured.
 - The decision summary and the board resolution (Commit stage) now show the priority or stance and, in Q3, the signals cited.
 
 ## 3. "Looking back: which signals mattered?" (Q3 signal reveal)
@@ -99,6 +99,9 @@ Missing values show "Not recorded", so old games still render.
 - **When.** Shown only when a previous quarter exists and the current draft invests nothing, so it never overwrites a draft.
 - **What it copies.** The five bucket amounts only, never event, financing or management choices. If they exceed this quarter's budget, they are scaled down in $0.5M steps; the remainder is kept as cash.
 - **What it does not do.** It writes the draft only: the team still completes the rationale, reviews and commits. Every validation and event card applies as before.
+- **Q8 (correction after review).** The Q8 budget and any investment cap depend on the final option. Prefill is therefore offered only after a final option is chosen; before that, a line says "Choose your final strategic decision first". The offered plan is fitted to the lower of the budget and that option's investment cap ("stabilize and restructure" caps investment at $10M).
+  - If the team later switches to an option with a lower cap, nothing is rewritten silently. Prefill is not offered again over a plan already entered, and the engine's existing validation message asks the team to reduce the plan.
+  - A test reproduces the original defect: the uncapped prefill fails the engine's cap check for a distressed company, and the capped offer passes.
 
 ## 8. Not changed
 

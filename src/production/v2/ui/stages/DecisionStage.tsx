@@ -12,7 +12,7 @@ import { defaultInput } from '../useV2Team';
 import { BELIEFS, RISKS, CONFIDENCE_LEVELS } from '../../content/deliberationContent';
 import { framingFor, rationaleMissing } from '../../content/decisionFraming';
 import { gameHistory } from '../../insights/history';
-import { canPrefill, prefillAllocation } from '../../insights/prefill';
+import { canPrefill, prefillAllocation, prefillLimit } from '../../insights/prefill';
 import { pick, V2PresentationMode } from '../../content/modes';
 import { CHAPTERS } from '../../content/chapters';
 import { calendarLabel } from '../../content/calendar';
@@ -59,7 +59,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
     ctl.updateDraft({ input: next, quarter: q });
   };
   const setBucket = (b: keyof V2Allocation, v: number) => set({ allocation: { ...input.allocation, [b]: Number.isFinite(v) && v > 0 ? v : 0 } });
-  const setDelib = (patch: Partial<V2Deliberation>) => ctl.updateDraft({ deliberation: { ...delib, ...patch } });
+  const setDelib = (patch: Partial<V2Deliberation>) => ctl.updateDeliberation(patch);
 
   const errors = useMemo(() => validateQuarterInput(snap, input), [snap, input]);
   const forecast: V2Forecast | null = useMemo(() => {
@@ -74,7 +74,13 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   const evidenceIds = delib.evidenceIds ?? [];
   const discussionMissing = rationaleMissing(q, delib);
   const previous = q > 1 ? gameHistory(snap)[q - 2]?.input.allocation : undefined;
-  const offerPrefill = canPrefill(input.allocation, previous);
+  // Q8: the budget and any investment cap depend on the final option, so prefill is offered only once it is chosen,
+  // and the offered plan is fitted to that option's cap. A later change of option never rewrites the plan.
+  const investCap = spec.final?.options.find(o => o.id === input.finalOption)?.terms.investmentCap;
+  const finalPending = !!spec.final && !input.finalOption;
+  const prefillMax = prefillLimit(envelope, investCap);
+  const offerPrefill = canPrefill(input.allocation, previous) && !finalPending;
+  const prefillAfterFinal = canPrefill(input.allocation, previous) && finalPending;
   const finErrors = forecast ? checkFinancing(forecast.options, input.financing ?? [], snap.state.financing.debt, snap.state.financing.ownership).errors : [];
   const ready = errors.length === 0 && discussionMissing.length === 0 && finErrors.length === 0;
   const [showNote, setShowNote] = useState(mode === 'mba' || !!delib.note);
@@ -92,7 +98,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
       <header >
         <p className="ds-eyebrow">{calendarLabel(q)} · {CHAPTERS[q].title} · Discuss and decide</p>
         <h1 className="ds-title" style={{ fontSize: 'var(--fs-page)' }} data-testid="v2-decision-heading">{hasEvent ? (EVENT_HEADING[q] ?? 'Make the call, then fund it.') : (framing?.heading ?? `How will you deploy ${money(envelope, 0)}?`)}</h1>
-        {framing && <p className="ds-muted" style={{ margin: '4px 0 0' }} data-testid="v2-decision-prompt">{pick(mode, framing.prompt)} <span className="ds-small" data-testid="v2-pace" data-pace={framing.pace}>{framing.pace === 'fast' ? 'Fast quarter' : 'Major decision'} · suggested about {framing.minutes} minutes.</span></p>}
+        {framing && <p className="ds-muted" style={{ margin: '4px 0 0' }} data-testid="v2-decision-prompt">{pick(mode, framing.prompt)} <span className="ds-small" data-testid="v2-pace" data-pace={framing.pace}>{framing.pace === 'fast' ? 'Fast quarter' : 'Major decision'} · about {framing.minutes} minutes for the whole quarter.</span></p>}
       </header>
 
       {hasEvent && (
@@ -151,11 +157,12 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
             <div className="ds-callout" data-testid="v2-prefill-offer">
               <Icon name="clock" />
               <span>Last quarter you invested {BUCKETS.filter(b => previous[b] > 0).map(b => `${BUCKET_INFO[b].short} ${money(previous[b])}`).join(' · ')}. You can start from that allocation and adjust it.{' '}
-                <button className="ds-btn ds-btn-secondary" data-testid="v2-prefill" onClick={() => set({ allocation: prefillAllocation(previous, envelope) })}>Start from last quarter’s allocation</button>
-                <span className="ds-muted" style={{ display: 'block', marginTop: 4 }}>Copies the five investment amounts only{investedTotalOf(previous) > envelope ? `, scaled to this quarter’s ${money(envelope, 0)} budget` : ''}. Nothing is committed until the team commits.</span>
+                <button className="ds-btn ds-btn-secondary" data-testid="v2-prefill" onClick={() => set({ allocation: prefillAllocation(previous, envelope, investCap) })}>Start from last quarter’s allocation</button>
+                <span className="ds-muted" style={{ display: 'block', marginTop: 4 }}>Copies the five investment amounts only{investedTotalOf(previous) > prefillMax ? `, scaled down to ${investCap !== undefined && investCap < envelope ? `the ${money(investCap, 0)} investment cap of your chosen option` : `this quarter’s ${money(envelope, 0)} budget`}` : ''}. Nothing is committed until the team commits.</span>
               </span>
             </div>
           )}
+          {prefillAfterFinal && <p className="ds-muted" data-testid="v2-prefill-after-final" style={{ margin: 0 }}>Choose your final strategic decision first: the budget depends on it. You can then start from last quarter’s allocation.</p>}
           <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={forecast} />
           <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode} />
         </div>

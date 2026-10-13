@@ -16,10 +16,23 @@ export function canPrefill(current: Allocation, previous: Allocation | undefined
   return !!previous && investedTotal(previous) > 0 && investedTotal(current) === 0;
 }
 
-/** The previous buckets, fitted to the envelope (rounded down to $0.5M steps), with the rest kept as cash. */
-export function prefillAllocation(previous: Allocation, envelope: number): Allocation {
+/**
+ * The most a prefilled plan may invest: this quarter's envelope, further limited by any investment cap attached to
+ * the chosen decision (Q8 "stabilize and restructure" caps investment below the envelope).
+ */
+export function prefillLimit(envelope: number, investmentCap?: number): number {
+  return investmentCap !== undefined && Number.isFinite(investmentCap) ? Math.max(0, Math.min(envelope, investmentCap)) : envelope;
+}
+
+/**
+ * The previous buckets, fitted to the envelope and any investment cap (rounded down to $0.5M steps), with the rest of
+ * the envelope kept as cash. This only builds an offer: it is applied when the team presses the button, and never
+ * changes a plan the team has already entered.
+ */
+export function prefillAllocation(previous: Allocation, envelope: number, investmentCap?: number): Allocation {
+  const limit = prefillLimit(envelope, investmentCap);
   const total = investedTotal(previous);
-  const scale = total > envelope ? envelope / total : 1;
+  const scale = total > limit ? limit / total : 1;
   const out = { consumer: 0, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0, cashReserve: 0 } as Allocation;
   for (const b of BUCKETS) out[b] = Math.floor(((previous[b] || 0) * scale) * 2 + 1e-9) / 2;
   out.cashReserve = Math.round(Math.max(0, envelope - investedTotal(out)) * 100) / 100;
