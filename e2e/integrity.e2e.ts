@@ -3,8 +3,10 @@
  */
 import { test, expect } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
-import { newPage, createSession, joinTeam, expectPhase, fillDecision, fillDiscussion, ROLES } from './helpers';
+import { newPage, createSession, joinTeam, expectPhase, fillDecision, fillDiscussion, ROLES, closeAllContexts } from './helpers';
 import { createV2Api } from '../src/production/v2/api';
+
+test.afterEach(closeAllContexts);
 
 const api = createV2Api(createClient('http://localhost:54321', process.env.V2_DB_KEY!, { auth: { persistSession: false } }));
 const Q1 = { quarter: 1, allocation: { consumer: 10, enterprise: 10, aiProduct: 10, people: 0, universityCredentials: 0, cashReserve: 0 } };

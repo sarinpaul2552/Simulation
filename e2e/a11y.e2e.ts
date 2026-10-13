@@ -4,9 +4,11 @@
  */
 import { test, expect, Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { newPage, createSession, joinTeam, playQuarter, expectPhase } from './helpers';
+import { newPage, createSession, joinTeam, playQuarter, expectPhase, closeAllContexts } from './helpers';
 import { V2_BASE_ENVELOPE } from '../src/production/v2/adapter';
 import type { V2PlayerQuarterInput } from '../src/production/v2/types';
+
+test.afterEach(closeAllContexts);
 
 const alloc = (p: Partial<V2PlayerQuarterInput['allocation']>): V2PlayerQuarterInput['allocation'] => {
   const a = { consumer: 0, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0, ...p };

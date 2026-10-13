@@ -12,9 +12,11 @@
  *  - invalid decisions are blocked with a named reason (contract without room; stance missing).
  */
 import { test, expect, Page } from '@playwright/test';
-import { newPage, createSession, joinTeam, playQuarter, openQuarter, expectPhase } from './helpers';
+import { newPage, createSession, joinTeam, playQuarter, openQuarter, expectPhase, closeAllContexts } from './helpers';
 import type { V2PlayerQuarterInput } from '../src/production/v2/types';
 import { PATH_B_CONTENT } from '../src/production/v2/content/pathB';
+
+test.afterEach(closeAllContexts);
 
 type Alloc = V2PlayerQuarterInput['allocation'];
 const alloc = (p: Partial<Alloc>, budget = 30): Alloc => {

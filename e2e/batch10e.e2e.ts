@@ -4,9 +4,11 @@
  * clock (never changes the game), the final debrief and the board report's "Intent and outcome".
  */
 import { test, expect, Page } from '@playwright/test';
-import { newPage, createSession, joinTeam, playQuarter, expectPhase } from './helpers';
+import { newPage, createSession, joinTeam, playQuarter, expectPhase, closeAllContexts } from './helpers';
 import { V2_BASE_ENVELOPE } from '../src/production/v2/adapter';
 import type { V2PlayerQuarterInput } from '../src/production/v2/types';
+
+test.afterEach(closeAllContexts);
 
 declare const process: { env: Record<string, string | undefined> };
 const SHOTS = process.env.V2_SHOTS_DIR;

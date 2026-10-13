@@ -3,9 +3,11 @@
  * reflection persistence across refresh, and the gated Q3 signal reveal (desktop and 375px).
  */
 import { test, expect, Page } from '@playwright/test';
-import { newPage, createSession, joinTeam, playQuarter, expectPhase, readBriefings, fillDiscussion, refreshAndExpect } from './helpers';
+import { newPage, createSession, joinTeam, playQuarter, expectPhase, readBriefings, fillDiscussion, refreshAndExpect, closeAllContexts } from './helpers';
 import { V2_BASE_ENVELOPE } from '../src/production/v2/adapter';
 import type { V2PlayerQuarterInput } from '../src/production/v2/types';
+
+test.afterEach(closeAllContexts);
 
 declare const process: { env: Record<string, string | undefined> };
 const SHOTS = process.env.V2_SHOTS_DIR;

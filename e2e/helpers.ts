@@ -4,8 +4,20 @@ import { calendarLabel } from '../src/production/v2/content/calendar';
 
 export const ROLES: V2Role[] = ['CEO', 'CFO', 'Product', 'People', 'Growth'];
 
+/** Contexts opened by newPage; closed after every test (see closeAllContexts). */
+const OPEN: BrowserContext[] = [];
+/**
+ * Close every browser context the test opened. The worker's browser is shared by all tests, and contexts left open
+ * accumulated across the suite (dozens of renderer processes by the last files) — the likely cause of the
+ * late-suite "page never loads" stalls. Each spec registers this with test.afterEach.
+ */
+export async function closeAllContexts() {
+  while (OPEN.length) await OPEN.pop()!.close().catch(() => undefined);
+}
+
 export async function newPage(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
   const ctx = await browser.newContext();
+  OPEN.push(ctx);
   const page = await ctx.newPage();
   page.on('pageerror', e => { throw e; });
   return { ctx, page };
@@ -25,7 +37,7 @@ export async function createSession(page: Page, teams: string[], opts: { mode?: 
   if (opts.pacing) await page.getByTestId('v2-setup-pacing').selectOption(opts.pacing);
   if (opts.presentation) await page.getByTestId(`v2-setup-presentation-${opts.presentation}`).click();
   if (opts.commitment) await page.getByTestId(`v2-setup-commitment-${opts.commitment}`).click();
-  if (process.env.V2_COMPAT !== '1') await page.getByTestId(`v2-setup-market-${opts.market ?? 'v2'}`).click();
+  await page.getByTestId(`v2-setup-market-${opts.market ?? 'v2'}`).click();
   await page.getByTestId('v2-setup-create').click();
   await expect(page.getByTestId('v2-fac-created')).toBeVisible();
   // On an older schema, requesting a mode it lacks (Undergraduate, or Team Commitment — the default) shows a warning
