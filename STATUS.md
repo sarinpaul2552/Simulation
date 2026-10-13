@@ -1,3 +1,12 @@
+# CURRENT STATUS — Batch 9 economic balance laboratory (2026-10-13, analysis only)
+
+- Headless lab on the frozen engine: `scripts/lab/batch9/` (≈19,700 eight-quarter runs). Workbook
+  `docs/batch9/NEXLEARN_ECONOMIC_BALANCE_STUDY.xlsx`; report `docs/BATCH9_ECONOMIC_BALANCE_REPORT.md`.
+- Findings: Consumer is not dominant (Consumer-only 7th of 10, 27th percentile); AI/Product is dominant and part of every
+  winning allocation; Enterprise is not viable as a lead (last in all 10 scenarios); University adds no revenue within 8
+  quarters. Recommended minimal calibration package PR (5 changes) tested in memory only; nothing changed in the engine,
+  database or deployed app.
+
 # CURRENT STATUS — Batch 8.1 deployed to production (2026-10-12)
 
 - Live at https://simulation26.vercel.app from `main` (Batches 7.5, 8, 8.1 at f141453, plus the mobile board-report fix).
