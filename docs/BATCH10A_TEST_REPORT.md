@@ -106,5 +106,5 @@ No server or data-model change was made. It is not proven that this race caused 
 
 ### Q8 prefill: what the new tests prove
 
-- For all 14 arc strategies and every available final option, the offered prefill passes the engine's own `validateQuarterInput` (both the strategy's own Q7 plan and a $30M plan).
+- For all 22 arc strategies and every available final option, the offered prefill passes the engine's own `validateQuarterInput` (both the strategy's own Q7 plan and a $30M plan).
 - For a distressed company where "stabilize and restructure" is available, the old uncapped prefill fails the engine's cap ("caps Q8 strategic investment at $10M"); the new capped offer passes.
