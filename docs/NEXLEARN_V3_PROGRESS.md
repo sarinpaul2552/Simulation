@@ -4,7 +4,7 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 
 ## Current batch
 
-**10F — final validation.** 10D is complete (af0c8c4 plus the report commit).
+**All batches complete (10B, 10C, 10D, 10F).** Release status: **AMBER**. See `NEXLEARN_V3_FINAL_HANDOFF.md`.
 
 ## Repository facts (verified at start)
 
@@ -28,6 +28,7 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 - [x] 10B mechanisms E1–E4, valuation VAL-1.1 (E9), and engine rules E5–E7 (2b53e03)
 - [x] V3 laboratory `scripts/lab/v3/` with tables `docs/v3lab/tables.md` and `results.json`
 - [x] `docs/BATCH10B_V3_ECONOMIC_REPORT.md` and `docs/BATCH10B_V2_V3_COMPARISON.md`
+- [x] 10F: browser tests for V3 (path B, path C), full suite (27 passed, 1 skipped), compatibility runs, defects D1–D6 fixed, all release documents
 - [x] 10D: paths B and C, path-aware content (pathB.ts, pathC.ts, paths.ts), migration `MIGRATION_V3_MARKET_PATHS.sql` (local only), facilitator path selection, V3 DB tests, `docs/BATCH10D_MARKET_SCENARIOS.md`
 - [x] 10C UI (stance card, contract claim, expansion control), E8 saturation warning and ceiling feedback, decision summaries, `docs/BATCH10C_EXECUTIVE_DECISION_REPORT.md` (798fff5)
 
@@ -39,22 +40,24 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 | 2b53e03 | E1–E4 economics, E5–E7 rules, V3 laboratory |
 | ee504fa | 10B reports and progress update |
 | 798fff5 | 10C UI, E8, report |
-| af0c8c4 | 10D paths, content, migration, setup UI |
+| af0c8c4, 7fc84a6 | 10D paths, content, migration, setup UI, report |
+| 8282ad3, ff0f2aa, f307126 | 10F tests, fixes, documents |
 
 ## Test results
 
 | Run | Result |
 |---|---|
-| Unit (full suite, after 10D) | 767 passed, 27 skipped (the DB suites skip without a DB) |
+| Unit (final) | 769 passed, 27 skipped |
+| Browser (final full run) | 27 passed, 1 skipped (compat; 2/2 when run on a pre-Batch 7 DB) |
 | Production build (after 10D) | passes |
-| DB (local disposable, after V3 migration) | 21 passed (14 V2 + 7 V3) |
+| DB (local disposable, after V3 migration) | 21 passed (14 V2 + 7 V3); without the migration, V2 14/14 |
 | Laboratory invariants | 5 passed (plus the table writer under `V3LAB_WRITE=1`) |
 | Type-check | clean |
 | DB / E2E | not run yet in this assignment |
 
 ## Known issues
 
-- E2E environment stalls: a page never loads, or a fetch hangs for minutes. They recur about once per full run, on a different test each time. To be investigated in 10F.
+- E2E stalls: cause found (browser contexts never closed) and fixed; one clean full run since. Monitor.
 
 ## Unresolved dependencies
 
@@ -71,9 +74,8 @@ Read `NEXLEARN_V3_MASTER_SPEC.md` first. Then check `git log` on `feature/nexlea
 
 ## Next implementation task
 
-10F:
-1. Browser E2E for V3: facilitator creates a path session; several teams on desktop and mobile; refresh; simultaneous commits; Q5 claim, Q6 stance, expansion; Q4 reveal; facilitator discussion and projector; board report.
-2. Full existing E2E suite (investigate stalls).
-3. Economic validation (H1–H13).
-4. Timing report.
-5. Release documents and final review.
+None. Awaiting the product owner's decisions:
+1. approve the release candidate;
+2. approve the production migration;
+3. push the branch with `NEXLEARN_V3_PUSH.ps1`;
+4. run the timed rehearsal.

@@ -28,4 +28,7 @@
 9. **Path name hidden from students during play** (by design). The facilitator reveals it at the debrief.
 10. **The forecast while over budget is approximate.** When a team's plan exceeds the budget (for example, before entering an expansion), the CFO panel shows terms computed with the plan scaled to the budget. The over-budget error is shown at the same time.
 11. **Targeted workforce reduction never came out best** on any measure in the laboratory stance study. It is a legitimate but rarely superior middle option.
-12. **E2E environment stalls.** In earlier batches a page or fetch occasionally hung for minutes. None occurred in the 10F runs recorded in `BATCH10F_TEST_REPORT.md`, but the cause was not identified and the issue may recur.
+12. **E2E environment stalls: likely fixed, not proven.**
+    - Cause found in 10F: browser contexts accumulated across the suite.
+    - Fix: contexts are now closed after every test. One full run after the fix was clean.
+    - A single clean run does not prove the stalls are gone; watch the next runs.
