@@ -28,6 +28,10 @@
  * The valuation bridge decomposes P(t) − P(t−1) exactly into factor contributions, distress, dilution, catch-up of
  * earlier smoothing and the volatility limit. Contributions are calculated, never estimated, and always sum to the
  * total change.
+ *
+ * NXLN-VAL-1.1 (NexLearn V3 games only; V2 games keep 1.0): adds an organizational-health factor — culture, talent and
+ * execution capability, the organization's ability to deliver future results — at 8%, taken proportionally from
+ * profitability (25 → 20%) and financial health (15 → 12%). Rationale and calibration: docs/BATCH10B_V3_ECONOMIC_REPORT.md.
  */
 import type { V2TeamState } from '../../../simulation/engineV2';
 import { V2_FINANCING_CALIBRATION } from '../../../simulation/engineV2Financing';
@@ -35,13 +39,21 @@ import { V2_DESTINATION_IDS, V2_DESTINATIONS, type V2DestinationId } from '../..
 import { startingCompany, type QuarterRecord } from './history';
 
 export const VALUATION_VERSION = 'NXLN-VAL-1.0' as const;
+export const VALUATION_VERSION_V3 = 'NXLN-VAL-1.1' as const;
 export const STARTING_PRICE = 100;
 
-export type ValuationFactorId = 'growth' | 'profitability' | 'readiness' | 'retention' | 'financial';
+/** Factors priced by NXLN-VAL-1.0 (V2 games). */
+export type ValuationFactorV1Id = 'growth' | 'profitability' | 'readiness' | 'retention' | 'financial';
+export type ValuationFactorId = ValuationFactorV1Id | 'organization';
+/** NXLN-VAL-1.0 weights are unchanged; 1.1 adds organizational health. */
+export type ValuationWeights = Record<ValuationFactorV1Id, number> & { organization?: number };
 
 export interface ValuationConfig {
   version: string;
-  weights: Record<ValuationFactorId, number>;
+  /** Factors this version prices, in display order. */
+  factors: ValuationFactorId[];
+  /** Weight of each priced factor (a factor a version does not price is absent). */
+  weights: ValuationWeights;
   multiplier: number;
   dilutionExponent: number;
   quarterlyCap: number;
@@ -51,6 +63,7 @@ export interface ValuationConfig {
 
 export const VALUATION_CONFIG: ValuationConfig = {
   version: VALUATION_VERSION,
+  factors: ['growth', 'profitability', 'readiness', 'retention', 'financial'],
   weights: { growth: 0.25, profitability: 0.25, readiness: 0.20, retention: 0.15, financial: 0.15 },
   multiplier: 2.4,
   dilutionExponent: 0.6,
@@ -59,14 +72,24 @@ export const VALUATION_CONFIG: ValuationConfig = {
   distress: { insolvent: 0.25, distressed: 0.12, warning: 0.05, covenant: 0.04 },
 };
 
+/** NXLN-VAL-1.1 — NexLearn V3 games. Same model plus organizational health (8%). */
+export const VALUATION_CONFIG_V3: ValuationConfig = {
+  ...VALUATION_CONFIG,
+  version: VALUATION_VERSION_V3,
+  factors: ['growth', 'profitability', 'readiness', 'retention', 'financial', 'organization'],
+  weights: { growth: 0.25, profitability: 0.20, readiness: 0.20, retention: 0.15, financial: 0.12, organization: 0.08 },
+};
+
 export const FACTOR_INFO: Record<ValuationFactorId, { label: string; horizon: 'present' | 'expectations'; explain: string }> = {
   growth: { label: 'Revenue growth', horizon: 'present', explain: 'Revenue versus Q4 2022, plus the direction of the latest quarter.' },
   profitability: { label: 'Profitability', horizon: 'present', explain: 'Operating margin: how much of each revenue dollar is kept as operating profit.' },
   readiness: { label: 'Strategic readiness', horizon: 'expectations', explain: 'Investors’ view of future value: how established the strategy is and whether it is turning into pipeline, adoption and wins.' },
   retention: { label: 'Retention and trust', horizon: 'present', explain: 'Whether customers and universities stay, and whether they trust the product.' },
   financial: { label: 'Financial health', horizon: 'present', explain: 'Liquidity up to a comfortable cash level, and the burden of debt. Cash above the comfort level earns nothing extra.' },
+  organization: { label: 'Organizational health', horizon: 'expectations', explain: 'Culture, talent and execution: whether the organization can keep delivering. Priced in NexLearn V3 games only.' },
 };
-export const FACTOR_IDS: ValuationFactorId[] = ['growth', 'profitability', 'readiness', 'retention', 'financial'];
+/** NXLN-VAL-1.0 factors (V2 games). Use `series.config.factors` for the factors of a particular series. */
+export const FACTOR_IDS: ValuationFactorV1Id[] = ['growth', 'profitability', 'readiness', 'retention', 'financial'];
 
 const ramp = (x: number, lo: number, hi: number) => (x <= lo ? 0 : x >= hi ? 1 : (x - lo) / (hi - lo));
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -107,6 +130,7 @@ export function factorScores(s: V2TeamState, prev?: V2TeamState): Record<Valuati
     readiness: 0.5 * fit + 0.5 * traction,
     retention: mean([ramp(c.consumerRetention, 75, 95), ramp(c.universityRenewalRate, 80, 97), ramp(s.trust, 40, 90)]),
     financial: 0.6 * ramp(s.cash, L.minimumOperatingCash, L.comfortableCash) + 0.4 * (1 - ramp(s.financing.debt, 0, 120)),
+    organization: mean([ramp(s.culture, 40, 90), ramp(s.capabilities.talent, 30, 90), ramp(s.capabilities.execution, 35, 90)]),
   };
 }
 
@@ -124,6 +148,8 @@ export function distressDiscount(s: V2TeamState, cfg = VALUATION_CONFIG): { valu
 export interface BridgeLine { id: ValuationFactorId | 'distress' | 'dilution' | 'catchup' | 'limit'; label: string; amount: number; explain: string }
 
 export interface PricePoint {
+  /** Valuation model version that produced this point. */
+  version?: string;
   quarter: number;
   price: number;
   fairValue: number;
@@ -152,14 +178,14 @@ export function valuationFromStates(states: V2TeamState[], cfg = VALUATION_CONFI
   const s0 = startingCompany();
   const all = [s0, ...states];
   const f0 = factorScores(s0);
-  const W = cfg.weights;
+  const W: Record<ValuationFactorId, number> = { organization: 0, ...cfg.weights };
   const points: PricePoint[] = [];
   let prevP = STARTING_PRICE, prevV = STARTING_PRICE, prevF = 1, prevD = 1, prevDis = 0;
   let prevFactors = f0;
   for (let t = 0; t < all.length; t++) {
     const s = all[t];
     const f = t === 0 ? f0 : factorScores(s, all[t - 1]);
-    const F = 1 + cfg.multiplier * FACTOR_IDS.reduce((a, k) => a + W[k] * (f[k] - f0[k]), 0);
+    const F = 1 + cfg.multiplier * cfg.factors.reduce((a, k) => a + W[k] * (f[k] - f0[k]), 0);
     const dis = distressDiscount(s, cfg);
     const D = Math.pow(Math.max(0, Math.min(1, s.financing.ownership)), cfg.dilutionExponent);
     const V = STARTING_PRICE * F * (1 - dis.value) * D;
@@ -169,7 +195,7 @@ export function valuationFromStates(states: V2TeamState[], cfg = VALUATION_CONFI
       P = STARTING_PRICE;
     } else {
       const G0 = (1 - prevDis) * prevD;
-      for (const k of FACTOR_IDS) {
+      for (const k of cfg.factors) {
         bridge.push({ id: k, label: FACTOR_INFO[k].label, amount: STARTING_PRICE * cfg.multiplier * W[k] * (f[k] - prevFactors[k]) * G0, explain: FACTOR_INFO[k].explain });
       }
       bridge.push({ id: 'distress', label: 'Distress discount', amount: STARTING_PRICE * F * prevD * (prevDis - dis.value), explain: dis.reason ? `Investors discount the shares while the company is ${dis.reason}.` : 'Change in the discount investors apply for financial distress.' });
@@ -185,12 +211,12 @@ export function valuationFromStates(states: V2TeamState[], cfg = VALUATION_CONFI
     // contributions relative to the starting position, for the present-vs-expectations split
     const rel = (k: ValuationFactorId) => STARTING_PRICE * cfg.multiplier * W[k] * (f[k] - f0[k]);
     points.push({
-      quarter: t, price: P, fairValue: V, factors: f, fundamentals: F, distress: dis.value, distressReason: dis.reason, dilution: D,
+      version: cfg.version, quarter: t, price: P, fairValue: V, factors: f, fundamentals: F, distress: dis.value, distressReason: dis.reason, dilution: D,
       ownership: s.financing.ownership, change: t === 0 ? 0 : P - prevP, changePct: t === 0 ? 0 : (P - prevP) / prevP,
       sinceStart: P - STARTING_PRICE, sinceStartPct: (P - STARTING_PRICE) / STARTING_PRICE,
       bridge,
-      presentContribution: (['growth', 'profitability', 'retention', 'financial'] as ValuationFactorId[]).reduce((a, k) => a + rel(k), 0),
-      expectationsContribution: rel('readiness'),
+      presentContribution: cfg.factors.filter(k => FACTOR_INFO[k].horizon === 'present').reduce((a, k) => a + rel(k), 0),
+      expectationsContribution: cfg.factors.filter(k => FACTOR_INFO[k].horizon === 'expectations').reduce((a, k) => a + rel(k), 0),
     });
     prevP = P; prevV = V; prevF = F; prevD = D; prevDis = dis.value; prevFactors = f;
   }
@@ -198,8 +224,13 @@ export function valuationFromStates(states: V2TeamState[], cfg = VALUATION_CONFI
   return { version: cfg.version, config: cfg, points };
 }
 
-export function valuationSeries(history: QuarterRecord[], cfg = VALUATION_CONFIG): ValuationSeries {
-  return valuationFromStates(history.map(h => h.after), cfg);
+/** The valuation version a game is priced with: NXLN-VAL-1.1 for NexLearn V3 games, 1.0 for V2 games. */
+export function valuationConfigFor(engine: 'v2' | 'v3' | undefined): ValuationConfig {
+  return engine === 'v3' ? VALUATION_CONFIG_V3 : VALUATION_CONFIG;
+}
+
+export function valuationSeries(history: QuarterRecord[], cfg?: ValuationConfig): ValuationSeries {
+  return valuationFromStates(history.map(h => h.after), cfg ?? valuationConfigFor(history[0]?.engine));
 }
 
 /** Round bridge lines to cents so the displayed lines add up exactly to the displayed total (largest remainder). */

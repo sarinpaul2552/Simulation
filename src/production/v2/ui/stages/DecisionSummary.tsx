@@ -1,13 +1,13 @@
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
-import { envelopeFor } from '../../adapter';
+import { budgetFor, type GameConfig } from '../../engine';
 import { BELIEFS, RISKS, CONFIDENCE_LEVELS } from '../../content/deliberationContent';
 import { pick, V2PresentationMode } from '../../content/modes';
 import { priorityLabel, evidenceLabel, DECISION_FRAMING } from '../../content/decisionFraming';
 import { BUCKET_LABELS, FINAL_LABELS, destinationName, money } from '../format';
 
 /** Concise "are we ready?" summary of the decision and the discussion (Batch 7). */
-export function DecisionSummary({ input, deliberation, quarter, mode }: { input: V2PlayerQuarterInput; deliberation?: V2Deliberation; quarter: number; mode: V2PresentationMode }) {
-  const env = envelopeFor(quarter, input.finalOption);
+export function DecisionSummary({ input, deliberation, quarter, mode, config }: { input: V2PlayerQuarterInput; deliberation?: V2Deliberation; quarter: number; mode: V2PresentationMode; config?: GameConfig }) {
+  const env = budgetFor(input, config);
   const buckets = (['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const).filter(b => input.allocation[b] > 0);
   const belief = BELIEFS[quarter]?.find(b => b.id === deliberation?.beliefId);
   const conf = CONFIDENCE_LEVELS.find(c => c.value === deliberation?.confidence)?.label;

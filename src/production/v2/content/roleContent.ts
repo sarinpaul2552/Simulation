@@ -13,7 +13,7 @@
  *  - hidden market truth is never used.
  */
 import type { V2Role } from '../../../simulation/engineV2Scenario';
-import { getRoleBrief, workingQuarter, initializeGame, replayInputs } from '../adapter';
+import { getRoleBrief, workingQuarter, initializeGame, replayInputs, configOf, type GameConfig } from '../engine';
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2Signal } from '../types';
 import { V2PresentationMode, ModeText, mt, pick } from './modes';
@@ -104,10 +104,11 @@ function changeOf(cur: V2Signal, prev: V2Signal | undefined): PositionRow['chang
   return { text: `${d > 0 ? '+' : '−'}${t}`, direction: d > 0 ? 'up' : 'down' };
 }
 
-const startCache = new Map<V2Role, V2Signal[]>();
-function startSignals(role: V2Role): V2Signal[] {
-  if (!startCache.has(role)) startCache.set(role, getRoleBrief(initializeGame(), role).signals);
-  return startCache.get(role)!;
+const startCache = new Map<string, V2Signal[]>();
+function startSignals(role: V2Role, cfg: GameConfig): V2Signal[] {
+  const key = `${cfg.engine}:${cfg.engine === 'v3' ? cfg.path : ''}:${role}`;
+  if (!startCache.has(key)) startCache.set(key, getRoleBrief(initializeGame(cfg), role).signals);
+  return startCache.get(key)!;
 }
 
 function priorityRows(role: V2Role, position: PositionRow[]): PositionRow[] {
@@ -125,9 +126,10 @@ export function briefingWords(b: RoleBriefing): number {
 export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2PresentationMode): RoleBriefing {
   const q = workingQuarter(snap) ?? snap.completedQuarter;
   const brief = getRoleBrief(snap, role);
-  const prevSnap = snap.inputs.length > 0 ? replayInputs(snap.inputs.slice(0, -1)) : null;
+  const cfg = configOf(snap);
+  const prevSnap = snap.inputs.length > 0 ? replayInputs(snap.inputs.slice(0, -1), cfg) : null;
   const prevSignals = prevSnap ? getRoleBrief(prevSnap, role).signals : null;
-  const start = startSignals(role);
+  const start = startSignals(role, cfg);
   let measured = brief.signals.filter(x => x.kind === 'measured');
   if (mode === 'undergraduate') measured = measured.filter(m => UG_KPIS[role].includes(m.id) || m.id.startsWith('ceo-readiness-') || m.id === 'ceo-destination-readiness');
   const position: PositionRow[] = measured.map(m => {

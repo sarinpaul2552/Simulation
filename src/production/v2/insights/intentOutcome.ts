@@ -4,6 +4,7 @@
  */
 import type { V2DebriefRow } from '../api';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../types';
+import type { GameConfig } from '../engine';
 import { buildFacilitatorTeams, teamTimeline, biggestChanges, type FacTeam, type TimelineRow } from './facilitator';
 import { evidenceLabel } from '../content/decisionFraming';
 import { Q3_SIGNAL_ASSESSMENTS, VERDICT_LABEL } from '../content/signalAssessments';
@@ -12,14 +13,14 @@ import { pick, V2PresentationMode } from '../content/modes';
 
 export interface OwnResolution { quarter: number; input: V2PlayerQuarterInput; deliberation?: unknown; reflection?: string | null; agreement?: string | null }
 
-export function ownTeam(teamName: string, resolutions: OwnResolution[]): FacTeam {
+export function ownTeam(teamName: string, resolutions: OwnResolution[], cfg?: GameConfig): FacTeam {
   const rs = [...resolutions].sort((a, b) => a.quarter - b.quarter);
   const row: V2DebriefRow = {
     team_id: 'own', team_name: teamName, completed_quarter: rs.length,
     inputs: rs.map(r => r.input), deliberations: rs.map(r => (r.deliberation ?? null) as V2Deliberation | null), reflections: rs.map(r => r.reflection ?? null), votes: {},
     agreements: Object.fromEntries(rs.filter(r => r.agreement).map(r => [String(r.quarter), { agreement: r.agreement as 'agreed', committed_by: null }])),
   };
-  return buildFacilitatorTeams([row])[0];
+  return buildFacilitatorTeams([row], cfg)[0];
 }
 
 export function intentOutcomeRows(team: FacTeam, mode: V2PresentationMode): TimelineRow[] {

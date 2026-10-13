@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { calendarLabel } from '../../content/calendar';
-import { V2_ROLES, workingQuarter, envelopeFor } from '../../adapter';
+import { V2_ROLES, workingQuarter, budgetFor, configOf, type GameConfig } from '../../engine';
 import type { V2Deliberation, V2PlayerQuarterInput, V2Role, V2VoteValue } from '../../types';
 import type { V2Agreement, V2CommitmentMode, V2VotesResponse } from '../../api';
 import type { V2TeamController } from '../useV2Team';
@@ -36,7 +36,7 @@ export function CommitStage({ ctl, mode, deviceRole, commitment }: { ctl: V2Team
   return (
     <div className="ds-stack-lg" data-testid={testId}>
       <div className="ds-grid ds-grid-main">
-        {input && <Resolution input={input} deliberation={ctl.draft?.deliberation} quarter={q} mode={mode} />}
+        {input && <Resolution input={input} deliberation={ctl.draft?.deliberation} quarter={q} mode={mode} config={configOf(ctl.game!.snapshot)} />}
         {commitment === 'team_commitment'
           ? <TeamCommitment ctl={ctl} deviceRole={deviceRole} quarter={q} />
           : commitment === 'private_vote'
@@ -48,8 +48,8 @@ export function CommitStage({ ctl, mode, deviceRole, commitment }: { ctl: V2Team
 }
 
 /** The decision as a board resolution: allocation, financing, strategic decision, belief, confidence, top risks. */
-function Resolution({ input, deliberation, quarter, mode }: { input: V2PlayerQuarterInput; deliberation?: V2Deliberation; quarter: number; mode: V2PresentationMode }) {
-  const env = envelopeFor(quarter, input.finalOption);
+function Resolution({ input, deliberation, quarter, mode, config }: { input: V2PlayerQuarterInput; deliberation?: V2Deliberation; quarter: number; mode: V2PresentationMode; config?: GameConfig }) {
+  const env = budgetFor(input, config);
   const invested = BUCKETS.filter(b => input.allocation[b] > 0);
   const belief = BELIEFS[quarter]?.find(b => b.id === deliberation?.beliefId);
   const conf = CONFIDENCE_LEVELS.find(c => c.value === deliberation?.confidence)?.label;

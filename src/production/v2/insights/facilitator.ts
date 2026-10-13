@@ -11,7 +11,7 @@
  */
 import type { V2DebriefRow } from '../api';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../types';
-import { replayInputs, envelopeFor } from '../adapter';
+import { replayInputs, budgetFor, V2_CONFIG, type GameConfig } from '../engine';
 import { V2_FINAL_CALIBRATION } from '../../../simulation/engineV2Final';
 import { gameHistory, type QuarterRecord } from './history';
 import { valuationSeries } from './valuation';
@@ -54,10 +54,10 @@ export interface FacQuarter {
 export interface FacTeam { teamId: string; name: string; completed: number; quarters: FacQuarter[] }
 
 /** Build the per-team model from the facilitator debrief rows (resolved quarters only). */
-export function buildFacilitatorTeams(rows: V2DebriefRow[]): FacTeam[] {
+export function buildFacilitatorTeams(rows: V2DebriefRow[], cfg: GameConfig = V2_CONFIG): FacTeam[] {
   return rows.map(r => {
     const inputs = r.inputs ?? [];
-    const history = inputs.length ? gameHistory(replayInputs(inputs)) : [];
+    const history = inputs.length ? gameHistory(replayInputs(inputs, cfg)) : [];
     const prices = history.length ? valuationSeries(history).points : [];
     return {
       teamId: r.team_id, name: r.team_name, completed: inputs.length,
@@ -70,7 +70,7 @@ export function buildFacilitatorTeams(rows: V2DebriefRow[]): FacTeam[] {
           reflection: dec ? { learning: dec.learning ?? [], note: dec.note?.trim() ? dec.note.trim() : null } : null,
           record: rec, price: prices[i + 1]?.price ?? 0, priceChange: (prices[i + 1]?.price ?? 0) - (prices[i]?.price ?? 0),
           agreement: ag ? AGREEMENT_LABEL[ag.agreement] : null,
-          envelope: envelopeFor(input.quarter, input.finalOption),
+          envelope: budgetFor(input, cfg),
           cap: input.finalOption === 'stabilize-restructure' ? V2_FINAL_CALIBRATION.stabilize.investmentCap : null,
         };
       }),

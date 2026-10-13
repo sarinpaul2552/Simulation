@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getQuarterBriefing, V2_ROLES, workingQuarter } from '../../adapter';
+import { getQuarterBriefing, V2_ROLES, workingQuarter, configOf } from '../../engine';
 import type { V2Role } from '../../types';
 import type { V2TeamController } from '../useV2Team';
 import { QUARTER_CARDS, SIGNAL_PLAIN, evidenceKind } from '../../content/scenarioContent';
@@ -17,7 +17,7 @@ export function ChallengeStage({ ctl, mode, deviceRole }: { ctl: V2TeamControlle
   const q = workingQuarter(game.snapshot)!;
   const card = QUARTER_CARDS[q];
   const chapter = CHAPTERS[q];
-  const b = getQuarterBriefing(q);
+  const b = getQuarterBriefing(q, configOf(game.snapshot));
   const [viewing, setViewing] = useState<V2Role | null>(null);
   const individual = game.session.participation_mode === 'individual_device';
   const briefed = ctl.draft?.briefed ?? [];

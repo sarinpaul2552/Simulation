@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { V2Agreement, V2Api, V2Draft, V2VotesResponse } from '../api';
 import { V2ApiError } from '../api';
 import { loadTeamGame, saveDecisionDraft, commitQuarter, V2LoadedGame, V2IntegrityError } from '../gameService';
-import { workingQuarter, envelopeFor } from '../adapter';
+import { workingQuarter, envelopeFor } from '../engine';
 import type { V2Phase, V2PlayerQuarterInput, V2Role, V2VoteValue } from '../types';
 
 export type V2TeamStatus = 'loading' | 'ready' | 'error' | 'integrity-error';

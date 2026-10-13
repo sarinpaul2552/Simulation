@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { calendarLabel } from '../content/calendar';
 import type { V2Api, V2FacilitatorOverview } from '../api';
-import { V2_TOTAL_QUARTERS } from '../adapter';
-import { auditTeam } from '../gameService';
+import { V2_TOTAL_QUARTERS } from '../engine';
+import { auditTeam, sessionConfig } from '../gameService';
 import { buildTeamDebrief, TeamDebrief } from '../insights/debrief';
 import { buildFacilitatorTeams, teamLabels, q3RevealOpen, type FacTeam } from '../insights/facilitator';
 import { priorityLabel } from '../content/decisionFraming';
@@ -12,7 +12,7 @@ import type { V2DebriefRow } from '../api';
 import { normalizeMode, MODE_LABEL, V2PresentationMode } from '../content/modes';
 import { money, destinationName, FINAL_LABELS } from './format';
 import { Card, ErrorBanner, Icon, LineChart, Segmented } from './ds/components';
-import { replayInputs } from '../adapter';
+import { replayInputs } from '../engine';
 import { gameHistory } from '../insights/history';
 import { valuationSeries, fmtPrice, fmtPctDelta } from '../insights/valuation';
 import { allScorecards, computeAwards, AWARD_RULES, SCORECARD_ROLES, ROLE_SCORECARD_TITLE, type AwardTeam } from '../insights/executive';
@@ -54,10 +54,13 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
     }),
   }), [selected, sessionCode]);
   const [leadership, setLeadership] = useState<AwardTeam[] | null>(null);
+  const cfg = useMemo(() => { try { return sessionConfig(o ?? {}); } catch { return null; } }, [o?.econ_engine, o?.market_path]); // eslint-disable-line react-hooks/exhaustive-deps
+  const needCfg = () => { if (!cfg) throw new Error('This session’s market path is missing; results cannot be replayed.'); return cfg; };
   const loadLeadership = () => act(async () => {
+    const c = needCfg();
     const entries = await api.facilitatorAudit(sessionCode, adminPin);
     const names = Object.fromEntries((o?.teams ?? []).map(t => [t.team_id, t.team_name]));
-    setLeadership(entries.filter(e => e.inputs.length > 0).map(e => ({ teamId: e.team_id, teamName: names[e.team_id] ?? 'Team', records: gameHistory(replayInputs(e.inputs)) })));
+    setLeadership(entries.filter(e => e.inputs.length > 0).map(e => ({ teamId: e.team_id, teamName: names[e.team_id] ?? 'Team', records: gameHistory(replayInputs(e.inputs, c)) })));
   });
   const refresh = useCallback(async () => {
     try { setO(await api.facilitatorOverview(sessionCode, adminPin)); setError(null); } catch (e) { setError((e as Error).message); }
@@ -69,20 +72,22 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
   }, [refresh]);
   const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await refresh(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const runAudit = () => act(async () => {
+    const c = needCfg();
     const entries = await api.facilitatorAudit(sessionCode, adminPin);
-    setAudit(Object.fromEntries(entries.map(e => [e.team_id, auditTeam(e)])));
+    setAudit(Object.fromEntries(entries.map(e => [e.team_id, auditTeam(e, c)])));
   });
   const loadDebrief = () => act(async () => {
+    const config = needCfg();
     try {
       const rows = await api.facilitatorDebrief(sessionCode, adminPin);
-      setDebrief({ rows, teams: rows.filter(r => r.inputs.length > 0).map(r => buildTeamDebrief({ team_id: r.team_id, team_name: r.team_name, inputs: r.inputs, deliberations: r.deliberations, votes: r.votes, agreements: r.agreements })), votesAvailable: true });
+      setDebrief({ rows, teams: rows.filter(r => r.inputs.length > 0).map(r => buildTeamDebrief({ team_id: r.team_id, team_name: r.team_name, inputs: r.inputs, deliberations: r.deliberations, votes: r.votes, agreements: r.agreements, config })), votesAvailable: true });
     } catch {
       // Older database (before the Batch 7 migration): decisions only, no votes or deliberation.
       const entries = await api.facilitatorAudit(sessionCode, adminPin);
       const names = Object.fromEntries((o?.teams ?? []).map(t => [t.team_id, t.team_name]));
       setDebrief({
         rows: entries.map(e => ({ team_id: e.team_id, team_name: names[e.team_id] ?? 'Team', completed_quarter: e.completed_quarter, inputs: e.inputs, deliberations: e.inputs.map(() => null), reflections: e.inputs.map(() => null), votes: {} })),
-        teams: entries.filter(e => e.inputs.length > 0).map(e => buildTeamDebrief({ team_id: e.team_id, team_name: names[e.team_id] ?? 'Team', inputs: e.inputs })), votesAvailable: false,
+        teams: entries.filter(e => e.inputs.length > 0).map(e => buildTeamDebrief({ team_id: e.team_id, team_name: names[e.team_id] ?? 'Team', inputs: e.inputs, config })), votesAvailable: false,
       });
     }
   });
@@ -93,8 +98,8 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
   const facTeams: FacTeam[] = useMemo(() => {
     if (!debrief || !o) return [];
     const order = new Map(o.teams.map((t, i) => [t.team_id, i]));
-    return buildFacilitatorTeams([...debrief.rows].sort((a, b) => (order.get(a.team_id) ?? 0) - (order.get(b.team_id) ?? 0)));
-  }, [debrief, o?.teams.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    return buildFacilitatorTeams([...debrief.rows].sort((a, b) => (order.get(a.team_id) ?? 0) - (order.get(b.team_id) ?? 0)), cfg ?? undefined);
+  }, [debrief, o?.teams.length, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
   const labels = useMemo(() => teamLabels((o?.teams ?? []).map(t => ({ teamId: t.team_id, name: t.team_name })), projector), [o?.teams, projector]); // eslint-disable-line react-hooks/exhaustive-deps
   const gateOpen = o ? q3RevealOpen(o.teams) : false;
   const gateProgress = o ? `${o.teams.filter(t => t.started && t.completed_quarter >= 4).length} of ${o.teams.filter(t => t.started).length} teams` : '';

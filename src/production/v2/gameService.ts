@@ -6,7 +6,8 @@
  */
 import {
   initializeGame, headlineOf, resolveQuarter, storedInput, verifySnapshot, workingQuarter, validateQuarterInput, replayInputs,
-} from './adapter';
+  configOf, V2_CONFIG, v3Config, type GameConfig,
+} from './engine';
 import { V2GameSnapshot, toStorable, fromStorable, encodeLossless, firstDifference, V2_REPLAY_TOLERANCE } from './snapshot';
 import type { V2Api, V2GameRecord, V2ResolutionRecord, V2SessionInfo, V2TeamGameResponse, V2Draft } from './api';
 import type { V2PlayerQuarterInput } from './types';
@@ -24,8 +25,20 @@ export interface V2LoadedGame {
 }
 
 /** Stored (jsonb) form of an input — exactly what the snapshot logs, so the server can compare them. */
-export function storableInput(input: V2PlayerQuarterInput): V2PlayerQuarterInput {
-  return JSON.parse(encodeLossless(storedInput(input))) as V2PlayerQuarterInput;
+export function storableInput(input: V2PlayerQuarterInput, cfg: GameConfig = V2_CONFIG): V2PlayerQuarterInput {
+  return JSON.parse(encodeLossless(storedInput(input, cfg))) as V2PlayerQuarterInput;
+}
+
+/**
+ * The economic engine a session plays (NexLearn V3): V3 with its market path when the session was created for V3,
+ * otherwise V2. Older databases without the V3 columns are V2.
+ */
+export function sessionConfig(session: { econ_engine?: string | null; market_path?: string | null }): GameConfig {
+  if (session.econ_engine === 'v3') {
+    if (session.market_path !== 'A' && session.market_path !== 'B' && session.market_path !== 'C') throw new V2IntegrityError('This V3 session has no valid market path');
+    return v3Config(session.market_path);
+  }
+  return V2_CONFIG;
 }
 
 export function fromResponse(teamCode: string, resp: V2TeamGameResponse): V2LoadedGame {
@@ -40,6 +53,11 @@ export function fromResponse(teamCode: string, resp: V2TeamGameResponse): V2Load
   const logged = resp.resolutions.map(r => r.input);
   const diff = firstDifference(JSON.parse(encodeLossless(snapshot.inputs)), logged);
   if (diff) throw new V2IntegrityError(`Snapshot input log disagrees with the resolution log (${diff})`);
+  const expected = sessionConfig(resp.session);
+  const actual = configOf(snapshot);
+  if (expected.engine !== actual.engine || (expected.engine === 'v3' && actual.engine === 'v3' && expected.path !== actual.path)) {
+    throw new V2IntegrityError(`Stored game uses ${actual.engine === 'v3' ? `V3 path ${actual.path}` : 'V2'} but the session uses ${expected.engine === 'v3' ? `V3 path ${expected.path}` : 'V2'}`);
+  }
   const v = verifySnapshot(snapshot);
   if (!v.ok) throw new V2IntegrityError(`Stored game does not replay exactly (${v.difference})`);
   return { teamCode, teamId: resp.team_id, teamName: resp.team_name, session: resp.session, record: resp.game, snapshot, resolutions: resp.resolutions };
@@ -50,7 +68,7 @@ export async function loadTeamGame(api: V2Api, teamCode: string): Promise<V2Load
   let resp = await api.getGame(teamCode);
   if (resp.session.engine_version !== 'v2') throw new V2IntegrityError('This session does not use the V2 engine');
   if (!resp.game) {
-    const init = initializeGame();
+    const init = initializeGame(sessionConfig(resp.session));
     resp = await api.initGame(teamCode, toStorable(init), headlineOf(init));
   }
   return fromResponse(teamCode, resp);
@@ -60,7 +78,7 @@ export async function loadTeamGame(api: V2Api, teamCode: string): Promise<V2Load
 export async function saveDecisionDraft(api: V2Api, game: V2LoadedGame, draft: Omit<V2Draft, 'quarter'>): Promise<void> {
   const q = workingQuarter(game.snapshot);
   if (q === null) throw new Error('The game is complete');
-  const input = draft.input && isCompleteInput(draft.input) ? storableInput(draft.input) : draft.input;
+  const input = draft.input && isCompleteInput(draft.input) ? storableInput(draft.input, configOf(game.snapshot)) : draft.input;
   await api.saveDraft(game.teamCode, q, { ...draft, input, quarter: q });
 }
 
@@ -78,7 +96,7 @@ export async function commitQuarter(api: V2Api, game: V2LoadedGame, input: V2Pla
   const errors = validateQuarterInput(game.snapshot, input);
   if (errors.length) throw new Error(errors.join('; '));
   const res = resolveQuarter(game.snapshot, input);
-  const out = await api.resolveQuarter(game.teamCode, q, game.record.state_version, storableInput(input), toStorable(res.snapshot), headlineOf(res.snapshot));
+  const out = await api.resolveQuarter(game.teamCode, q, game.record.state_version, storableInput(input, configOf(game.snapshot)), toStorable(res.snapshot), headlineOf(res.snapshot));
   return { status: out.status, game: fromResponse(game.teamCode, out.game) };
 }
 
@@ -86,9 +104,9 @@ export async function commitQuarter(api: V2Api, game: V2LoadedGame, input: V2Pla
  * Facilitator integrity audit: replay each team's committed decisions with the frozen engine and compare the result
  * with the headline the team's client stored. 'mismatch' means the stored state cannot be reproduced.
  */
-export function auditTeam(entry: { completed_quarter: number; headline: unknown; inputs: V2PlayerQuarterInput[] }): { status: 'verified' | 'mismatch'; detail: string | null } {
+export function auditTeam(entry: { completed_quarter: number; headline: unknown; inputs: V2PlayerQuarterInput[] }, cfg: GameConfig = V2_CONFIG): { status: 'verified' | 'mismatch'; detail: string | null } {
   try {
-    const snap = replayInputs(entry.inputs);
+    const snap = replayInputs(entry.inputs, cfg);
     if (snap.completedQuarter !== entry.completed_quarter) return { status: 'mismatch', detail: 'quarter count differs' };
     const d = firstDifference(JSON.parse(JSON.stringify(headlineOf(snap))), entry.headline, '', V2_REPLAY_TOLERANCE); // as sent by the client (plain JSON)
     return d ? { status: 'mismatch', detail: d } : { status: 'verified', detail: null };

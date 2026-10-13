@@ -1,7 +1,7 @@
 import { ReactNode, useMemo, useState } from 'react';
 import { supabase } from '../../../services/supabase';
 import { createV2Api, V2ParticipationMode, V2Pacing, V2CreatedSession } from '../api';
-import { V2_ROLES } from '../adapter';
+import { V2_ROLES } from '../engine';
 import type { V2Role } from '../types';
 import type { V2PresentationMode } from '../content/modes';
 import { teamSession, facilitatorSession } from './storage';

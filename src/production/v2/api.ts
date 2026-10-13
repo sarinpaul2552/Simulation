@@ -5,6 +5,7 @@
  * only; every call is authorised by an access code (team_code, or session_code + admin_pin). No direct table access.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { MarketPathId } from './snapshot';
 import type { V2Phase, V2VoteValue, V2Headline, V2PlayerQuarterInput, V2Deliberation, V2Role } from './types';
 import type { V2PresentationMode } from './content/modes';
 
@@ -33,6 +34,10 @@ export interface V2SessionInfo {
   presentation_mode?: V2PresentationMode;
   /** Batch 7.5 (absent before MIGRATION_V2_BATCH7_5_COMMITMENT.sql — see commitmentModeOf). */
   commitment_mode?: V2CommitmentMode;
+  /** NexLearn V3 (absent before MIGRATION_V3_MARKET_PATHS.sql — treat as 'v2'): the economic engine of the session. */
+  econ_engine?: 'v2' | 'v3';
+  /** NexLearn V3: the session's market path (V3 sessions only; fixed when the session is created). */
+  market_path?: MarketPathId | null;
 }
 
 /** The working-quarter draft persisted for refresh/reconnect. */
@@ -114,6 +119,9 @@ export interface V2FacilitatorOverview {
   open_quarter: number;
   presentation_mode?: V2PresentationMode;
   commitment_mode?: V2CommitmentMode;
+  /** NexLearn V3: economic engine and market path (absent before the V3 migration = V2). */
+  econ_engine?: 'v2' | 'v3';
+  market_path?: MarketPathId | null;
   teams: V2FacilitatorTeam[];
 }
 

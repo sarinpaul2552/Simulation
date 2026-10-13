@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Term } from '../ds/glossary';
-import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeFor, workingQuarter, V2Forecast } from '../../adapter';
+import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, V2Forecast } from '../../engine';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
 import type { V2Allocation } from '../../../../simulation/engineV2';
 import type { V2FinancingAction } from '../../../../simulation/engineV2Financing';
@@ -48,12 +48,12 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   const spec = getDecisionSpec(snap)!;
   const input: V2PlayerQuarterInput = { ...defaultInput(q), ...(ctl.draft?.input ?? {}), quarter: q } as V2PlayerQuarterInput;
   const delib: V2Deliberation = ctl.draft?.deliberation ?? {};
-  const envelope = envelopeFor(q, input.finalOption);
+  const envelope = envelopeForInput(snap, input);
   const invested = BUCKETS.reduce((t, b) => t + (input.allocation[b] || 0), 0);
 
   const set = (patch: Partial<V2PlayerQuarterInput>) => {
     const next = { ...input, ...patch };
-    const env = envelopeFor(q, next.finalOption);
+    const env = envelopeForInput(snap, next);
     const inv = BUCKETS.reduce((t, b) => t + (next.allocation[b] || 0), 0);
     next.allocation = { ...next.allocation, cashReserve: r1(Math.max(0, env - inv)) };
     ctl.updateDraft({ input: next, quarter: q });
@@ -214,7 +214,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
             </div>
           </details>
           <Fold title="4 · Decision summary" hint={ready ? 'ready' : `${errors.length + discussionMissing.length + finErrors.length} to complete`} open testId="v2-ready">
-            <DecisionSummary input={input} deliberation={delib} quarter={q} mode={mode} />
+            <DecisionSummary input={input} deliberation={delib} quarter={q} mode={mode} config={configOf(snap)} />
             {(errors.length > 0 || discussionMissing.length > 0 || finErrors.length > 0) && (
               <ul className="ds-list ds-small" data-testid="v2-validation" style={{ marginTop: 10 }}>
                 {[...errors, ...finErrors, ...discussionMissing].map(e => <li key={e} className="ds-tone-bad">{e}</li>)}

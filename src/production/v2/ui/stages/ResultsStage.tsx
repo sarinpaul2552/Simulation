@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Termed } from '../ds/glossary';
 import { calendarLabel } from '../../content/calendar';
-import { V2_TOTAL_QUARTERS } from '../../adapter';
+import { V2_TOTAL_QUARTERS } from '../../engine';
 import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { pick } from '../../content/modes';

@@ -4,9 +4,10 @@ import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { buildLearningReport, Finding } from '../../insights/report';
 import { gameHistory } from '../../insights/history';
+import { configOf } from '../../engine';
 import { fmtM } from '../../insights/dashboard';
 import { kpiDashboard, type KpiDashboardRow } from '../../insights/intelligence';
-import { valuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, FACTOR_IDS, FACTOR_INFO } from '../../insights/valuation';
+import { valuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, FACTOR_INFO } from '../../insights/valuation';
 import { allScorecards, EXECUTIVE_VERSION } from '../../insights/executive';
 import { V2_DESTINATIONS } from '../../../../simulation/engineV2Destination';
 import { COMPANY } from '../../content/company';
@@ -38,7 +39,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
   const verdict = useMemo(() => boardVerdict(history), [history]);
   const prompts = useMemo(() => defensePrompts(history), [history]);
   // Batch 10E: the team's own recorded intent next to what it decided, what happened and what it learned.
-  const own = useMemo(() => ownTeam(game.teamName, game.resolutions), [game.teamName, game.resolutions]);
+  const own = useMemo(() => ownTeam(game.teamName, game.resolutions, configOf(game.snapshot)), [game.teamName, game.resolutions, game.snapshot]);
   const intent = useMemo(() => intentOutcomeRows(own, mode), [own, mode]);
   const rationale = useMemo(() => rationalePrompts(own, mode), [own, mode]);
   const s = game.snapshot.state;
@@ -151,7 +152,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           </div>
           <table className="ds-table ds-table-compact" style={{ marginTop: 12 }}>
             <thead><tr><th>Valuation factor</th><th className="num">Weight</th><th className="num">{calendarShort(0)}</th><th className="num">{calendarShort(8)}</th></tr></thead>
-            <tbody>{FACTOR_IDS.map(k => <tr key={k}><td>{FACTOR_INFO[k].label} <span className="ds-muted">· {FACTOR_INFO[k].horizon === 'expectations' ? 'future expectations' : 'present performance'}</span></td><td className="num">{(val.config.weights[k] * 100).toFixed(0)}%</td><td className="num ds-muted">{(s0.factors[k] * 100).toFixed(0)}</td><td className="num">{(end.factors[k] * 100).toFixed(0)}</td></tr>)}</tbody>
+            <tbody>{val.config.factors.map(k => <tr key={k}><td>{FACTOR_INFO[k].label} <span className="ds-muted">· {FACTOR_INFO[k].horizon === 'expectations' ? 'future expectations' : 'present performance'}</span></td><td className="num">{((val.config.weights[k] ?? 0) * 100).toFixed(0)}%</td><td className="num ds-muted">{(s0.factors[k] * 100).toFixed(0)}</td><td className="num">{(end.factors[k] * 100).toFixed(0)}</td></tr>)}</tbody>
           </table>
           <p className="ds-method">Simulated with a documented, deterministic model ({val.version}); the price does not feed back into the simulation. Present-vs-expectations split is the contribution of each factor group relative to {calendarLabel(0)}, before the distress discount, dilution and quarterly smoothing.</p>
         </section>

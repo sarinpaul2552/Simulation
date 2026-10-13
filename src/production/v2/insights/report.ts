@@ -10,7 +10,7 @@ import type { V2TeamState } from '../../../simulation/engineV2';
 import { scoreV2Company, V2TerminalScore } from '../../../simulation/engineV2Scoring';
 import { V2_DESTINATIONS } from '../../../simulation/engineV2Destination';
 import type { V2CrisisResponseId } from '../../../simulation/engineV2Crisis';
-import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter } from '../adapter';
+import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter, configOf, type GameConfig } from '../engine';
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2PlayerQuarterInput } from '../types';
 import { QUARTER_CARDS } from '../content/scenarioContent';
@@ -118,8 +118,8 @@ function findings(s: V2TeamState, history: ReturnType<typeof gameHistory>): { st
 }
 
 /** Replay with one quarter's input replaced; null when any later committed decision is no longer valid. */
-function counterfactual(inputs: V2PlayerQuarterInput[], quarter: number, alt: V2PlayerQuarterInput): V2TeamState | null {
-  let snap = initializeGame();
+function counterfactual(inputs: V2PlayerQuarterInput[], quarter: number, alt: V2PlayerQuarterInput, cfg: GameConfig): V2TeamState | null {
+  let snap = initializeGame(cfg);
   for (const inp of inputs) {
     const use = inp.quarter === quarter ? alt : inp;
     if (validateQuarterInput(snap, use).length) return null;
@@ -131,6 +131,7 @@ function counterfactual(inputs: V2PlayerQuarterInput[], quarter: number, alt: V2
 function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): PivotalDecision[] {
   const h = gameHistory(snap);
   const inputs = snap.inputs;
+  const cfg = configOf(snap);
   const s = snap.state;
   const out: PivotalDecision[] = [];
   const q4 = h[3];
@@ -147,7 +148,7 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
   if (q5?.input.opportunity) {
     const accept = q5.input.opportunity.accept;
     const upfront = q5.consequence.ledger.eventCostItems.filter(i => i.description.includes('[opportunity]')).reduce((t, i) => t + i.amount, 0);
-    const alt = counterfactual(inputs, 5, { ...q5.input, opportunity: { ...q5.input.opportunity, accept: !accept } });
+    const alt = counterfactual(inputs, 5, { ...q5.input, opportunity: { ...q5.input.opportunity, accept: !accept } }, cfg);
     out.push({
       quarter: 5,
       decision: accept ? 'Accepted the $48M global contract.' : 'Declined the $48M global contract.',
@@ -173,7 +174,7 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
   if (q7?.input.crisisResponse && q7.consequence.crisisAssessment) {
     const a = q7.consequence.crisisAssessment;
     const others = (['remediate', 'contain', 'absorb'] as V2CrisisResponseId[]).filter(r => r !== q7.input.crisisResponse);
-    const alts = others.map(r => ({ r, st: counterfactual(inputs, 7, { ...q7.input, crisisResponse: r }) })).filter(x => x.st);
+    const alts = others.map(r => ({ r, st: counterfactual(inputs, 7, { ...q7.input, crisisResponse: r }, cfg) })).filter(x => x.st);
     const label = (id: string) => a.responses.find(x => x.id === id)?.label ?? id;
     out.push({
       quarter: 7,
@@ -237,7 +238,7 @@ export function buildLearningReport(snap: V2GameSnapshot, mode: V2PresentationMo
 }
 
 /** Sanity: the report never recomputes economics — it reads the replayed game (identical to the stored one). */
-export const reportUsesReplay = (snap: V2GameSnapshot) => replayInputs(snap.inputs);
+export const reportUsesReplay = (snap: V2GameSnapshot) => replayInputs(snap.inputs, configOf(snap));
 
 // ------------------------------------------------------------------------------------------------------------------ //
 // Batch 7.5 interpretation
