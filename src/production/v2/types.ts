@@ -31,6 +31,10 @@ export interface V2PlayerQuarterInput {
   finalOption?: V2FinalOptionId;
   /** Any quarter (optional): explicit financing / liquidity actions chosen by the CFO. */
   financing?: V2FinancingAction[];
+  /** NexLearn V3 only · Q6 (required in V3): the recession stance. */
+  recessionStance?: 'protect' | 'slow' | 'cut';
+  /** NexLearn V3 only · Q2–Q7 (optional): budget added this quarter, funded by debt or equity raised this quarter ($M). */
+  expansion?: number;
 }
 
 /** Non-economic deliberation for a quarter. Never passed to the engine. */
@@ -45,6 +49,10 @@ export interface V2Deliberation {
   beliefId?: string;
   riskIds?: string[];
   note?: string;
+  /** Batch 10A: the team's strategic priority for the quarter (one tap; quarter-specific options). */
+  priorityId?: string;
+  /** Batch 10A: Q3 only — the one or two signals the team found most influential. */
+  evidenceIds?: string[];
   /** Each role's recommendation chosen from its private briefing (shared with the team in the discussion). */
   stances?: Partial<Record<V2Role, string>>;
 }

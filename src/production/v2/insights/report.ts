@@ -10,10 +10,10 @@ import type { V2TeamState } from '../../../simulation/engineV2';
 import { scoreV2Company, V2TerminalScore } from '../../../simulation/engineV2Scoring';
 import { V2_DESTINATIONS } from '../../../simulation/engineV2Destination';
 import type { V2CrisisResponseId } from '../../../simulation/engineV2Crisis';
-import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter } from '../adapter';
+import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter, configOf, type GameConfig } from '../engine';
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2PlayerQuarterInput } from '../types';
-import { QUARTER_CARDS } from '../content/scenarioContent';
+import { quarterCardFor, contractShort, CONTRACT_LABEL } from '../content/paths';
 import { V2PresentationMode, pick, mt } from '../content/modes';
 import { gameHistory, startingCompany } from './history';
 import { quarterImpacts } from './explain';
@@ -68,9 +68,11 @@ export function decisionSummary(input: V2PlayerQuarterInput): string {
   if (ranked.length) parts.push(`Invested mostly in ${ranked.slice(0, 2).map(b => `${BUCKETS[b]} (${fmtM(a[b])})`).join(' and ')}`);
   if (a.cashReserve > 0.05) parts.push(`kept ${fmtM(a.cashReserve)} in reserve`);
   if (input.destination) parts.push(`committed to ${V2_DESTINATIONS[input.destination].name}`);
-  if (input.opportunity) parts.push(input.opportunity.accept ? 'accepted the global contract' : 'declined the global contract');
+  if (input.opportunity) parts.push(`${input.opportunity.accept ? 'accepted' : 'declined'} the ${contractShort(input.opportunity.offerId)}`);
+  if (input.recessionStance) parts.push(`recession stance: ${input.recessionStance}`);
   if (input.management && Object.keys(input.management).length) parts.push(`recession actions: ${managementText(input.management)}`);
   if (input.financing?.length) parts.push(`financing: ${input.financing.map(f => f.kind + ('amount' in f ? ` ${fmtM(f.amount)}` : '')).join(', ')}`);
+  if ((input.expansion ?? 0) > 0) parts.push(`expanded the investment budget by ${fmtM(input.expansion!)}`);
   if (input.crisisResponse) parts.push(`crisis response: ${input.crisisResponse}`);
   if (input.finalOption) parts.push(`chose to ${FINAL[input.finalOption]}`);
   return parts.join('; ');
@@ -102,7 +104,7 @@ function findings(s: V2TeamState, history: ReturnType<typeof gameHistory>): { st
   if (dRet >= 2) strengths.push({ w: dRet * 2, title: 'Improved customer retention', evidence: `Consumer retention rose from ${s0.commercial.consumerRetention.toFixed(1)}% to ${s.commercial.consumerRetention.toFixed(1)}%.` });
   if (dRet <= -2) struggles.push({ w: -dRet * 2, title: 'Customer retention deteriorated', evidence: `Consumer retention fell from ${s0.commercial.consumerRetention.toFixed(1)}% to ${s.commercial.consumerRetention.toFixed(1)}%.` });
   const overloaded = history.filter(h => (h.consequence.capability as unknown as { loadToCapacityRatio: number }).loadToCapacityRatio > 1);
-  if (overloaded.length) struggles.push({ w: 4 + overloaded.length * 2, title: 'Organization was overstretched', evidence: `Change load exceeded capacity in ${overloaded.map(h => 'Q' + h.quarter).join(', ')}, so investments matured more slowly.` });
+  if (overloaded.length) struggles.push({ w: 4 + overloaded.length * 2, title: 'Organization was overstretched', evidence: `Change load exceeded capacity in ${overloaded.map(h => 'Q' + h.quarter).join(', ')}, so part of the investment in those quarters did not turn into capability.` });
   const dCulture = s.culture - s0.culture;
   if (dCulture <= -6) struggles.push({ w: -dCulture, title: 'Culture weakened', evidence: `Culture fell from ${s0.culture.toFixed(0)} to ${s.culture.toFixed(0)}.` });
   if (dCulture >= 0 && s.capabilities.talent >= s0.capabilities.talent + 10) strengths.push({ w: 6, title: 'Built organizational resilience', evidence: `Talent rose to ${s.capabilities.talent.toFixed(0)} while culture held at ${s.culture.toFixed(0)}.` });
@@ -118,8 +120,8 @@ function findings(s: V2TeamState, history: ReturnType<typeof gameHistory>): { st
 }
 
 /** Replay with one quarter's input replaced; null when any later committed decision is no longer valid. */
-function counterfactual(inputs: V2PlayerQuarterInput[], quarter: number, alt: V2PlayerQuarterInput): V2TeamState | null {
-  let snap = initializeGame();
+function counterfactual(inputs: V2PlayerQuarterInput[], quarter: number, alt: V2PlayerQuarterInput, cfg: GameConfig): V2TeamState | null {
+  let snap = initializeGame(cfg);
   for (const inp of inputs) {
     const use = inp.quarter === quarter ? alt : inp;
     if (validateQuarterInput(snap, use).length) return null;
@@ -131,6 +133,7 @@ function counterfactual(inputs: V2PlayerQuarterInput[], quarter: number, alt: V2
 function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): PivotalDecision[] {
   const h = gameHistory(snap);
   const inputs = snap.inputs;
+  const cfg = configOf(snap);
   const s = snap.state;
   const out: PivotalDecision[] = [];
   const q4 = h[3];
@@ -147,11 +150,11 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
   if (q5?.input.opportunity) {
     const accept = q5.input.opportunity.accept;
     const upfront = q5.consequence.ledger.eventCostItems.filter(i => i.description.includes('[opportunity]')).reduce((t, i) => t + i.amount, 0);
-    const alt = counterfactual(inputs, 5, { ...q5.input, opportunity: { ...q5.input.opportunity, accept: !accept } });
+    const alt = counterfactual(inputs, 5, { ...q5.input, opportunity: { ...q5.input.opportunity, accept: !accept } }, cfg);
     out.push({
       quarter: 5,
-      decision: accept ? 'Accepted the $48M global contract.' : 'Declined the $48M global contract.',
-      immediate: accept ? `Paid ${fmtM(upfront)} upfront and took on a delivery team and extra workload.` : 'Kept cash, people and roadmap focused on your own strategy.',
+      decision: `${accept ? 'Accepted' : 'Declined'} the $${CONTRACT_LABEL[q5.input.opportunity.offerId]?.acv ?? ''}M ${contractShort(q5.input.opportunity.offerId)}.`,
+      immediate: accept ? (q5.engine === 'v3' ? `Used ${fmtM(upfront)} of that quarter’s investment budget for implementation and took on a delivery team and extra workload.` : `Paid ${fmtM(upfront)} upfront and took on a delivery team and extra workload.`) : 'Kept cash, people and roadmap focused on your own strategy.',
       longerTerm: `Enterprise revenue went from ${fmtM(q5.before.segmentRevenue.enterprise)} (Q4 2023) to ${fmtM(s.segmentRevenue.enterprise)} (Q4 2024).`,
       counterfactual: alt ? pick(mode, mt(
         `Replaying your game with the opposite choice (everything else the same): Q4 2024 revenue ${fmtM(alt.revenue)} instead of ${fmtM(s.revenue)}, cash ${fmtM(alt.cash)} instead of ${fmtM(s.cash)}.`,
@@ -173,7 +176,7 @@ function pivotalDecisions(snap: V2GameSnapshot, mode: V2PresentationMode): Pivot
   if (q7?.input.crisisResponse && q7.consequence.crisisAssessment) {
     const a = q7.consequence.crisisAssessment;
     const others = (['remediate', 'contain', 'absorb'] as V2CrisisResponseId[]).filter(r => r !== q7.input.crisisResponse);
-    const alts = others.map(r => ({ r, st: counterfactual(inputs, 7, { ...q7.input, crisisResponse: r }) })).filter(x => x.st);
+    const alts = others.map(r => ({ r, st: counterfactual(inputs, 7, { ...q7.input, crisisResponse: r }, cfg) })).filter(x => x.st);
     const label = (id: string) => a.responses.find(x => x.id === id)?.label ?? id;
     out.push({
       quarter: 7,
@@ -223,7 +226,7 @@ export function buildLearningReport(snap: V2GameSnapshot, mode: V2PresentationMo
   const timeline = h.map(x => {
     const top = quarterImpacts(x.consequence, x.after, mode)[0];
     return {
-      quarter: x.quarter, event: pick(mode, QUARTER_CARDS[x.quarter].headline), decision: decisionSummary(x.input),
+      quarter: x.quarter, event: pick(mode, quarterCardFor(x.quarter, x.path).headline), decision: decisionSummary(x.input),
       revenue: x.after.revenue, operatingProfit: x.after.operatingProfit, cash: x.after.cash,
       consequence: top ? top.text : `Revenue ${fmtM(x.after.revenue)}, cash ${fmtM(x.after.cash)}.`,
     };
@@ -237,7 +240,7 @@ export function buildLearningReport(snap: V2GameSnapshot, mode: V2PresentationMo
 }
 
 /** Sanity: the report never recomputes economics — it reads the replayed game (identical to the stored one). */
-export const reportUsesReplay = (snap: V2GameSnapshot) => replayInputs(snap.inputs);
+export const reportUsesReplay = (snap: V2GameSnapshot) => replayInputs(snap.inputs, configOf(snap));
 
 // ------------------------------------------------------------------------------------------------------------------ //
 // Batch 7.5 interpretation

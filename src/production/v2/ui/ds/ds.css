@@ -428,6 +428,7 @@ select.ds-input { width: auto; }
 .ds-table td { padding: 7px 8px; border-bottom: 1px solid var(--ds-line); vertical-align: top; }
 .ds-table th:first-child, .ds-table td:first-child { padding-left: 0; }
 .ds-table .num, .ds-table th.num { text-align: right; white-space: nowrap; }
+.ds-table td.ds-wrap { white-space: normal; }
 .ds-table tr.ds-row-total td { font-weight: 650; border-top: 1px solid var(--ds-ink); }
 .ds-table tr.ds-row-group td { font-weight: 650; color: var(--ds-ink-2); padding-top: 12px; border-bottom-color: var(--ds-line-2); }
 .ds-table caption { text-align: left; caption-side: top; font-size: var(--fs-note); color: var(--ds-ink-3); padding-bottom: 6px; }
@@ -524,3 +525,8 @@ select.ds-input { width: auto; }
   .ds-stack-sm td { display: inline-block; border-bottom: none; padding: 2px 10px 2px 0; text-align: left !important; }
   .ds-stack-sm td:first-child { display: block; }
 }
+
+/* Batch 10A — Q3 signal reveal: three columns on wide screens, stacked on phones */
+.ds-reveal-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr) minmax(0, 0.9fr); gap: 4px 20px; padding: 12px 0; border-top: 1px solid var(--ds-line); }
+.ds-reveal-row:last-child { border-bottom: 1px solid var(--ds-line); }
+@media (max-width: 680px) { .ds-reveal-row { grid-template-columns: minmax(0, 1fr); gap: 6px; } }

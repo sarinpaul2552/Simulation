@@ -108,7 +108,7 @@ export function whatToWatch(s: V2TeamState, mode: V2PresentationMode): { text: s
   const backlog = s.enterpriseBacklog.reduce((t, b) => t + (b.remaining ?? 0), 0);
   if (backlog > 0.5) return { text: pick(mode, mt(`${fmtM(backlog)} per quarter of signed enterprise revenue has not started yet — it should appear in coming quarters if delivery goes well.`, `${fmtM(backlog)}/quarter of contracted enterprise run-rate is still in backlog.`)), detail: 'Enterprise backlog' };
   const ratio = s.organizationalCapacity > 0 ? s.transformationLoad / s.organizationalCapacity : 0;
-  if (ratio > 0.9) return { text: pick(mode, mt('Teams are close to their limit. Adding more change will slow everything down.', `Load at ${(ratio * 100).toFixed(0)}% of capacity: further initiatives will mature more slowly.`)), detail: 'Load vs capacity' };
+  if (ratio > 0.9) return { text: pick(mode, mt('Teams are close to their limit. If you add more change, less of each new investment will turn into capability.', `Load at ${(ratio * 100).toFixed(0)}% of capacity: further initiatives will convert less investment into capability (absorption loss).`)), detail: 'Load vs capacity' };
   const pending = s.pendingCohorts.flatMap(c => c.gains.filter(g => (g.remaining ?? 0) > 0.3).map(g => g.target));
   if (pending.length) return { text: pick(mode, mt(`Investments in ${[...new Set(pending)].map(t => CAPABILITY_LABEL[t] ?? t).join(', ')} are still maturing — expect more improvement over the next quarters.`, `Capability still maturing: ${[...new Set(pending)].map(t => CAPABILITY_LABEL[t] ?? t).join(', ')}.`)), detail: 'Pending investment cohorts' };
   return null;

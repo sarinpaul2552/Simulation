@@ -14,11 +14,22 @@ export const V2_SNAPSHOT_SCHEMA = 'v2-game-snapshot' as const;
 export const V2_SNAPSHOT_SCHEMA_VERSION = 1 as const;
 /** Identifies the frozen economic engine a snapshot was produced by (Batch 4 calibration, frozen in Batch 5). */
 export const V2_ENGINE_VERSION = 'v2-econ-batch4-frozen' as const;
+/**
+ * NexLearn V3 (Batch 10B–10D): a separately versioned economic engine (`src/simulationV3`, adapter `production/v3`).
+ * A V3 snapshot carries its session's market path. V2 snapshots never carry one and keep replaying on the frozen engine.
+ */
+export const V3_ENGINE_VERSION = 'v3-econ-1.0' as const;
+export type EngineVersion = typeof V2_ENGINE_VERSION | typeof V3_ENGINE_VERSION;
+export type MarketPathId = 'A' | 'B' | 'C';
+export const MARKET_PATH_IDS: MarketPathId[] = ['A', 'B', 'C'];
 
 export interface V2GameSnapshot {
   schema: typeof V2_SNAPSHOT_SCHEMA;
   schemaVersion: typeof V2_SNAPSHOT_SCHEMA_VERSION;
-  engineVersion: typeof V2_ENGINE_VERSION;
+  /** Which economic engine produced this game. Every UI and insight call dispatches on it (production/v2/engine.ts). */
+  engineVersion: EngineVersion;
+  /** V3 only: the session's market path, fixed for the whole game. Absent on V2 snapshots. */
+  marketPath?: MarketPathId;
   /** Last resolved quarter (0 = not started). Always equals state.quarter. */
   completedQuarter: number;
   state: V2TeamState;
@@ -68,11 +79,25 @@ export function toStorable(snapshot: V2GameSnapshot): unknown {
   return JSON.parse(encodeLossless(snapshot));
 }
 
-/** Restore a snapshot from its stored (jsonb) form; validates the schema/version contract. */
+/** Restore a snapshot from its stored (jsonb) form; validates the schema/version contract of its engine. */
 export function fromStorable(stored: unknown): V2GameSnapshot {
   const snap = decodeLossless<V2GameSnapshot>(JSON.stringify(stored));
-  assertSnapshotContract(snap);
+  assertAnySnapshotContract(snap);
   return snap;
+}
+
+/** V2 or V3 contract, chosen by the snapshot's own engine version. */
+export function assertAnySnapshotContract(snap: V2GameSnapshot): void {
+  if (snap && typeof snap === 'object' && snap.engineVersion === V3_ENGINE_VERSION) assertV3SnapshotContract(snap);
+  else assertSnapshotContract(snap);
+}
+
+/** The V3 contract: the same structure as V2, a V3 engine version and a valid market path. */
+export function assertV3SnapshotContract(snap: V2GameSnapshot): void {
+  if (!snap || typeof snap !== 'object') throw new V2SnapshotContractError('Snapshot missing');
+  if (snap.engineVersion !== V3_ENGINE_VERSION) throw new V2SnapshotContractError(`Snapshot was produced by engine ${String(snap.engineVersion)}, expected ${V3_ENGINE_VERSION}`);
+  if (!snap.marketPath || !MARKET_PATH_IDS.includes(snap.marketPath)) throw new V2SnapshotContractError(`V3 snapshot has no valid market path (${String(snap.marketPath)})`);
+  checkStructure(snap);
 }
 
 export class V2SnapshotContractError extends Error {}
@@ -82,6 +107,13 @@ export function assertSnapshotContract(snap: V2GameSnapshot): void {
   if (snap.schema !== V2_SNAPSHOT_SCHEMA) throw new V2SnapshotContractError(`Unknown snapshot schema ${String(snap.schema)}`);
   if (snap.schemaVersion !== V2_SNAPSHOT_SCHEMA_VERSION) throw new V2SnapshotContractError(`Unsupported snapshot schema version ${String(snap.schemaVersion)}`);
   if (snap.engineVersion !== V2_ENGINE_VERSION) throw new V2SnapshotContractError(`Snapshot was produced by engine ${String(snap.engineVersion)}, expected ${V2_ENGINE_VERSION}`);
+  if (snap.marketPath !== undefined) throw new V2SnapshotContractError('A V2 snapshot cannot carry a market path');
+  checkStructure(snap);
+}
+
+function checkStructure(snap: V2GameSnapshot): void {
+  if (snap.schema !== V2_SNAPSHOT_SCHEMA) throw new V2SnapshotContractError(`Unknown snapshot schema ${String(snap.schema)}`);
+  if (snap.schemaVersion !== V2_SNAPSHOT_SCHEMA_VERSION) throw new V2SnapshotContractError(`Unsupported snapshot schema version ${String(snap.schemaVersion)}`);
   if (!snap.state || snap.state.quarter !== snap.completedQuarter) throw new V2SnapshotContractError('Snapshot quarter does not match its state');
   if (!Array.isArray(snap.inputs) || snap.inputs.length !== snap.completedQuarter) throw new V2SnapshotContractError('Snapshot input log does not match its completed quarter');
   snap.inputs.forEach((inp, i) => { if (inp.quarter !== i + 1) throw new V2SnapshotContractError(`Input log out of order at Q${i + 1}`); });

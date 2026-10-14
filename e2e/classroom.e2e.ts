@@ -3,11 +3,13 @@
  * individual devices, network interruption, stale clients, projector and print.
  */
 import { test, expect, Page } from '@playwright/test';
-import { newPage, createSession, joinTeam, playQuarter, expectPhase, fillDecision, fillDiscussion, openQuarter, ROLES } from './helpers';
+import { newPage, createSession, joinTeam, playQuarter, expectPhase, fillDecision, fillDiscussion, openQuarter, ROLES, closeAllContexts } from './helpers';
 import { V2_BASE_ENVELOPE } from '../src/production/v2/adapter';
 import type { V2PlayerQuarterInput } from '../src/production/v2/types';
 import { createClient } from '@supabase/supabase-js';
 import { createV2Api } from '../src/production/v2/api';
+
+test.afterEach(closeAllContexts);
 
 declare const process: { env: Record<string, string | undefined> };
 const SHOTS = process.env.V2_SHOTS_DIR;

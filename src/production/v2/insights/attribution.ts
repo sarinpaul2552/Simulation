@@ -102,9 +102,12 @@ export function quarterAttribution(rec: QuarterRecord): AttributionRow[] {
     const scale = gross > 0 ? realized / gross : 1; // saturation at the ceiling reduces both proportionally
     const shocks = c.appliedShocks.filter(s => (s.target as string) === meta.id);
     const shock = shocks.reduce((tt, s) => tt + (s.after - s.before), 0);
+    const org = (cap as { organization?: { customerSuccessLoss: number; talentLoss: number } }).organization;
+    const strain = org ? (meta.id === 'customerSuccess' ? org.customerSuccessLoss : meta.id === 'talent' ? org.talentLoss : 0) : 0;
     rows.push(finish({
       id: meta.id, label: meta.label, unit: 'idx', better: 'higher', opening, closing,
       components: [
+        ...(strain > 0 ? [{ kind: 'other' as const, amount: -strain, detail: 'Strain from culture below its starting level' }] : []),
         { kind: 'decision', amount: now * scale + shock, detail: shocks.length ? `This quarter’s investment, plus decisions and events: ${[...new Set(shocks.map(s => s.source))].join(', ')}` : 'Capability from this quarter’s investment' },
         { kind: 'investment', amount: earlier * scale, detail: 'Capability maturing from investment in earlier quarters' },
       ],

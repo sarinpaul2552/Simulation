@@ -13,12 +13,13 @@
  *  - hidden market truth is never used.
  */
 import type { V2Role } from '../../../simulation/engineV2Scenario';
-import { getRoleBrief, workingQuarter, initializeGame, replayInputs } from '../adapter';
+import { getRoleBrief, workingQuarter, initializeGame, replayInputs, configOf, type GameConfig } from '../engine';
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2Signal } from '../types';
 import { V2PresentationMode, ModeText, mt, pick } from './modes';
-import { evidenceKind, EvidenceKind, SIGNAL_PLAIN } from './scenarioContent';
-import { QUARTER_BRIEFS, ROLE_OBJECTIVES } from './briefings';
+import { evidenceKind, EvidenceKind } from './scenarioContent';
+import { ROLE_OBJECTIVES } from './briefings';
+import { signalPlainFor, quarterBriefFor, contentPath } from './paths';
 
 export interface RoleKnowledge { id: string; evidence: EvidenceKind; text: string; value?: string }
 export interface PositionRow { id: string; label: string; glossary?: string; value: string; start?: string; previous?: string; change?: { text: string; direction: 'up' | 'down' | 'flat' } }
@@ -104,10 +105,11 @@ function changeOf(cur: V2Signal, prev: V2Signal | undefined): PositionRow['chang
   return { text: `${d > 0 ? '+' : '−'}${t}`, direction: d > 0 ? 'up' : 'down' };
 }
 
-const startCache = new Map<V2Role, V2Signal[]>();
-function startSignals(role: V2Role): V2Signal[] {
-  if (!startCache.has(role)) startCache.set(role, getRoleBrief(initializeGame(), role).signals);
-  return startCache.get(role)!;
+const startCache = new Map<string, V2Signal[]>();
+function startSignals(role: V2Role, cfg: GameConfig): V2Signal[] {
+  const key = `${cfg.engine}:${cfg.engine === 'v3' ? cfg.path : ''}:${role}`;
+  if (!startCache.has(key)) startCache.set(key, getRoleBrief(initializeGame(cfg), role).signals);
+  return startCache.get(key)!;
 }
 
 function priorityRows(role: V2Role, position: PositionRow[]): PositionRow[] {
@@ -125,9 +127,10 @@ export function briefingWords(b: RoleBriefing): number {
 export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2PresentationMode): RoleBriefing {
   const q = workingQuarter(snap) ?? snap.completedQuarter;
   const brief = getRoleBrief(snap, role);
-  const prevSnap = snap.inputs.length > 0 ? replayInputs(snap.inputs.slice(0, -1)) : null;
+  const cfg = configOf(snap);
+  const prevSnap = snap.inputs.length > 0 ? replayInputs(snap.inputs.slice(0, -1), cfg) : null;
   const prevSignals = prevSnap ? getRoleBrief(prevSnap, role).signals : null;
-  const start = startSignals(role);
+  const start = startSignals(role, cfg);
   let measured = brief.signals.filter(x => x.kind === 'measured');
   if (mode === 'undergraduate') measured = measured.filter(m => UG_KPIS[role].includes(m.id) || m.id.startsWith('ceo-readiness-') || m.id === 'ceo-destination-readiness');
   const position: PositionRow[] = measured.map(m => {
@@ -141,8 +144,8 @@ export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2Pr
     };
   });
   const scenario = brief.signals.filter(x => x.kind !== 'measured');
-  const evidence: RoleKnowledge[] = scenario.map(s => ({ id: s.id, evidence: evidenceKind(s.kind as 'headline' | 'estimate' | 'lagging'), text: mode === 'undergraduate' && SIGNAL_PLAIN[s.id] ? SIGNAL_PLAIN[s.id] : s.label }));
-  const qb = QUARTER_BRIEFS[q]?.[role];
+  const evidence: RoleKnowledge[] = scenario.map(s => ({ id: s.id, evidence: evidenceKind(s.kind as 'headline' | 'estimate' | 'lagging'), text: mode === 'undergraduate' && signalPlainFor(s.id, contentPath(snap)) ? signalPlainFor(s.id, contentPath(snap))! : s.label }));
+  const qb = quarterBriefFor(q, role, contentPath(snap));
   return {
     role, title: ROLE_TITLES[role], perspective: PERSPECTIVE[role], responsibility: pick(mode, RESPONSIBILITY[role]),
     position, priority: priorityRows(role, position), evidence,

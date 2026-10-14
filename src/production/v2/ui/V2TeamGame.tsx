@@ -6,7 +6,7 @@ import type { V2Role } from '../types';
 import { useV2Team } from './useV2Team';
 import { normalizeMode, MODE_LABEL } from '../content/modes';
 import { destinationName, money } from './format';
-import { V2_TOTAL_QUARTERS } from '../adapter';
+import { V2_TOTAL_QUARTERS } from '../engine';
 import { ErrorBanner, Icon, Stepper } from './ds/components';
 import { ChallengeStage } from './stages/ChallengeStage';
 import { DecisionStage } from './stages/DecisionStage';

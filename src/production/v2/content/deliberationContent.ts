@@ -143,6 +143,7 @@ export const LEARNING_OPTIONS: Choice[] = [
   { id: 'execution', label: mt('Execution was harder than expected') },
   { id: 'info', label: mt('We need more information') },
   { id: 'valid', label: mt('Our strategy remains valid') },
+  { id: 'different', label: mt('We would make a different call now') },
 ];
 
 export const beliefLabel = (q: number, id?: string) => BELIEFS[q]?.find(b => b.id === id)?.label;

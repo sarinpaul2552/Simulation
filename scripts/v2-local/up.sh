@@ -22,6 +22,11 @@ if [ "${V2_SKIP_BATCH7:-0}" != "1" ]; then
   if [ "${V2_SKIP_BATCH75:-0}" != "1" ]; then
     $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_BATCH7_5_COMMITMENT.sql"
     $PSQL -d sim -f "$ROOT/database/MIGRATION_V2_BATCH7_5_COMMITMENT.sql"   # idempotent
+    if [ "${V2_SKIP_V3:-0}" != "1" ]; then
+      # NexLearn V3 (Batch 10D): tested here only — this local database is recreated on every run.
+      $PSQL -d sim -f "$ROOT/database/MIGRATION_V3_MARKET_PATHS.sql"
+      $PSQL -d sim -f "$ROOT/database/MIGRATION_V3_MARKET_PATHS.sql"   # idempotent
+    fi
   fi
 fi
 SECRET="local-dev-jwt-secret-at-least-32-characters-long"

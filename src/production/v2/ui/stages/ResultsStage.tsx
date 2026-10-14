@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Termed } from '../ds/glossary';
 import { calendarLabel } from '../../content/calendar';
-import { V2_TOTAL_QUARTERS } from '../../adapter';
+import { V2_TOTAL_QUARTERS } from '../../engine';
 import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { pick } from '../../content/modes';
@@ -20,8 +20,12 @@ import { whatToWatch } from '../../insights/explain';
 import { cashBridge, decisionConsequences, executiveHeadline, CashBridge, DecisionConsequence } from '../../insights/consequences';
 import { reflectionEvidence, segmentReflection } from '../../insights/reflection';
 import { materialDevelopments, boardQuestion } from '../../insights/briefing';
-import { BELIEFS, LEARNING_OPTIONS, encodeReflection, decodeReflection } from '../../content/deliberationContent';
+import { LEARNING_OPTIONS, encodeReflection, decodeReflection } from '../../content/deliberationContent';
 import { AGREEMENTS } from './CommitStage';
+import { accountabilityRows, ACCOUNTABILITY_CAVEAT } from '../../insights/accountability';
+import { buildSignalReveal, signalRevealAvailable } from '../../insights/signalReveal';
+import { revealSummaryFor } from '../../content/paths';
+import type { V2Deliberation } from '../../types';
 import { Card, ChoiceList, Figure, Icon, KpiTile, LineChart, Section, Segmented } from '../ds/components';
 
 
@@ -34,6 +38,7 @@ export function ResultsStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Pre
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-results" data-results-quarter={q}>
       <QuarterDashboard history={history} quarter={q} mode={mode} />
+      {signalRevealAvailable(q) && <SignalReveal history={history} quarter={q} cited={(game.resolutions.find(r => r.quarter === 3)?.deliberation as V2Deliberation | null | undefined)?.evidenceIds ?? []} />}
       <ReflectionCard ctl={ctl} mode={mode} rec={rec} history={history} />
     </div>
   );
@@ -373,9 +378,20 @@ function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mo
   const nextOpen = game.session.pacing === 'self' || game.session.open_quarter >= q + 1;
   const [waiting, setWaiting] = useState(!last && !!saved?.reflection && game.record.phase === 'reflect');
   const { reload, advance, error, setError } = ctl;
-  const delib = saved?.deliberation as { beliefId?: string; confidence?: number } | null | undefined;
-  const belief = BELIEFS[q]?.find(b => b.id === delib?.beliefId);
+  const delib = saved?.deliberation as V2Deliberation | null | undefined;
   const evidence = reflectionEvidence(delib?.beliefId, rec.before, rec.after);
+  const intent = accountabilityRows(q, delib, rec.input, mode);
+  const { persistReflection } = ctl;
+
+  // Batch 10A: save the reflection shortly after each change so a refresh keeps it (existing RPC, no migration).
+  const encoded = encodeReflection({ v: 1, learning, note: note.trim() || undefined });
+  const savedText = saved?.reflection ?? null;
+  useEffect(() => {
+    if (learning.length === 0 && !note.trim()) return;
+    if (encoded === savedText) return;
+    const t = setTimeout(() => void persistReflection(q, encoded), 700);
+    return () => clearTimeout(t);
+  }, [encoded, savedText, q, learning.length, note, persistReflection]);
 
   useEffect(() => {
     if (error && /has not been opened/.test(error)) { setError(null); setWaiting(true); }
@@ -387,16 +403,18 @@ function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mo
     return () => clearInterval(t);
   }, [waiting, nextOpen, reload, advance]);
 
-  const proceed = () => void advance(['results', 'reflect', last ? 'final' : 'briefing'], { reflection: encodeReflection({ v: 1, learning, note: note.trim() || undefined }) });
+  const proceed = () => void advance(['results', 'reflect', last ? 'final' : 'briefing'], { reflection: encoded });
 
   return (
-    <Card title="Reflect and learn" sub="Quick — choose what fits" icon="bulb" testId="v2-phase-reflect">
+    <Card title="Reflect and learn" sub="Expected → decided → happened → learned" icon="bulb" testId="v2-phase-reflect">
       <SegmentReflection rec={rec} history={history} quarter={q} />
       <div className="ds-grid ds-grid-2" style={{ marginTop: 18 }}>
         <div className="ds-stack">
-          <div>
-            <p className="ds-h4">You expected</p>
-            <p style={{ margin: 0 }} data-testid="v2-expected">{belief ? pick(mode, belief.label) : 'No belief was recorded.'}</p>
+          <div data-testid="v2-accountability">
+            <p className="ds-h4">What we expected and decided</p>
+            <dl className="ds-small" style={{ margin: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 9em) 1fr', gap: '4px 12px' }}>
+              {intent.map(r => <div key={r.id} style={{ display: 'contents' }}><dt className="ds-muted">{r.label}</dt><dd style={{ margin: 0 }} data-testid={r.id === 'evidence' ? 'v2-expected' : `v2-acc-${r.id}`}>{r.text}</dd></div>)}
+            </dl>
           </div>
           {saved?.agreement && (
             <div data-testid="v2-reflect-agreement">
@@ -409,15 +427,16 @@ function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mo
             <table className="ds-table" data-testid="v2-what-happened">
               <tbody>{evidence.map(e => <tr key={e.label}><td>{e.label}</td><td>{e.before}</td><td><Icon name="arrow" size={12} /></td><td><b>{e.after}</b></td></tr>)}</tbody>
             </table>
-            <p className="ds-muted" style={{ marginTop: 6 }}>One quarter is rarely enough to prove or disprove a belief. Judge the evidence — and remember that investments take time to pay off.</p>
+            <p className="ds-muted" style={{ marginTop: 6 }}>{ACCOUNTABILITY_CAVEAT}</p>
           </div>
         </div>
         <div className="ds-stack">
-          <p className="ds-h4">What did you learn?</p>
+          <p className="ds-h4">Knowing what you know now, what would you do differently?</p>
+          <p className="ds-muted" style={{ margin: 0 }}>Choose at least one that fits. A written line is optional.</p>
           <ChoiceList multi name="learning" testIdPrefix="v2-learn" value={learning} onChange={setLearning} options={LEARNING_OPTIONS.map(o => ({ id: o.id, label: pick(mode, o.label) }))} />
           {showNote
-            ? <textarea className="ds-input" data-testid="v2-reflection" maxLength={3000} value={note} onChange={e => setNote(e.target.value)} placeholder={mode === 'mba' ? 'Optional analysis: what would you do differently, and why?' : 'Optional: anything else?'} />
-            : <button className="ds-btn ds-btn-ghost" onClick={() => setShowNote(true)}>+ Add a written explanation (optional)</button>}
+            ? <textarea className="ds-input" data-testid="v2-reflection" maxLength={3000} value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder={mode === 'mba' ? 'Optional: what would you do differently, and why?' : 'Optional: one thing we would do differently'} />
+            : <button className="ds-btn ds-btn-ghost" onClick={() => setShowNote(true)}>+ Add one line (optional)</button>}
         </div>
       </div>
       {waiting ? (
@@ -459,5 +478,28 @@ function SegmentReflection({ history, quarter }: { rec: QuarterRecord; history: 
       {neglected.length > 0 && <ul className="ds-list ds-small" data-testid="v2-reflect-neglected" style={{ marginTop: 8 }}>{neglected.map(r => <li key={r.key}>{r.neglected}</li>)}</ul>}
       <p className="ds-method" style={{ margin: '6px 0 0' }}>Recorded values only. Each business also depends on shared capabilities such as talent, trust and product quality, and on market conditions.</p>
     </div>
+  );
+}
+
+/** Batch 10A: "Looking back: which signals mattered?" — shown only once Q4 is completed (gate in insights/signalReveal.ts). */
+function SignalReveal({ history, quarter, cited }: { history: QuarterRecord[]; quarter: number; cited: string[] }) {
+  const rows = useMemo(() => buildSignalReveal(history, quarter, cited), [history, quarter, cited]);
+  const [open, setOpen] = useState(quarter === 4);
+  if (!rows) return null;
+  return (
+    <details className="ds-fold" open={open} onToggle={e => setOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-signal-reveal">
+      <summary><span>Looking back: which signals mattered?</span><span className="ds-fold-hint">The {calendarLabel(3)} evidence, compared with what the market did</span></summary>
+      <div className="ds-fold-body ds-stack">
+        <p style={{ margin: 0 }}>{revealSummaryFor(history[0]?.path ?? 'A')}</p>
+        <div data-testid="v2-reveal-rows">{rows.map(r => (
+          <div className="ds-reveal-row" key={r.id} data-signal={r.id} data-verdict={r.verdict}>
+            <div><span className="ds-muted ds-small" style={{ display: 'block' }}>{r.source}{r.cited ? ' · you cited this' : ''}</span>{r.headline}</div>
+            <div><b>{r.verdictLabel}.</b> {r.showed}<span className="ds-muted" style={{ display: 'block', marginTop: 2 }}>{r.lesson}</span></div>
+            <div className="ds-small"><span className="ds-muted" style={{ display: 'block' }}>Your records, start of {calendarShort(3)} → end of {calendarShort(4)}</span>{r.recorded.map(m => <span key={m.label} style={{ display: 'block' }}>{m.label}: {m.start} → {m.end}</span>)}</div>
+          </div>
+        ))}</div>
+        <p className="ds-method" style={{ margin: 0 }}>Assessments describe the scenario’s market in {calendarLabel(3)} only. Your records also reflect your own decisions, so they are shown, not interpreted.</p>
+      </div>
+    </details>
   );
 }

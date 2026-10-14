@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Term } from '../ds/glossary';
-import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeFor, workingQuarter, V2Forecast } from '../../adapter';
+import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, V2Forecast } from '../../engine';
+import { V3_ECONOMICS } from '../../../../simulationV3/engineV3Config';
+import { saturationStatus } from '../../insights/saturation';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
 import type { V2Allocation } from '../../../../simulation/engineV2';
 import type { V2FinancingAction } from '../../../../simulation/engineV2Financing';
@@ -10,8 +12,11 @@ import type { V2TeamController } from '../useV2Team';
 import type { V2CommitmentMode } from '../../api';
 import { defaultInput } from '../useV2Team';
 import { BELIEFS, RISKS, CONFIDENCE_LEVELS } from '../../content/deliberationContent';
+import { framingFor, rationaleMissing } from '../../content/decisionFraming';
+import { gameHistory } from '../../insights/history';
+import { canPrefill, prefillAllocation, prefillLimit } from '../../insights/prefill';
 import { pick, V2PresentationMode } from '../../content/modes';
-import { CHAPTERS } from '../../content/chapters';
+import { chapterFor, contentPath } from '../../content/paths';
 import { calendarLabel } from '../../content/calendar';
 import { FINAL_LABELS, money, pct } from '../format';
 import { Card, ChoiceList, Fold, Icon, Section, Segmented } from '../ds/components';
@@ -36,6 +41,23 @@ const EVENT_HEADING: Record<number, string> = {
 };
 const ROLE_SHORT: Record<string, string> = { CEO: 'CEO', CFO: 'CFO', Product: 'Product (CPO)', Growth: 'Growth (CGO)', People: 'People (CPeO)' };
 const r1 = (x: number) => Math.round(x * 100) / 100;
+const up1 = (x: number) => Math.ceil(x * 10 - 1e-9) / 10;
+/** Move `amount` of planned investment to cash, cutting every bucket in proportion (amounts kept to $0.1M). */
+function freeCash(a: V2Allocation, amount: number): V2Allocation {
+  const inv = BUCKETS.reduce((t, b) => t + a[b], 0);
+  if (inv <= 0 || amount <= 0) return a;
+  const share = Math.min(1, amount / inv);
+  const out = { ...a };
+  for (const b of BUCKETS) out[b] = Math.floor(a[b] * (1 - share) * 10 + 1e-9) / 10;
+  return out;
+}
+const CUT_KEYS: (keyof V2ManagementActions)[] = ['workforceReduction', 'hiringFreeze', 'marketingLevel', 'closeWeakOfferings'];
+const withoutCuts = (m: V2ManagementActions | undefined): V2ManagementActions | undefined => {
+  if (!m) return undefined;
+  const out = { ...m };
+  for (const k of CUT_KEYS) delete out[k];
+  return Object.keys(out).length ? out : undefined;
+};
 
 /** Stage 2 — Leadership Decision: the quarter's strategic choice, the resource-allocation workspace and the discussion. */
 export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController; mode: V2PresentationMode; commitment: V2CommitmentMode }) {
@@ -45,37 +67,53 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   const spec = getDecisionSpec(snap)!;
   const input: V2PlayerQuarterInput = { ...defaultInput(q), ...(ctl.draft?.input ?? {}), quarter: q } as V2PlayerQuarterInput;
   const delib: V2Deliberation = ctl.draft?.deliberation ?? {};
-  const envelope = envelopeFor(q, input.finalOption);
+  const v3 = isV3(snap);
+  const envelope = envelopeForInput(snap, input);
   const invested = BUCKETS.reduce((t, b) => t + (input.allocation[b] || 0), 0);
 
   const set = (patch: Partial<V2PlayerQuarterInput>) => {
     const next = { ...input, ...patch };
-    const env = envelopeFor(q, next.finalOption);
+    const env = envelopeForInput(snap, next);
     const inv = BUCKETS.reduce((t, b) => t + (next.allocation[b] || 0), 0);
     next.allocation = { ...next.allocation, cashReserve: r1(Math.max(0, env - inv)) };
     ctl.updateDraft({ input: next, quarter: q });
   };
   const setBucket = (b: keyof V2Allocation, v: number) => set({ allocation: { ...input.allocation, [b]: Number.isFinite(v) && v > 0 ? v : 0 } });
-  const setDelib = (patch: Partial<V2Deliberation>) => ctl.updateDraft({ deliberation: { ...delib, ...patch } });
+  const setDelib = (patch: Partial<V2Deliberation>) => ctl.updateDeliberation(patch);
 
   const errors = useMemo(() => validateQuarterInput(snap, input), [snap, input]);
+  // While the plan is over budget (e.g. before a financed expansion is entered), the CFO panel still needs the terms on
+  // offer: forecast with the plan scaled down to the budget, so the financing and expansion controls stay available.
   const forecast: V2Forecast | null = useMemo(() => {
-    try { return invested <= envelope + 1e-9 ? forecastQuarter(snap, { ...input, financing: [] }) : null; } catch { return null; }
+    try {
+      if (invested <= envelope + 1e-9) return forecastQuarter(snap, { ...input, financing: [] });
+      const k = envelope / invested;
+      const scaled = { ...input.allocation, cashReserve: 0 };
+      for (const b of BUCKETS) scaled[b] = input.allocation[b] * k;
+      return forecastQuarter(snap, { ...input, allocation: scaled, financing: [] });
+    } catch { return null; }
   }, [snap, input, invested, envelope]);
 
   const beliefs = BELIEFS[q] ?? [];
   const risks = RISKS[q] ?? [];
-  const riskIds = delib.riskIds ?? [];
-  const discussionMissing = [
-    ...(delib.beliefId ? [] : ['Choose what your strategy is based on']),
-    ...(delib.confidence ? [] : ['Choose your confidence']),
-    ...(riskIds.length === 2 ? [] : ['Choose your two most important risks']),
-  ];
+  // Batch 10A: one biggest risk (older drafts with two risks still display the first and remain valid).
+  const riskIds = (delib.riskIds ?? []).slice(0, 1);
+  const framing = framingFor(q);
+  const evidenceIds = delib.evidenceIds ?? [];
+  const discussionMissing = rationaleMissing(q, delib);
+  const previous = q > 1 ? gameHistory(snap)[q - 2]?.input.allocation : undefined;
+  // Q8: the budget and any investment cap depend on the final option, so prefill is offered only once it is chosen,
+  // and the offered plan is fitted to that option's cap. A later change of option never rewrites the plan.
+  const investCap = spec.final?.options.find(o => o.id === input.finalOption)?.terms.investmentCap;
+  const finalPending = !!spec.final && !input.finalOption;
+  const prefillMax = prefillLimit(envelope, investCap);
+  const offerPrefill = canPrefill(input.allocation, previous) && !finalPending;
+  const prefillAfterFinal = canPrefill(input.allocation, previous) && finalPending;
   const finErrors = forecast ? checkFinancing(forecast.options, input.financing ?? [], snap.state.financing.debt, snap.state.financing.ownership).errors : [];
   const ready = errors.length === 0 && discussionMissing.length === 0 && finErrors.length === 0;
   const [showNote, setShowNote] = useState(mode === 'mba' || !!delib.note);
   const [beliefOpen, setBeliefOpen] = useState(!delib.beliefId || !delib.confidence);
-  const [riskOpen, setRiskOpen] = useState(riskIds.length < 2);
+  const [riskOpen, setRiskOpen] = useState(riskIds.length < 1);
   const beliefLabel = beliefs.find(b => b.id === delib.beliefId);
   const confLabel = CONFIDENCE_LEVELS.find(c => c.value === delib.confidence)?.label;
   const path = commitment === 'team_commitment' ? ['decide', 'belief', 'risk'] as const
@@ -86,8 +124,9 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-decide">
       <header >
-        <p className="ds-eyebrow">{calendarLabel(q)} · {CHAPTERS[q].title} · Discuss and decide</p>
-        <h1 className="ds-title" style={{ fontSize: 'var(--fs-page)' }}>{hasEvent ? (EVENT_HEADING[q] ?? 'Make the call, then fund it.') : `How will you deploy ${money(envelope, 0)}?`}</h1>
+        <p className="ds-eyebrow">{calendarLabel(q)} · {chapterFor(q, contentPath(snap)).title} · Discuss and decide</p>
+        <h1 className="ds-title" style={{ fontSize: 'var(--fs-page)' }} data-testid="v2-decision-heading">{hasEvent ? (EVENT_HEADING[q] ?? 'Make the call, then fund it.') : (framing?.heading ?? `How will you deploy ${money(envelope, 0)}?`)}</h1>
+        {framing && <p className="ds-muted" style={{ margin: '4px 0 0' }} data-testid="v2-decision-prompt">{pick(mode, framing.prompt)} <span className="ds-small" data-testid="v2-pace" data-pace={framing.pace}>{framing.pace === 'fast' ? 'Fast quarter' : 'Major decision'} · about {framing.minutes} minutes for the whole quarter.</span></p>}
       </header>
 
       {hasEvent && (
@@ -123,12 +162,20 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
                   <Fact label="Our delivery readiness" value={pct(spec.opportunity.deliveryFit)} />
                 </div>
                 <p className="ds-muted">{spec.opportunity.aligned ? 'This contract fits your chosen strategy.' : `This contract does not fit your chosen strategy: it would reduce your strategic focus by ${pct(spec.opportunity.focusDilution)}.`}</p>
+                {v3 && <ContractClaim upfront={spec.opportunity.upfrontCash} envelope={envelope} accepted={input.opportunity?.accept === true} reserve={input.allocation.cashReserve}
+                  onMakeRoom={() => set({ allocation: freeCash(input.allocation, up1(spec.opportunity!.upfrontCash) - input.allocation.cashReserve) })} />}
                 <ChoiceList name="opp" testIdPrefix="v2-opp-choice" value={input.opportunity ? [input.opportunity.accept ? 'accept' : 'decline'] : []}
                   onChange={v => set({ opportunity: { offerId: spec.opportunity!.offerId, accept: v[0] === 'accept' } })}
                   options={[{ id: 'accept', label: <span data-testid="v2-opp-accept">Accept the contract</span> }, { id: 'decline', label: <span data-testid="v2-opp-decline">Decline</span> }]} />
               </Card>
             )}
-            {spec.management && <ManagementCard spec={spec.management} value={input.management ?? {}} onChange={m => set({ management: m })} mode={mode} />}
+            {spec.management && v3 && <StanceCard value={input.recessionStance} reserve={input.allocation.cashReserve} people={input.allocation.people}
+              onChange={st => set({ recessionStance: st, management: st === 'cut' ? input.management : withoutCuts(input.management) })}
+              onMoveToCash={x => set({ allocation: freeCash(input.allocation, x) })} />}
+            {spec.management && <ManagementCard spec={spec.management} value={input.management ?? {}} mode={mode}
+              cutsAllowed={!v3 || input.recessionStance === 'cut'}
+              peopleFunded={v3 ? input.allocation.people : 0}
+              onChange={m => set(v3 && m.hiringFreeze && input.allocation.people > 0 ? { management: m, allocation: { ...input.allocation, people: 0 } } : { management: m })} />}
             {spec.crisis && (
               <Card title={spec.crisis.title} sub={<span>Severity for your company: <b data-testid="v2-crisis-band">{spec.crisis.band}</b></span>} icon="alert" testId="v2-crisis">
                 <p style={{ marginTop: 0 }}>{spec.crisis.description}</p>
@@ -142,41 +189,69 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
 
       <div className="ds-grid ds-grid-work">
         <div className="ds-stack">
-          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={forecast} />
-          <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode} />
+          {offerPrefill && previous && (
+            <div className="ds-callout" data-testid="v2-prefill-offer">
+              <Icon name="clock" />
+              <span>Last quarter you invested {BUCKETS.filter(b => previous[b] > 0).map(b => `${BUCKET_INFO[b].short} ${money(previous[b])}`).join(' · ')}. You can start from that allocation and adjust it.{' '}
+                <button className="ds-btn ds-btn-secondary" data-testid="v2-prefill" onClick={() => set({ allocation: prefillAllocation(previous, envelope, investCap) })}>Start from last quarter’s allocation</button>
+                <span className="ds-muted" style={{ display: 'block', marginTop: 4 }}>Copies the five investment amounts only{investedTotalOf(previous) > prefillMax ? `, scaled down to ${investCap !== undefined && investCap < envelope ? `the ${money(investCap, 0)} investment cap of your chosen option` : `this quarter’s ${money(envelope, 0)} budget`}` : ''}. Nothing is committed until the team commits.</span>
+              </span>
+            </div>
+          )}
+          {prefillAfterFinal && <p className="ds-muted" data-testid="v2-prefill-after-final" style={{ margin: 0 }}>Choose your final strategic decision first: the budget depends on it. You can then start from last quarter’s allocation.</p>}
+          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} />
+          <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode}
+            expansion={v3 && V3_ECONOMICS.financing.quarters.includes(q) && !spec.final ? { value: input.expansion ?? 0, max: V3_ECONOMICS.financing.maxExpansion, floor: V3_ECONOMICS.financing.cashFloor, onChange: x => set({ expansion: x > 0 ? x : undefined }) } : undefined} />
         </div>
 
         <div className="ds-stack" data-testid="v2-discussion">
           <p className="ds-eyebrow" style={{ marginBottom: 0 }}>Leadership discussion</p>
-          <p className="ds-muted" style={{ margin: 0 }}>Share what each of you saw in your brief. Where do your objectives pull in different directions?</p>
+          <p className="ds-muted" style={{ margin: 0 }}>Share what each of you saw in your brief. Where do your objectives pull in different directions? Three quick picks; nothing is graded.</p>
+          {framing && (
+            <div data-testid="v2-priority">
+              <p className="ds-h4" style={{ marginBottom: 6 }}>1 · {framing.priorityQuestion}</p>
+              <ChoiceList name="priority" testIdPrefix="v2-priority" value={delib.priorityId ? [delib.priorityId] : []}
+                onChange={v => setDelib({ priorityId: v[0] })}
+                options={framing.priorities.map(p => ({ id: p.id, label: pick(mode, p.label) }))} />
+            </div>
+          )}
           <details className="ds-fold" open={beliefOpen} onToggle={e => setBeliefOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-fold-belief">
-            <summary>1 · What is our strategy based on?{beliefLabel && <span className="ds-fold-hint">{pick(mode, beliefLabel.label)}{confLabel ? ` · ${confLabel} confidence` : ''}</span>}</summary>
+            <summary>2 · Our evidence: what is our strategy based on?{beliefLabel && <span className="ds-fold-hint">{framing?.evidence ? `${evidenceIds.length} signal${evidenceIds.length === 1 ? '' : 's'} cited · ` : ''}{pick(mode, beliefLabel.label)}{confLabel ? ` · ${confLabel} confidence` : ''}</span>}</summary>
             <div className="ds-fold-body">
+              {framing?.evidence && (
+                <div data-testid="v2-evidence" style={{ marginBottom: 12 }}>
+                  <p className="ds-small" style={{ fontWeight: 650, margin: '0 0 6px' }}>{framing.evidenceQuestion}</p>
+                  <ChoiceList multi max={2} name="evidence" testIdPrefix="v2-evidence" value={evidenceIds}
+                    onChange={v => setDelib({ evidenceIds: v })}
+                    options={framing.evidence.map(o => ({ id: o.id, label: pick(mode, o.label) }))} />
+                </div>
+              )}
+              <p className="ds-small" style={{ fontWeight: 650, margin: '0 0 6px' }}>{framing?.evidence ? 'What we conclude from it' : 'What we believe'}</p>
               <ChoiceList name="belief" testIdPrefix="v2-belief" value={delib.beliefId ? [delib.beliefId] : []}
                 onChange={v => { const b = beliefs.find(x => x.id === v[0]); setDelib({ beliefId: v[0], belief: b ? pick('mba', b.label) : undefined }); }}
                 options={beliefs.map(b => ({ id: b.id, label: pick(mode, b.label) }))} />
               <div className="ds-row" style={{ marginTop: 12 }}>
                 <span className="ds-small" style={{ fontWeight: 650 }}>How confident are we?</span>
-                <Segmented testIdPrefix="v2-confidence" value={delib.confidence} onChange={v => { setDelib({ confidence: v }); if (delib.beliefId) setBeliefOpen(false); }} options={CONFIDENCE_LEVELS.map(c => ({ id: c.value, label: c.label }))} />
+                <Segmented testIdPrefix="v2-confidence" value={delib.confidence} onChange={v => { setDelib({ confidence: v }); if (delib.beliefId && (!framing?.evidence || evidenceIds.length > 0)) setBeliefOpen(false); }} options={CONFIDENCE_LEVELS.map(c => ({ id: c.value, label: c.label }))} />
               </div>
             </div>
           </details>
           <details className="ds-fold" open={riskOpen} onToggle={e => setRiskOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-fold-risks">
-            <summary>2 · What could go wrong?<span className="ds-fold-hint">{riskIds.length === 2 ? riskIds.map(id => pick(mode, risks.find(r => r.id === id)!.label)).join(' · ') : 'choose two'}</span></summary>
+            <summary>3 · Our biggest risk<span className="ds-fold-hint">{riskIds.length ? riskIds.map(id => { const r = risks.find(x => x.id === id); return r ? pick(mode, r.label) : id; }).join(' · ') : 'choose one'}</span></summary>
             <div className="ds-fold-body">
-              <ChoiceList multi max={2} name="risks" testIdPrefix="v2-risk" value={riskIds}
+              <ChoiceList name="risks" testIdPrefix="v2-risk" value={riskIds}
                 onChange={v => setDelib({ riskIds: v, risks: v.map(id => pick('mba', risks.find(r => r.id === id)!.label)) })}
                 options={risks.map(r => ({ id: r.id, label: pick(mode, r.label) }))} />
               {showNote ? (
                 <label className="ds-stack" style={{ marginTop: 12, gap: 4 }}>
-                  <span className="ds-small" style={{ fontWeight: 650 }}>{mode === 'mba' ? 'Analysis (optional)' : 'Your note (optional)'}</span>
-                  <textarea className="ds-input" data-testid="v2-discussion-note" maxLength={1000} value={delib.note ?? ''} onChange={e => setDelib({ note: e.target.value })} placeholder={mode === 'mba' ? 'Key assumptions, evidence weighed, dissent…' : 'Anything else the team wants to remember?'} />
+                  <span className="ds-small" style={{ fontWeight: 650 }}>{mode === 'mba' ? 'Analysis (optional, one or two lines)' : 'Your note (optional, one line is enough)'}</span>
+                  <textarea className="ds-input" data-testid="v2-discussion-note" rows={2} maxLength={1000} value={delib.note ?? ''} onChange={e => setDelib({ note: e.target.value })} placeholder={mode === 'mba' ? 'Key assumption or dissent…' : 'Anything the team wants to remember?'} />
                 </label>
               ) : <button className="ds-btn ds-btn-ghost" onClick={() => setShowNote(true)}>+ Add a note</button>}
             </div>
           </details>
-          <Fold title="3 · Decision summary" hint={ready ? 'ready' : `${errors.length + discussionMissing.length + finErrors.length} to complete`} open testId="v2-ready">
-            <DecisionSummary input={input} deliberation={delib} quarter={q} mode={mode} />
+          <Fold title="4 · Decision summary" hint={ready ? 'ready' : `${errors.length + discussionMissing.length + finErrors.length} to complete`} open testId="v2-ready">
+            <DecisionSummary input={input} deliberation={delib} quarter={q} mode={mode} config={configOf(snap)} />
             {(errors.length > 0 || discussionMissing.length > 0 || finErrors.length > 0) && (
               <ul className="ds-list ds-small" data-testid="v2-validation" style={{ marginTop: 10 }}>
                 {[...errors, ...finErrors, ...discussionMissing].map(e => <li key={e} className="ds-tone-bad">{e}</li>)}
@@ -196,12 +271,14 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   );
 }
 
+const investedTotalOf = (a: V2PlayerQuarterInput['allocation']) => BUCKETS.reduce((t, b) => t + (a[b] || 0), 0);
+
 function Fact({ label, value }: { label: string; value: string }) {
   return <div><div className="ds-muted">{label}</div><div style={{ fontWeight: 700, fontSize: '1.1em' }} className="ds-num">{value}</div></div>;
 }
 
 /** The resource-allocation workspace: budget, visual mix, per-bucket guidance and an execution-capacity estimate. */
-function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null }) {
+function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast, expansion = 0 }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null; expansion?: number }) {
   const q = workingQuarter(snap)!;
   const invested = BUCKETS.reduce((t, b) => t + (allocation[b] || 0), 0);
   const kept = envelope - invested;
@@ -214,8 +291,8 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
       <p className="ds-eyebrow">Strategic budget</p>
       <div className="ds-budget">
         <div>
-          <div className="ds-budget-total ds-num">{money(envelope, 0)}</div>
-          <div className="ds-muted">to invest this quarter</div>
+          <div className="ds-budget-total ds-num">{money(envelope, envelope % 1 ? 1 : 0)}</div>
+          <div className="ds-muted">to invest this quarter{expansion > 0 && <span data-testid="v2-budget-expansion"> (including {money(expansion)} financed this quarter)</span>}</div>
         </div>
         <div className="ds-budget-left">
           <span className="ds-muted">{over ? 'Over budget by' : 'Kept as cash'}</span>
@@ -234,12 +311,14 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
           const amt = allocation[b] || 0;
           const tti = timeToImpact(b);
           const gain = nominalGain(b, amt);
+          const sat = saturationStatus(snap.state, b);
           return (
             <div className="ds-bucket" key={b} data-bucket={b}>
               <span className="ds-bucket-swatch" style={{ background: BUCKET_COLOR[b] }} />
               <div>
                 <label className="ds-bucket-name" htmlFor={`alloc-${b}`}>{info.name}<span className="ds-muted" style={{ fontWeight: 500 }} title="From the engine’s maturation schedule">· {tti.schedule[0] >= 0.5 ? 'pays off sooner' : 'pays off later'}</span></label>
                 <div className="ds-bucket-desc">{mode === 'mba' ? info.mba : info.ug}</div>
+                {sat.near && <div className="ds-small ds-tone-caution" data-testid={`v2-saturation-${b}`}><Icon name="alert" size={12} /> Close to what the organization can use: {info.builds.split(',')[0]} is near its ceiling once earlier investment lands. More here is likely to be wasted.</div>}
               </div>
               <input id={`alloc-${b}`} data-testid={`v2-alloc-${b}`} type="number" min={0} step={0.5} inputMode="decimal" value={allocation[b]} onChange={e => onChange(b, parseFloat(e.target.value))} aria-label={`${info.name} ($M)`} />
               <input type="range" min={0} max={Math.min(30, envelope)} step={0.5} value={Math.min(amt, 30)} onChange={e => onChange(b, parseFloat(e.target.value))} aria-label={`${info.name} slider`} tabIndex={-1} />
@@ -282,7 +361,40 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
   );
 }
 
-function ManagementCard({ spec, value, onChange, mode }: { spec: NonNullable<ReturnType<typeof getDecisionSpec>>['management'] & object; value: V2ManagementActions; onChange: (m: V2ManagementActions) => void; mode: V2PresentationMode }) {
+/** V3 (E5): the contract's implementation cost is paid from this quarter's budget. */
+function ContractClaim({ upfront, envelope, accepted, reserve, onMakeRoom }: { upfront: number; envelope: number; accepted: boolean; reserve: number; onMakeRoom: () => void }) {
+  const need = up1(upfront);
+  const short = accepted && reserve + 0.01 < upfront;
+  return (
+    <div className={short ? 'ds-notice ds-notice-bad' : 'ds-callout'} data-testid="v2-opp-claim" style={{ marginBottom: 12 }}>
+      <Icon name="cash" />
+      <span>Accepting uses <b>{money(need)} of your {money(envelope, 0)} budget</b> for implementation, so at most {money(envelope - need)} is left to invest this quarter. Keep at least {money(need)} as cash in the plan below.
+        {short && <> You are keeping {money(reserve)}. <button className="ds-btn ds-btn-secondary" data-testid="v2-opp-make-room" onClick={onMakeRoom}>Reduce every investment in proportion to make room</button></>}
+      </span>
+    </div>
+  );
+}
+
+/** V3 (E6): the recession stance, one required choice. */
+function StanceCard({ value, reserve, people, onChange, onMoveToCash }: { value?: 'protect' | 'slow' | 'cut'; reserve: number; people: number; onChange: (s: 'protect' | 'slow' | 'cut') => void; onMoveToCash: (x: number) => void }) {
+  const minRes = V3_ECONOMICS.recession.slowMinimumReserve;
+  return (
+    <Card title="Recession stance" sub="Required: choose one" icon="alert" testId="v2-stance">
+      <ChoiceList name="stance" testIdPrefix="v2-stance" value={value ? [value] : []} onChange={v => onChange(v[0] as 'protect' | 'slow' | 'cut')}
+        options={[
+          { id: 'protect', label: 'Protect: keep investing through the downturn', detail: 'No cost cuts. You accept a weaker cash position now to keep building.' },
+          { id: 'slow', label: 'Slow: hold back part of the budget', detail: `Keep at least ${money(minRes, 0)} of the budget as cash. No layoffs.` },
+          { id: 'cut', label: 'Cut: reduce costs', detail: 'Take at least one cost action below: hiring freeze, workforce reduction, lower marketing or closing weak offerings.' },
+        ]} />
+      {value === 'slow' && reserve + 0.01 < minRes && (
+        <p className="ds-small ds-tone-bad" data-testid="v2-stance-slow-short">You are keeping {money(reserve)} as cash. <button className="ds-btn ds-btn-secondary" data-testid="v2-stance-make-room" onClick={() => onMoveToCash(up1(minRes - reserve))}>Move {money(up1(minRes - reserve))} to cash</button></p>
+      )}
+      {value === 'cut' && people > 0 && <p className="ds-muted ds-small" style={{ margin: '6px 0 0' }}>A hiring freeze stops People investment: choosing it moves your {money(people)} People allocation to cash.</p>}
+    </Card>
+  );
+}
+
+function ManagementCard({ spec, value, onChange, mode, cutsAllowed = true, peopleFunded = 0 }: { spec: NonNullable<ReturnType<typeof getDecisionSpec>>['management'] & object; value: V2ManagementActions; onChange: (m: V2ManagementActions) => void; mode: V2PresentationMode; cutsAllowed?: boolean; peopleFunded?: number }) {
   const upd = (patch: Partial<V2ManagementActions>) => {
     const next: V2ManagementActions = { ...value, ...patch };
     for (const k of Object.keys(next) as (keyof V2ManagementActions)[]) if (next[k] === undefined || next[k] === false) delete next[k];
@@ -290,11 +402,11 @@ function ManagementCard({ spec, value, onChange, mode }: { spec: NonNullable<Ret
   };
   const desc = (id: string) => spec.options.find(o => o.id === id)?.description;
   return (
-    <Card title="Recession response" sub="Optional actions" icon="alert" testId="v2-management">
+    <Card title="Recession response" sub={cutsAllowed ? 'Optional actions' : 'Cost actions need the “Cut” stance; pricing is always available'} icon="alert" testId="v2-management">
       <div className="ds-stack">
         <div>
           <div className="ds-row"><b>Workforce reduction</b>
-            <select className="ds-input" data-testid="v2-mgmt-workforce" value={value.workforceReduction?.depth ?? 'none'}
+            <select className="ds-input" data-testid="v2-mgmt-workforce" disabled={!cutsAllowed} value={value.workforceReduction?.depth ?? 'none'}
               onChange={e => upd({ workforceReduction: e.target.value === 'none' ? undefined : { depth: e.target.value as 'targeted' | 'deep', protectRnD: value.workforceReduction?.protectRnD } })}>
               <option value="none">None</option><option value="targeted">Targeted</option><option value="deep">Deep</option>
             </select>
@@ -302,15 +414,15 @@ function ManagementCard({ spec, value, onChange, mode }: { spec: NonNullable<Ret
           </div>
           {mode === 'mba' && <p className="ds-muted" style={{ margin: '4px 0 0' }}>{desc('workforce-targeted')}</p>}
         </div>
-        <label className="ds-small"><input type="checkbox" data-testid="v2-mgmt-freeze" checked={value.hiringFreeze === true} onChange={e => upd({ hiringFreeze: e.target.checked })} /> <b>Hiring freeze</b> — {desc('hiring-freeze')}</label>
+        <label className="ds-small"><input type="checkbox" data-testid="v2-mgmt-freeze" disabled={!cutsAllowed} checked={value.hiringFreeze === true} onChange={e => upd({ hiringFreeze: e.target.checked })} /> <b>Hiring freeze</b> — {desc('hiring-freeze')}{peopleFunded > 0 && cutsAllowed && !value.hiringFreeze ? ` (moves your ${money(peopleFunded)} People investment to cash)` : ''}</label>
         <div className="ds-row"><b className="ds-small">Consumer pricing</b>
           <select className="ds-input" data-testid="v2-mgmt-pricing" value={value.pricing ?? 'none'} onChange={e => upd({ pricing: e.target.value === 'none' ? undefined : e.target.value as 'raise' | 'discount' })}>
             <option value="none">No change</option><option value="raise">Raise prices</option><option value="discount">Discount</option>
           </select>
         </div>
-        <label className="ds-small"><input type="checkbox" data-testid="v2-mgmt-close" checked={value.closeWeakOfferings === true} onChange={e => upd({ closeWeakOfferings: e.target.checked })} /> <b>Close weak offerings</b> — {desc('close-weak')}</label>
+        <label className="ds-small"><input type="checkbox" data-testid="v2-mgmt-close" disabled={!cutsAllowed} checked={value.closeWeakOfferings === true} onChange={e => upd({ closeWeakOfferings: e.target.checked })} /> <b>Close weak offerings</b> — {desc('close-weak')}</label>
         <div className="ds-row"><b className="ds-small">Consumer marketing</b>
-          <input type="range" min={spec.marketingLevelRange[0]} max={spec.marketingLevelRange[1]} step={0.1} value={value.marketingLevel ?? 1} data-testid="v2-mgmt-marketing"
+          <input type="range" min={cutsAllowed ? spec.marketingLevelRange[0] : 1} max={spec.marketingLevelRange[1]} step={0.1} value={value.marketingLevel ?? 1} data-testid="v2-mgmt-marketing"
             onChange={e => { const v = parseFloat(e.target.value); upd({ marketingLevel: Math.abs(v - 1) < 1e-9 ? undefined : v }); }} />
           <span className="ds-small">{(value.marketingLevel ?? 1).toFixed(1)}×</span>
         </div>
@@ -319,7 +431,9 @@ function ManagementCard({ spec, value, onChange, mode }: { spec: NonNullable<Ret
   );
 }
 
-function FinancingCard({ forecast, value, debt, ownership, onChange, mode }: { forecast: V2Forecast | null; value: V2FinancingAction[]; debt: number; ownership: number; onChange: (f: V2FinancingAction[]) => void; mode: V2PresentationMode }) {
+interface ExpansionControl { value: number; max: number; floor: number; onChange: (x: number) => void }
+
+function FinancingCard({ forecast, value, debt, ownership, onChange, mode, expansion }: { forecast: V2Forecast | null; value: V2FinancingAction[]; debt: number; ownership: number; onChange: (f: V2FinancingAction[]) => void; mode: V2PresentationMode; expansion?: ExpansionControl }) {
   const amt = (kind: 'debt' | 'equity' | 'repay') => value.filter(a => a.kind === kind).reduce((t, a) => t + ('amount' in a ? a.amount : 0), 0);
   const partner = value.some(a => a.kind === 'partner');
   const restructure = (value.find(a => a.kind === 'restructure') as { depth?: 'moderate' | 'deep' } | undefined)?.depth ?? 'none';
@@ -372,6 +486,17 @@ function FinancingCard({ forecast, value, debt, ownership, onChange, mode }: { f
             <label className="ds-small">Restructure <select className="ds-input" data-testid="v2-fin-restructure" value={restructure} onChange={e => build({ restructure: e.target.value })}>
               <option value="none">No</option><option value="moderate">Moderate</option><option value="deep">Deep</option></select></label>
           </div>
+          {expansion && (
+            <div className="ds-callout" data-testid="v2-expansion">
+              <Icon name="cash" />
+              <span>
+                <b>Invest more than the base budget.</b> New money raised this quarter (borrowing or shares) can add up to {money(Math.max(0, Math.min(expansion.max, amt('debt') + amt('equity') - amt('repay'))))} to this quarter’s budget (limit {money(expansion.max, 0)}). The plan must still leave at least {money(expansion.floor, 0)} of cash. Borrowed money costs interest; new shares dilute the owners.
+                <label className="ds-small" style={{ display: 'block', marginTop: 6 }}>Add to this quarter’s budget $M{' '}
+                  <input className="ds-input" style={{ width: 90 }} type="number" min={0} max={expansion.max} step={0.5} data-testid="v2-fin-expansion" value={expansion.value || ''} onChange={e => expansion.onChange(n(e.target.value))} />
+                </label>
+              </span>
+            </div>
+          )}
           {check && check.errors.length > 0 && <ul className="ds-list ds-small" data-testid="v2-fin-errors">{check.errors.map(e => <li key={e} className="ds-tone-bad">{e}</li>)}</ul>}
           {check && check.notes.length > 0 && <ul className="ds-list ds-small" data-testid="v2-fin-notes">{check.notes.map(e => <li key={e}>{e}</li>)}</ul>}
         </div>

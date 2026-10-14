@@ -8,7 +8,7 @@
 import { calendarLabel } from '../content/calendar';
 import type { V2Role } from '../../../simulation/engineV2Scenario';
 import { V2_DESTINATIONS } from '../../../simulation/engineV2Destination';
-import { replayInputs } from '../adapter';
+import { replayInputs, V2_CONFIG, type GameConfig } from '../engine';
 import type { V2Deliberation, V2PlayerQuarterInput, V2VoteValue } from '../types';
 import { buildLearningReport, decisionSummary } from './report';
 import { beliefLabel } from '../content/deliberationContent';
@@ -21,6 +21,8 @@ export interface DebriefTeamInput {
   votes?: Record<string, Partial<Record<V2Role, V2VoteValue>>>;
   /** Batch 7.5: team agreement statements (team-commitment quarters). Never converted into individual votes. */
   agreements?: Record<string, { agreement: 'agreed' | 'discussed' | 'leader'; committed_by: V2Role | null }>;
+  /** The session's economic engine and market path (defaults to V2). */
+  config?: GameConfig;
 }
 
 export const AGREEMENT_LABEL: Record<'agreed' | 'discussed' | 'leader', string> = {
@@ -51,7 +53,7 @@ const CAP: Record<string, string> = { consumer: 'Consumer', enterprise: 'Enterpr
 const BUCKET_NAME: Record<string, string> = { consumer: 'Consumer', enterprise: 'Enterprise', aiProduct: 'AI/Product', people: 'People', universityCredentials: 'University & Credentials' };
 
 export function buildTeamDebrief(t: DebriefTeamInput): TeamDebrief {
-  const snap = replayInputs(t.inputs);
+  const snap = replayInputs(t.inputs, t.config ?? V2_CONFIG);
   const s = snap.state;
   const complete = snap.completedQuarter >= 8;
   const report = complete ? buildLearningReport(snap, 'mba') : null;

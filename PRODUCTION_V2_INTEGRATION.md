@@ -31,6 +31,9 @@ hidden until five, revealed together, advisory) → commit → results (plain-la
 
 ## Deploy
 1. Supabase SQL editor: run `database/MIGRATION_V2_PRODUCTION.sql` (after the strict RLS migration; idempotent).
+   Then, in order: `database/MIGRATION_V2_BATCH7_EXPERIENCE.sql`, `database/MIGRATION_V2_BATCH7_5_COMMITMENT.sql`,
+   then `NOTIFY pgrst, 'reload schema';` (all additive and idempotent). Production has all three since 2026-10-12
+   (see `docs/BATCH8_1_PRODUCTION_DEPLOYMENT.md`).
 2. Vercel env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY` (anon key). Never the service role.
 3. V1 fallback (dev only): `VITE_ENABLE_V1_FALLBACK=true` or `localStorage.ENABLE_V1_FALLBACK = 'true'`.
 

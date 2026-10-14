@@ -4,9 +4,11 @@
  * scorecards, the board report and board defense, progressive financing validation and cross-team awards.
  */
 import { test, expect, Page } from '@playwright/test';
-import { newPage, createSession, joinTeam, playQuarter, expectPhase } from './helpers';
+import { newPage, createSession, joinTeam, playQuarter, expectPhase, closeAllContexts } from './helpers';
 import { V2_BASE_ENVELOPE } from '../src/production/v2/adapter';
 import type { V2PlayerQuarterInput } from '../src/production/v2/types';
+
+test.afterEach(closeAllContexts);
 
 declare const process: { env: Record<string, string | undefined> };
 const SHOTS = process.env.V2_SHOTS_DIR;
@@ -113,6 +115,11 @@ test('eight quarters: share price, valuation bridge, attribution, scorecards, bo
   const reportText = await page.getByTestId('v2-final').innerText();
   expect(reportText).not.toMatch(/NaN|undefined|Infinity/);
   await shot(page, 's81-07b-q8-board-report-mba');
+  // Deploy fix: the board report fits a phone without sideways scrolling (four lenses wrap; scorecard summary drops columns)
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  await expect(page.getByTestId('v2-scorecard-summary')).toContainText('Executive score');
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ media: 'print' });
   await expect(page.getByTestId('v2-print-report')).toBeHidden(); // print layout hides controls
   await page.emulateMedia({ media: 'screen' });

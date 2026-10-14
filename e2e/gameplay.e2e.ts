@@ -2,10 +2,12 @@
  * Batch 5 · 5F — production gameplay E2E: real browsers, real app, real PostgREST/PostgreSQL.
  */
 import { test, expect, Page } from '@playwright/test';
-import { newPage, createSession, joinTeam, playQuarter, expectPhase, openQuarter, refreshAndExpect, fillDecision, choice } from './helpers';
+import { newPage, createSession, joinTeam, playQuarter, expectPhase, openQuarter, refreshAndExpect, fillDecision, choice, closeAllContexts } from './helpers';
 import { replayInputs, getDecisionSpec, getFinalOutcome, V2_BASE_ENVELOPE } from '../src/production/v2/adapter';
 import type { V2PlayerQuarterInput } from '../src/production/v2/types';
 import type { V2FinalOptionId } from '../src/simulation/engineV2Final';
+
+test.afterEach(closeAllContexts);
 
 type Alloc = V2PlayerQuarterInput['allocation'];
 const alloc = (p: Partial<Alloc>, envelope: number = V2_BASE_ENVELOPE): Alloc => {

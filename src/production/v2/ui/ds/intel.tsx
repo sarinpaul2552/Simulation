@@ -14,7 +14,7 @@ import {
 import { AttributionRow, DRIVER_LABEL, formatAttr } from '../../insights/attribution';
 import type { Scorecard } from '../../insights/executive';
 import { EXECUTIVE_WEIGHTS, EXECUTIVE_VERSION } from '../../insights/executive';
-import { FACTOR_IDS, FACTOR_INFO, PricePoint, ValuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, roundedBridge, VALUATION_VERSION } from '../../insights/valuation';
+import { FACTOR_INFO, PricePoint, ValuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, roundedBridge } from '../../insights/valuation';
 
 const arrow = (d: number, eps: number) => (Math.abs(d) < eps ? '■' : d > 0 ? '▲' : '▼');
 const TONE_CLASS = { good: 'ds-tone-good', bad: 'ds-tone-bad', neutral: 'ds-tone-neutral' } as const;
@@ -202,7 +202,7 @@ export function ScorecardView({ card, mode, testId }: { card: Scorecard; mode: V
 /** Valuation bridge: previous price → each calculated contribution → this quarter's price (reconciles exactly). */
 export function ValuationBridgeView({ point, previous, mode }: { point: PricePoint; previous: PricePoint; mode: V2PresentationMode }) {
   const r = roundedBridge(point);
-  const lines = r.lines.filter(l => Math.abs(l.shown) >= 0.005 || FACTOR_IDS.includes(l.id as never));
+  const lines = r.lines.filter(l => Math.abs(l.shown) >= 0.005 || l.id in FACTOR_INFO);
   let run = previous.price;
   const rows = lines.map(l => { const from = run; run += l.shown; return { ...l, from, to: run }; });
   const lo = Math.min(previous.price, point.price, ...rows.flatMap(x => [x.from, x.to])) * 0.98, hi = Math.max(previous.price, point.price, ...rows.flatMap(x => [x.from, x.to])) * 1.01;
@@ -213,14 +213,14 @@ export function ValuationBridgeView({ point, previous, mode }: { point: PricePoi
         <div className="ds-bridge-row total"><span>{calendarLabel(previous.quarter)} share price</span><span className="ds-bridge-track" aria-hidden><span className="ds-bridge-bar total" style={{ left: 0, width: `${x(previous.price)}%` }} /></span><span className="ds-bridge-val">{fmtPrice(previous.price)}</span></div>
         {rows.map(l => (
           <div key={l.id} className="ds-bridge-row" data-testid={`v2-vb-${l.id}`} data-value={l.shown}>
-            <span>{l.label}{mode === 'mba' && FACTOR_IDS.includes(l.id as never) && <span className="ds-method" style={{ display: 'block' }}>{FACTOR_INFO[l.id as keyof typeof FACTOR_INFO].horizon === 'expectations' ? 'Future expectations' : 'Present performance'}</span>}</span>
+            <span>{l.label}{mode === 'mba' && l.id in FACTOR_INFO && <span className="ds-method" style={{ display: 'block' }}>{FACTOR_INFO[l.id as keyof typeof FACTOR_INFO].horizon === 'expectations' ? 'Future expectations' : 'Present performance'}</span>}</span>
             <span className="ds-bridge-track" aria-hidden>{Math.abs(l.shown) >= 0.005 && <span className={`ds-bridge-bar ${l.shown >= 0 ? 'pos' : 'neg'}`} style={{ left: `${x(Math.min(l.from, l.to))}%`, width: `${Math.max(0.6, Math.abs(x(l.to) - x(l.from)))}%` }} />}</span>
             <span className="ds-bridge-val">{fmtPriceDelta(l.shown)}</span>
           </div>
         ))}
         <div className="ds-bridge-row total"><span>{calendarLabel(point.quarter)} share price</span><span className="ds-bridge-track" aria-hidden><span className="ds-bridge-bar total" style={{ left: 0, width: `${x(point.price)}%` }} /></span><span className="ds-bridge-val" data-testid="v2-vb-closing">{fmtPrice(point.price)}</span></div>
       </div>
-      <p className="ds-method" style={{ margin: '8px 0 0' }}>Contributions are calculated from recorded results and add up exactly to the change ({fmtPriceDelta(r.total)}). The price is simulated by a documented model ({VALUATION_VERSION}) — it is not a forecast, and it does not affect the simulation.</p>
+      <p className="ds-method" style={{ margin: '8px 0 0' }}>Contributions are calculated from recorded results and add up exactly to the change ({fmtPriceDelta(r.total)}). The price is simulated by a documented model ({point.version ?? 'NXLN-VAL-1.0'}) — it is not a forecast, and it does not affect the simulation.</p>
     </section>
   );
 }
@@ -245,7 +245,7 @@ export function SharePricePanel({ val, quarter, mode }: { val: ValuationSeries; 
             <caption>What investors are pricing ({calendarLabel(q)})</caption>
             <thead><tr><th>Factor</th><th className="num">Weight</th><th className="num">Score</th></tr></thead>
             <tbody>
-              {FACTOR_IDS.map(k => <tr key={k}><td>{FACTOR_INFO[k].label}<span className="ds-method" style={{ display: 'block' }}>{FACTOR_INFO[k].horizon === 'expectations' ? 'Future expectations' : 'Present performance'}</span></td><td className="num">{(val.config.weights[k] * 100).toFixed(0)}%</td><td className="num">{(p.factors[k] * 100).toFixed(0)}</td></tr>)}
+              {val.config.factors.map(k => <tr key={k}><td>{FACTOR_INFO[k].label}<span className="ds-method" style={{ display: 'block' }}>{FACTOR_INFO[k].horizon === 'expectations' ? 'Future expectations' : 'Present performance'}</span></td><td className="num">{((val.config.weights[k] ?? 0) * 100).toFixed(0)}%</td><td className="num">{(p.factors[k] * 100).toFixed(0)}</td></tr>)}
               {p.distress > 0 && <tr><td>Distress discount</td><td /><td className="num ds-tone-bad">−{(p.distress * 100).toFixed(0)}%</td></tr>}
               {p.ownership < 0.9995 && <tr><td>Ownership retained</td><td /><td className="num">{(p.ownership * 100).toFixed(1)}%</td></tr>}
             </tbody>

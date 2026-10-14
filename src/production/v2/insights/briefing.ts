@@ -68,7 +68,7 @@ export function materialDevelopments(rec: QuarterRecord, mode: V2PresentationMod
   if (big && Math.abs(big.movement) >= 0.05) {
     const drv: DriverKind | null = big.driver;
     out.push({ kind: 'capability', label: big.label, movement: movementText(big.unit, big.movement), direction: dir(big.movement), effect: effectOf(big, big.movement),
-      driver: drv ? (drv === 'investment' ? 'Earlier investment' : drv === 'decision' ? 'This quarter’s investment or decisions' : DRIVER_LABEL[drv]) : 'Recorded change', detail: big.id === 'culture' ? 'Culture reflects workload, workforce actions and events.' : 'Capability matures from investment over one to three quarters.' });
+      driver: drv ? (drv === 'investment' ? 'Earlier investment' : drv === 'decision' ? 'This quarter’s investment or decisions' : DRIVER_LABEL[drv]) : 'Recorded change', detail: big.id === 'culture' ? 'Culture changes with workforce reductions, restructuring, financial distress, crises and some final decisions; workload alone does not move it.' : 'Capability matures from investment over one to three quarters.' });
   } else {
     out.push({ kind: 'capability', label: 'Capabilities', movement: '■ no material change', direction: 'flat', effect: 'neutral', driver: '—', detail: 'No capability moved by more than 0.05 points.' });
   }

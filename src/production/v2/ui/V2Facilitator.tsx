@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { calendarLabel } from '../content/calendar';
 import type { V2Api, V2FacilitatorOverview } from '../api';
-import { V2_TOTAL_QUARTERS } from '../adapter';
-import { auditTeam } from '../gameService';
+import { V2_TOTAL_QUARTERS } from '../engine';
+import { auditTeam, sessionConfig } from '../gameService';
+import { PATH_INFO } from '../content/paths';
 import { buildTeamDebrief, TeamDebrief } from '../insights/debrief';
+import { buildFacilitatorTeams, teamLabels, q3RevealOpen, type FacTeam } from '../insights/facilitator';
+import { priorityLabel } from '../content/decisionFraming';
+import { pick } from '../content/modes';
+import { ClassDiscussion, TeamTimeline, FinalDebrief, StageClock, RulesNote, type NoteSelection } from './FacilitatorDiscussion';
+import type { V2DebriefRow } from '../api';
 import { normalizeMode, MODE_LABEL, V2PresentationMode } from '../content/modes';
 import { money, destinationName, FINAL_LABELS } from './format';
 import { Card, ErrorBanner, Icon, LineChart, Segmented } from './ds/components';
-import { replayInputs } from '../adapter';
+import { replayInputs } from '../engine';
 import { gameHistory } from '../insights/history';
 import { valuationSeries, fmtPrice, fmtPctDelta } from '../insights/valuation';
 import { allScorecards, computeAwards, AWARD_RULES, SCORECARD_ROLES, ROLE_SCORECARD_TITLE, type AwardTeam } from '../insights/executive';
@@ -18,7 +24,13 @@ const PHASE_LABEL: Record<string, string> = {
   results: 'Results', reflect: 'Reflecting', final: 'Finished',
 };
 
-type Tab = 'live' | 'compare' | 'leadership' | 'debrief';
+/** Tab ids keep their earlier names for stability: 'compare' = Class discussion, 'debrief' = Team timelines. */
+type Tab = 'live' | 'compare' | 'debrief' | 'final' | 'leadership';
+
+const selKey = (code: string) => `v2fac-notes-${code}`;
+function loadSelection(code: string): Set<string> {
+  try { const v = sessionStorage.getItem(selKey(code)); return new Set(v ? (JSON.parse(v) as string[]) : []); } catch { return new Set(); }
+}
 
 /**
  * Facilitator dashboard (Batch 7): live progress, peer comparison (facilitator-only) and a classroom debrief built
@@ -31,12 +43,25 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
   const [tab, setTab] = useState<Tab>('live');
   const [projector, setProjector] = useState(false);
   const [audit, setAudit] = useState<Record<string, { status: 'verified' | 'mismatch'; detail: string | null }> | null>(null);
-  const [debrief, setDebrief] = useState<{ teams: TeamDebrief[]; votesAvailable: boolean } | null>(null);
+  const [debrief, setDebrief] = useState<{ teams: TeamDebrief[]; rows: V2DebriefRow[]; votesAvailable: boolean } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(() => loadSelection(sessionCode));
+  const sel: NoteSelection = useMemo(() => ({
+    selected,
+    toggle: (key: string) => setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try { sessionStorage.setItem(selKey(sessionCode), JSON.stringify([...next])); } catch { /* storage unavailable: selection kept in memory */ }
+      return next;
+    }),
+  }), [selected, sessionCode]);
   const [leadership, setLeadership] = useState<AwardTeam[] | null>(null);
+  const cfg = useMemo(() => { try { return sessionConfig(o ?? {}); } catch { return null; } }, [o?.econ_engine, o?.market_path]); // eslint-disable-line react-hooks/exhaustive-deps
+  const needCfg = () => { if (!cfg) throw new Error('This session’s market path is missing; results cannot be replayed.'); return cfg; };
   const loadLeadership = () => act(async () => {
+    const c = needCfg();
     const entries = await api.facilitatorAudit(sessionCode, adminPin);
     const names = Object.fromEntries((o?.teams ?? []).map(t => [t.team_id, t.team_name]));
-    setLeadership(entries.filter(e => e.inputs.length > 0).map(e => ({ teamId: e.team_id, teamName: names[e.team_id] ?? 'Team', records: gameHistory(replayInputs(e.inputs)) })));
+    setLeadership(entries.filter(e => e.inputs.length > 0).map(e => ({ teamId: e.team_id, teamName: names[e.team_id] ?? 'Team', records: gameHistory(replayInputs(e.inputs, c)) })));
   });
   const refresh = useCallback(async () => {
     try { setO(await api.facilitatorOverview(sessionCode, adminPin)); setError(null); } catch (e) { setError((e as Error).message); }
@@ -48,20 +73,37 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
   }, [refresh]);
   const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await refresh(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const runAudit = () => act(async () => {
+    const c = needCfg();
     const entries = await api.facilitatorAudit(sessionCode, adminPin);
-    setAudit(Object.fromEntries(entries.map(e => [e.team_id, auditTeam(e)])));
+    setAudit(Object.fromEntries(entries.map(e => [e.team_id, auditTeam(e, c)])));
   });
   const loadDebrief = () => act(async () => {
+    const config = needCfg();
     try {
       const rows = await api.facilitatorDebrief(sessionCode, adminPin);
-      setDebrief({ teams: rows.filter(r => r.inputs.length > 0).map(r => buildTeamDebrief({ team_id: r.team_id, team_name: r.team_name, inputs: r.inputs, deliberations: r.deliberations, votes: r.votes, agreements: r.agreements })), votesAvailable: true });
+      setDebrief({ rows, teams: rows.filter(r => r.inputs.length > 0).map(r => buildTeamDebrief({ team_id: r.team_id, team_name: r.team_name, inputs: r.inputs, deliberations: r.deliberations, votes: r.votes, agreements: r.agreements, config })), votesAvailable: true });
     } catch {
       // Older database (before the Batch 7 migration): decisions only, no votes or deliberation.
       const entries = await api.facilitatorAudit(sessionCode, adminPin);
       const names = Object.fromEntries((o?.teams ?? []).map(t => [t.team_id, t.team_name]));
-      setDebrief({ teams: entries.filter(e => e.inputs.length > 0).map(e => buildTeamDebrief({ team_id: e.team_id, team_name: names[e.team_id] ?? 'Team', inputs: e.inputs })), votesAvailable: false });
+      setDebrief({
+        rows: entries.map(e => ({ team_id: e.team_id, team_name: names[e.team_id] ?? 'Team', completed_quarter: e.completed_quarter, inputs: e.inputs, deliberations: e.inputs.map(() => null), reflections: e.inputs.map(() => null), votes: {} })),
+        teams: entries.filter(e => e.inputs.length > 0).map(e => buildTeamDebrief({ team_id: e.team_id, team_name: names[e.team_id] ?? 'Team', inputs: e.inputs, config })), votesAvailable: false,
+      });
     }
   });
+
+  // Batch 10E: the discussion views use the existing debrief data; reload it whenever a team completes a quarter.
+  const totalCompleted = o ? o.teams.reduce((n, t) => n + t.completed_quarter, 0) : -1;
+  useEffect(() => { if (totalCompleted >= 0) void loadDebrief(); }, [totalCompleted]); // eslint-disable-line react-hooks/exhaustive-deps
+  const facTeams: FacTeam[] = useMemo(() => {
+    if (!debrief || !o) return [];
+    const order = new Map(o.teams.map((t, i) => [t.team_id, i]));
+    return buildFacilitatorTeams([...debrief.rows].sort((a, b) => (order.get(a.team_id) ?? 0) - (order.get(b.team_id) ?? 0)), cfg ?? undefined);
+  }, [debrief, o?.teams.length, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
+  const labels = useMemo(() => teamLabels((o?.teams ?? []).map(t => ({ teamId: t.team_id, name: t.team_name })), projector), [o?.teams, projector]); // eslint-disable-line react-hooks/exhaustive-deps
+  const gateOpen = o ? q3RevealOpen(o.teams) : false;
+  const gateProgress = o ? `${o.teams.filter(t => t.started && t.completed_quarter >= 4).length} of ${o.teams.filter(t => t.started).length} teams` : '';
 
   if (!o) return <div className="ds-root"><div className="ds-shell"><ErrorBanner error={error} /><p data-testid="v2-fac-loading">Loading session…</p><button className="ds-btn ds-btn-secondary" onClick={onExit}>Leave</button></div></div>;
   const mode = normalizeMode(o.presentation_mode);
@@ -73,6 +115,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
       <header className="ds-topbar">
         <div className="ds-topbar-inner">
           <span className="ds-company">Facilitator · {o.session_code}</span>
+          <span className="ds-meta" data-testid="v2-fac-market" data-path={o.market_path ?? 'v2'}>{o.econ_engine === 'v3' && o.market_path ? `Market path: ${PATH_INFO[o.market_path].name}` : 'Original NexLearn (V2 economics)'}</span>
           <span className="ds-quarter">{o.pacing === 'self' ? 'Self-paced' : `Open: ${calendarLabel(o.open_quarter)}`}</span>
           <span className="ds-meta">{MODE_LABEL[mode]} mode{!projector && <> · PIN <b data-testid="v2-fac-pin">{adminPin}</b></>}</span>
           <span className="ds-spacer" />
@@ -83,13 +126,14 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
       <main className="ds-shell ds-stack">
         <ErrorBanner error={error} />
         <div className="ds-row">
-          <Segmented testIdPrefix="v2-fac-tab" value={tab} onChange={v => { setTab(v); if (v === 'debrief' && !debrief) void loadDebrief(); if (v === 'leadership') void loadLeadership(); }} options={[{ id: 'live', label: 'Live progress' }, { id: 'compare', label: 'Compare teams' }, { id: 'leadership', label: 'Leadership and awards' }, { id: 'debrief', label: 'Debrief' }]} />
+          <Segmented testIdPrefix="v2-fac-tab" value={tab} onChange={v => { setTab(v); if (v !== 'live' && v !== 'leadership') void loadDebrief(); if (v === 'leadership') void loadLeadership(); }} options={[{ id: 'live', label: 'Live progress' }, { id: 'compare', label: 'Class discussion' }, { id: 'debrief', label: 'Team timelines' }, { id: 'final', label: 'Final debrief' }, { id: 'leadership', label: 'Leadership and awards' }]} />
           <span className="ds-spacer" />
           <span className="ds-small">Class mode</span>
           {o.presentation_mode === undefined
             ? <span className="ds-small" data-testid="v2-fac-mode-unavailable">MBA (modes need a database update)</span>
             : <Segmented<V2PresentationMode> testIdPrefix="v2-fac-mode" value={mode} onChange={m => void act(() => api.setPresentationMode(sessionCode, adminPin, m))} options={[{ id: 'undergraduate', label: 'Undergraduate' }, { id: 'mba', label: 'MBA' }]} />}
         </div>
+        <StageClock />
 
         {tab === 'live' && (
           <>
@@ -118,19 +162,20 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
             <Card title="Teams" icon="users" action={<button className="ds-btn ds-btn-secondary" data-testid="v2-fac-verify" disabled={busy} onClick={() => void runAudit()}><Icon name="check" />Verify integrity</button>}>
               <div className="ds-table-wrap">
                 <table className="ds-table" data-testid="v2-fac-teams">
-                  <thead><tr><th>Team</th><th>Code</th><th>Progress</th><th>Now</th><th>Commit</th><th>Revenue</th><th>Cash</th><th>Strategy</th><th>Finance</th><th>Final</th><th>Integrity</th></tr></thead>
+                  <thead><tr><th>Team</th>{!projector && <th>Code</th>}<th>Progress</th><th>Now</th><th>Commit</th><th>Last committed intent</th><th>Revenue</th><th>Cash</th><th>Strategy</th><th>Finance</th><th>Final</th><th>Integrity</th></tr></thead>
                   <tbody>
                     {o.teams.map(t => {
                       const h = t.headline;
                       const working = t.completed_quarter + 1;
                       const waiting = t.phase === 'reflect' && (o.pacing === 'self' || o.open_quarter < working) ;
                       return (
-                        <tr key={t.team_id} data-testid="v2-fac-team" data-team={t.team_name}>
-                          <td><b>{t.team_name}</b></td>
-                          <td><code>{t.team_code}</code></td>
+                        <tr key={t.team_id} data-testid="v2-fac-team" data-team={projector ? labels[t.team_id] : t.team_name}>
+                          <td><b>{labels[t.team_id]}</b></td>
+                          {!projector && <td><code>{t.team_code}</code></td>}
                           <td data-testid="v2-fac-progress">{t.started ? `${t.completed_quarter}/${V2_TOTAL_QUARTERS} done` : 'Not joined'}</td>
                           <td>{t.phase ? (t.phase === 'final' ? 'Finished' : waiting ? `Waiting for ${calendarLabel(working)}` : `${calendarLabel(['results', 'reflect'].includes(t.phase) ? t.completed_quarter : working)} · ${PHASE_LABEL[t.phase]}`) : '—'}</td>
                           <td data-testid="v2-fac-votes">{t.phase === 'vote' || (t.phase === 'commit' && o.commitment_mode !== 'team_commitment') ? `${t.votes_submitted}/5 votes` : t.phase === 'commit' ? 'committing' : t.phase === 'risk' && o.commitment_mode === 'team_commitment' ? 'reviewing' : '—'}</td>
+                          <td className="ds-small" data-testid="v2-fac-intent">{(() => { const ft = facTeams.find(x => x.teamId === t.team_id); const last = ft?.quarters[ft.quarters.length - 1]; const l = last ? priorityLabel(last.quarter, last.deliberation?.priorityId) : undefined; return last ? (l ? `${calendarLabel(last.quarter)}: ${pick(mode, l)}` : `${calendarLabel(last.quarter)}: not recorded`) : '—'; })()}</td>
                           <td>{h ? money(h.revenue) : '—'}</td>
                           <td>{h ? money(h.cash) : '—'}</td>
                           <td data-testid="v2-fac-destination">{h && h.completedQuarter >= 4 ? destinationName(h.destination) : '—'}</td>
@@ -151,19 +196,28 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
                   </tbody>
                 </table>
               </div>
-              <p className="ds-muted">Headline figures only. Private role briefings, drafts and unrevealed votes are never shown here.</p>
+              <p className="ds-muted">Headline figures and committed intent only. Private role briefings, drafts and unrevealed votes are never shown here.{projector ? ' Projector view: team names and codes are hidden.' : ''}</p>
             </Card>
           </>
         )}
 
-        {tab === 'compare' && <Compare overview={o} />}
-        {tab === 'leadership' && (leadership ? <Leadership teams={leadership} onRefresh={() => void loadLeadership()} busy={busy} /> : <p className="ds-muted">Loading…</p>)}
+        {tab === 'compare' && (debrief
+          ? <ClassDiscussion teams={facTeams} labels={labels} projector={projector} gateOpen={gateOpen} gateProgress={gateProgress} mode={mode} sel={sel}
+              financial={<details className="ds-fold" open><summary>Financial comparison<span className="ds-fold-hint">Latest completed quarter of each team</span></summary><div className="ds-fold-body"><Compare overview={o} labels={labels} /></div></details>} />
+          : <p className="ds-muted">Loading…</p>)}
+        {tab === 'final' && (debrief ? <FinalDebrief teams={facTeams} overview={o} labels={labels} projector={projector} gateOpen={gateOpen} gateProgress={gateProgress} mode={mode} sel={sel} /> : <p className="ds-muted">Loading…</p>)}
+        {tab === 'leadership' && (leadership ? <Leadership teams={leadership.map(t => ({ ...t, teamName: labels[t.teamId] ?? t.teamName }))} onRefresh={() => void loadLeadership()} busy={busy} /> : <p className="ds-muted">Loading…</p>)}
 
         {tab === 'debrief' && (
           <div className="ds-stack" data-testid="v2-fac-debrief">
             <div className="ds-row"><button className="ds-btn ds-btn-secondary" disabled={busy} onClick={() => void loadDebrief()}><Icon name="clock" />Refresh debrief</button>
               {debrief && !debrief.votesAvailable && <span className="ds-badge ds-badge-warn">Votes and beliefs unavailable — the database needs the Batch 7 migration</span>}</div>
-            {!debrief ? <p className="ds-muted">Loading…</p> : debrief.teams.length === 0 ? <p className="ds-muted">No team has completed a quarter yet.</p> : debrief.teams.map(t => <DebriefCard key={t.teamId} d={t} />)}
+            <RulesNote />
+            {!debrief ? <p className="ds-muted">Loading…</p> : debrief.teams.length === 0 ? <p className="ds-muted">No team has completed a quarter yet.</p> : debrief.teams.map((t, i) => {
+              const ft = facTeams.find(x => x.teamId === t.teamId);
+              return <DebriefCard key={t.teamId} d={t} label={labels[t.teamId] ?? t.teamName} open={i === 0}
+                timeline={ft ? <TeamTimeline team={ft} label={labels[t.teamId]} projector={projector} mode={mode} sel={sel} /> : null} />;
+            })}
           </div>
         )}
       </main>
@@ -171,7 +225,7 @@ export function V2Facilitator({ api, sessionCode, adminPin, onExit }: { api: V2A
   );
 }
 
-function Compare({ overview }: { overview: V2FacilitatorOverview }) {
+function Compare({ overview, labels }: { overview: V2FacilitatorOverview; labels: Record<string, string> }) {
   const teams = overview.teams.filter(t => t.headline);
   const metrics = useMemo(() => [
     { id: 'revenue', label: 'Revenue (last quarter)', get: (t: typeof teams[number]) => t.headline!.revenue, fmt: (v: number) => money(v) },
@@ -183,7 +237,7 @@ function Compare({ overview }: { overview: V2FacilitatorOverview }) {
   return (
     <div className="ds-grid ds-grid-2" data-testid="v2-fac-compare">
       {metrics.map(m => {
-        const vals = teams.map(t => ({ name: t.team_name, v: m.get(t), q: t.completed_quarter }));
+        const vals = teams.map(t => ({ name: labels[t.team_id] ?? t.team_name, v: m.get(t), q: t.completed_quarter }));
         const max = Math.max(...vals.map(x => (Number.isFinite(x.v) ? Math.abs(x.v) : 0)), 1);
         return (
           <Card key={m.id} title={m.label} sub="Facilitator only" icon="chart">
@@ -203,10 +257,13 @@ function Compare({ overview }: { overview: V2FacilitatorOverview }) {
   );
 }
 
-function DebriefCard({ d }: { d: TeamDebrief }) {
+function DebriefCard({ d, label, open, timeline }: { d: TeamDebrief; label: string; open: boolean; timeline: React.ReactNode }) {
   return (
-    <Card title={d.teamName} sub={`${d.completed}/8 quarters · ${d.strategy}`} icon="users" testId="v2-debrief-team">
-      <div className="ds-grid ds-grid-main">
+    <Card title={label} sub={`${d.completed}/8 quarters · ${d.strategy}`} icon="users" testId="v2-debrief-team">
+      {timeline}
+      <details className="ds-fold" open={open} style={{ marginTop: 12 }}>
+      <summary>Decisions, commitments, votes and trajectory</summary>
+      <div className="ds-fold-body ds-grid ds-grid-main">
         <div className="ds-stack">
           {d.final && <div className="ds-row"><span className="ds-badge ds-badge-accent">Overall {d.final.overall.toFixed(1)}</span><span className="ds-small">Financial {d.final.financial.toFixed(1)} · Strategic {d.final.strategic.toFixed(1)} · Organizational {d.final.organizational.toFixed(1)}</span></div>}
           <div><p className="ds-h4">Major decisions</p><ul className="ds-list ds-small">{d.decisions.map(x => <li key={x.quarter}><b>{calendarLabel(x.quarter)}:</b> {x.text}{x.belief ? <span className="ds-muted"> — belief: {x.belief}</span> : null}</li>)}</ul></div>
@@ -216,11 +273,12 @@ function DebriefCard({ d }: { d: TeamDebrief }) {
           <div><p className="ds-h4">Discussion questions</p><ol className="ds-list ds-small">{d.questions.map(q => <li key={q}>{q}</li>)}</ol></div>
         </div>
         <div className="ds-stack">
-          <div><p className="ds-h4">Revenue</p><LineChart label={`${d.teamName} revenue`} points={d.trajectory.map(t => ({ x: t.quarter, y: t.revenue }))} format={v => `$${v.toFixed(0)}M`} zeroLine={false} /></div>
-          <div><p className="ds-h4">Cash</p><LineChart label={`${d.teamName} cash`} points={d.trajectory.map(t => ({ x: t.quarter, y: t.cash }))} format={v => `$${v.toFixed(0)}M`} color="var(--ds-s3)" /></div>
+          <div><p className="ds-h4">Revenue</p><LineChart label={`${label} revenue`} points={d.trajectory.map(t => ({ x: t.quarter, y: t.revenue }))} format={v => `$${v.toFixed(0)}M`} zeroLine={false} /></div>
+          <div><p className="ds-h4">Cash</p><LineChart label={`${label} cash`} points={d.trajectory.map(t => ({ x: t.quarter, y: t.cash }))} format={v => `$${v.toFixed(0)}M`} color="var(--ds-s3)" /></div>
           <div className="ds-small"><b>Strongest:</b> {d.strongest.join(', ')}<br /><b>Weakest:</b> {d.weakest.join(', ')}</div>
         </div>
       </div>
+      </details>
     </Card>
   );
 }

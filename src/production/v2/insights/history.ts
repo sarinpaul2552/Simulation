@@ -4,11 +4,15 @@
  */
 import type { V2Consequence, V2TeamState } from '../../../simulation/engineV2';
 import { getV2Baseline } from '../../../simulation/engineV2';
-import { initializeGame, resolveQuarter } from '../adapter';
-import type { V2GameSnapshot } from '../snapshot';
+import { initializeGame, resolveQuarter, configOf, engineOf } from '../engine';
+import type { V2GameSnapshot, MarketPathId } from '../snapshot';
 import type { V2PlayerQuarterInput, V2QuarterResult } from '../types';
 
 export interface QuarterRecord {
+  /** Which economic engine produced the record (selects the valuation version: V2 → NXLN-VAL-1.0, V3 → 1.1). */
+  engine: 'v2' | 'v3';
+  /** Market path of a V3 game ('A' for V2 games, whose market is the original arc). */
+  path: MarketPathId;
   quarter: number;
   input: V2PlayerQuarterInput;
   before: V2TeamState;
@@ -23,10 +27,11 @@ export function gameHistory(snap: V2GameSnapshot): QuarterRecord[] {
   const hit = cache.get(snap);
   if (hit) return hit;
   const out: QuarterRecord[] = [];
-  let cur = initializeGame();
+  let cur = initializeGame(configOf(snap));
+  const engine = engineOf(snap);
   for (const input of snap.inputs) {
     const r = resolveQuarter(cur, input);
-    out.push({ quarter: input.quarter, input, before: cur.state, after: r.snapshot.state, consequence: r.consequence, result: r.result });
+    out.push({ engine, path: snap.marketPath ?? 'A', quarter: input.quarter, input, before: cur.state, after: r.snapshot.state, consequence: r.consequence, result: r.result });
     cur = r.snapshot;
   }
   cache.set(snap, out);

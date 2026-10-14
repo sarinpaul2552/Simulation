@@ -186,15 +186,27 @@ export function decisionConsequences(rec: QuarterRecord, mode: V2PresentationMod
     out.push(input.opportunity.accept ? {
       id: 'opportunity', weight: 90,
       decision: `You accepted the ${fmtM(t.acv, 0)} ${t.name}.`,
-      immediate: `It cost ${fmtM(t.upfrontCash)} upfront and added ${t.orgLoadPerQuarter.toFixed(0)} points of workload per quarter for ${t.loadQuarters} quarters.`,
+      immediate: rec.engine === 'v3'
+        ? `Its ${fmtM(t.upfrontCash)} implementation cost came out of this quarter’s ${fmtM(f.envelope, 0)} budget (counted once), leaving ${fmtM(f.invested)} invested; it added ${t.orgLoadPerQuarter.toFixed(0)} points of workload per quarter for ${t.loadQuarters} quarters.`
+        : `It cost ${fmtM(t.upfrontCash)} upfront and added ${t.orgLoadPerQuarter.toFixed(0)} points of workload per quarter for ${t.loadQuarters} quarters.`,
       longerTerm: `Signed revenue of about ${fmtM(t.runRate)} per quarter goes live gradually as you deliver${t.roadmapDiversion > 0 ? `; part of your product roadmap is diverted to the client` : ''}.`,
       uncertainty: pick(mode, mt('Delivery strain could slow your other investments — watch workload versus capacity.', `Fit ${pct(t.fit.fit)}: delivery load competes with your own initiatives for capacity.`)),
     } : {
       id: 'opportunity', weight: 90,
       decision: `You declined the ${fmtM(t.acv, 0)} ${t.name}.`,
-      immediate: `You kept the ${fmtM(t.upfrontCash)} upfront cost and your teams’ capacity.`,
+      immediate: rec.engine === 'v3' ? `The ${fmtM(t.upfrontCash)} implementation cost stayed available for your own investment, and your teams kept their capacity.` : `You kept the ${fmtM(t.upfrontCash)} upfront cost and your teams’ capacity.`,
       longerTerm: 'No contract revenue will be added; your roadmap and capacity stay on your own strategy.',
       uncertainty: 'Whether the capacity you protected produces more value than the contract would have is not knowable from this game.',
+    });
+  }
+  if (input.recessionStance) {
+    const st = input.recessionStance;
+    out.push({
+      id: 'stance', weight: 82,
+      decision: st === 'protect' ? 'Recession stance: protect — you kept investing through the downturn.' : st === 'slow' ? `Recession stance: slow — you held ${fmtM(f.al.cashReserve)} of the budget as cash.` : 'Recession stance: cut — you reduced costs.',
+      immediate: `Closing cash ${fmtM(rec.after.cash)}; culture ${rec.before.culture.toFixed(0)} → ${rec.after.culture.toFixed(0)}.`,
+      longerTerm: st === 'protect' ? 'Capabilities keep building, at the price of a thinner cash cushion if the downturn lasts.' : st === 'slow' ? 'Less new capability matures over the next quarters; the cash is there if conditions worsen.' : 'Lower running costs from now on; staff actions weigh on talent, culture and delivery.',
+      uncertainty: 'Which stance was wiser depends on how long and deep the downturn turns out to be.',
     });
   }
   if (input.management && Object.keys(input.management).length) {
@@ -284,6 +296,27 @@ export function decisionConsequences(rec: QuarterRecord, mode: V2PresentationMod
       immediate: `${pct(cap.absorptionFactor)} of this quarter’s investment turned into capability.`,
       longerTerm: heavy ? 'The rest of that investment is lost, not delayed.' : 'A small part of the investment was lost to the workload of running several changes at once.',
       uncertainty: 'Fewer simultaneous initiatives, or investing in People to raise capacity, reduces this loss.',
+    });
+  }
+
+  // E8: capability past its ceiling is wasted (both engines record it).
+  const waste = (c.capability.targets ?? []).filter(t => t.wastedSaturation > 0.5);
+  if (waste.length) {
+    out.push({
+      id: 'ceiling', weight: 62,
+      decision: `Part of your investment reached a capability ceiling: ${waste.map(t => `${TARGET_LABEL[t.target] ?? t.target} (${t.closing.toFixed(0)})`).join(', ')}.`,
+      immediate: `${waste.reduce((s, t) => s + t.wastedSaturation, 0).toFixed(1)} capability points that matured this quarter could not be used.`,
+      longerTerm: 'Money put into a capability at its ceiling builds nothing more; the planning screen flags buckets that are close.',
+      uncertainty: 'A strategy commitment can raise the ceiling in its focus areas over time.',
+    });
+  }
+  if ((input.expansion ?? 0) > 0) {
+    out.push({
+      id: 'expansion', weight: 76,
+      decision: `You invested ${fmtM(f.invested)} — ${fmtM(input.expansion!)} more than the base budget — funded by new financing.`,
+      immediate: `Closing cash ${fmtM(rec.after.cash)}; debt ${fmtM(rec.after.financing.debt)}; owners keep ${pct(rec.after.financing.ownership)}.`,
+      longerTerm: 'The extra investment matures like any other; the financing has to be serviced (interest) or has diluted the owners.',
+      uncertainty: 'Extra investment pays only where capability is not already near its ceiling and the organization can absorb it.',
     });
   }
 

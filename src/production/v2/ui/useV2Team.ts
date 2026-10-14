@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { V2Agreement, V2Api, V2Draft, V2VotesResponse } from '../api';
 import { V2ApiError } from '../api';
 import { loadTeamGame, saveDecisionDraft, commitQuarter, V2LoadedGame, V2IntegrityError } from '../gameService';
-import { workingQuarter, envelopeFor } from '../adapter';
+import { workingQuarter, envelopeFor } from '../engine';
 import type { V2Phase, V2PlayerQuarterInput, V2Role, V2VoteValue } from '../types';
 
 export type V2TeamStatus = 'loading' | 'ready' | 'error' | 'integrity-error';
@@ -30,13 +30,18 @@ export function useV2Team(api: V2Api, teamCode: string) {
   const [busy, setBusy] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDraft = useRef<V2Draft | null>(null);
+  /** Draft saves currently in flight (Batch 10A: a background poll must not replace edits that are still being saved). */
+  const savesInFlight = useRef(0);
+  const draftRef = useRef<V2Draft | null>(null);
 
   const adopt = useCallback((g: V2LoadedGame) => {
     setGame(g);
     const q = workingQuarter(g.snapshot);
     const server = g.record.draft;
-    // Local edits not yet saved (debounce window) win over a background refresh of the same quarter.
-    if (pendingDraft.current && q !== null && pendingDraft.current.quarter === q && EDITABLE.includes(g.record.phase)) { setStatus('ready'); return; }
+    // Local edits not yet saved (debounce window) or still being saved win over a background refresh of the same
+    // quarter; the next refresh after the save completes adopts the server copy, which then contains them.
+    const local = pendingDraft.current ?? (savesInFlight.current > 0 ? draftRef.current : null);
+    if (local && q !== null && local.quarter === q && EDITABLE.includes(g.record.phase)) { setStatus('ready'); return; }
     setDraft(q === null ? null : server && server.quarter === q ? { ...server, input: server.input ?? defaultInput(q) } : { quarter: q, input: defaultInput(q), briefed: [] });
     setStatus('ready');
   }, []);
@@ -59,11 +64,12 @@ export function useV2Team(api: V2Api, teamCode: string) {
     const d = pendingDraft.current;
     pendingDraft.current = null;
     if (d && game && EDITABLE.includes(game.record.phase)) {
-      await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed, introSeen: d.introSeen });
+      savesInFlight.current++;
+      try { await saveDecisionDraft(api, game, { input: d.input, deliberation: d.deliberation, briefed: d.briefed, introSeen: d.introSeen }); }
+      finally { savesInFlight.current--; }
     }
   }, [api, game]);
 
-  const draftRef = useRef<V2Draft | null>(null);
   draftRef.current = draft;
 
   /** Update the local draft and persist it shortly after (debounced), or at once for progress that must survive a refresh. */
@@ -77,6 +83,11 @@ export function useV2Team(api: V2Api, teamCode: string) {
     if (opts.immediate) save();
     else saveTimer.current = setTimeout(save, 400);
   }, [flushDraft, reload]);
+
+  /** Batch 10A: merge a deliberation change into the latest local draft (not a render-time copy), so quick taps never drop an earlier pick. */
+  const updateDeliberation = useCallback((patch: Partial<NonNullable<V2Draft['deliberation']>>) => {
+    updateDraft({ deliberation: { ...(draftRef.current?.deliberation ?? {}), ...patch } });
+  }, [updateDraft]);
 
   const run = useCallback(async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -171,7 +182,16 @@ export function useV2Team(api: V2Api, teamCode: string) {
     await api.saveReflection(teamCode, game.record.completed_quarter, text);
   }), [api, game, teamCode, run]);
 
-  return { status, game, draft, error, busy, reload, updateDraft, flushDraft, go, advance, submitVote, getVotes, commit, commitTeam, saveReflection, setError };
+  /**
+   * Batch 10A: save the reflection in the background while the team writes it, so a refresh does not lose it.
+   * Uses the existing v2_save_reflection RPC (resolved quarter only; no phase change, no busy state).
+   */
+  const persistReflection = useCallback(async (quarter: number, text: string) => {
+    try { await api.saveReflection(teamCode, quarter, text); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+  }, [api, teamCode]);
+
+  return { status, game, draft, error, busy, reload, updateDraft, updateDeliberation, flushDraft, go, advance, submitVote, getVotes, commit, commitTeam, saveReflection, persistReflection, setError };
 }
 
 export type V2TeamController = ReturnType<typeof useV2Team>;

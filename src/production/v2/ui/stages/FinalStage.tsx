@@ -4,9 +4,11 @@ import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { buildLearningReport, Finding } from '../../insights/report';
 import { gameHistory } from '../../insights/history';
+import { configOf } from '../../engine';
+import { PATH_INFO } from '../../content/paths';
 import { fmtM } from '../../insights/dashboard';
 import { kpiDashboard, type KpiDashboardRow } from '../../insights/intelligence';
-import { valuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, FACTOR_IDS, FACTOR_INFO } from '../../insights/valuation';
+import { valuationSeries, fmtPrice, fmtPriceDelta, fmtPctDelta, FACTOR_INFO } from '../../insights/valuation';
 import { allScorecards, EXECUTIVE_VERSION } from '../../insights/executive';
 import { V2_DESTINATIONS } from '../../../../simulation/engineV2Destination';
 import { COMPANY } from '../../content/company';
@@ -16,6 +18,8 @@ import { Icon, LineChart, Meter } from '../ds/components';
 import { Term } from '../ds/glossary';
 import { ScorecardView } from '../ds/intel';
 import { boardVerdict, defensePrompts, type DefensePrompt } from '../../insights/boardVerdict';
+import { ownTeam, intentOutcomeRows, rationalePrompts, type RationalePrompt } from '../../insights/intentOutcome';
+import type { TimelineRow } from '../../insights/facilitator';
 
 const GATE_TEXT: Record<string, string> = {
   'terminal-insolvency': 'The company ended the game insolvent, which caps the business performance score.',
@@ -35,6 +39,10 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
   const cards = useMemo(() => allScorecards(history), [history]);
   const verdict = useMemo(() => boardVerdict(history), [history]);
   const prompts = useMemo(() => defensePrompts(history), [history]);
+  // Batch 10E: the team's own recorded intent next to what it decided, what happened and what it learned.
+  const own = useMemo(() => ownTeam(game.teamName, game.resolutions, configOf(game.snapshot)), [game.teamName, game.resolutions, game.snapshot]);
+  const intent = useMemo(() => intentOutcomeRows(own, mode), [own, mode]);
+  const rationale = useMemo(() => rationalePrompts(own, mode), [own, mode]);
   const s = game.snapshot.state;
   const s0 = val.points[0];
   const end = val.points[val.points.length - 1];
@@ -54,6 +62,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           <div className="ds-report-meta">
             <span>Strategy: <b>{strategy}</b></span>
             <span>Final decision: <b data-testid="v2-final-option">{finalMove}</b></span>
+            <span data-testid="v2-final-market">Market: <b>{game.snapshot.marketPath ? PATH_INFO[game.snapshot.marketPath].name : 'Original NexLearn'}</b></span>
             <span>Prepared from recorded simulation results</span>
           </div>
           <div className="ds-actions ds-no-print" style={{ marginTop: 10, justifyContent: 'flex-start' }}>
@@ -96,14 +105,16 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           {gates.length > 0 && <div className="ds-notice ds-notice-bad" style={{ marginTop: 12 }}><Icon name="alert" />{gates.map(g => GATE_TEXT[g.id] ?? g.id).join(' ')}</div>}
           <div style={{ marginTop: 16 }}>
             <p className="ds-h4">Four lenses on the same company — reported separately, never combined</p>
+            <div className="ds-table-wrap">
             <table className="ds-table ds-table-compact" data-testid="v2-three-measures">
               <tbody>
                 <tr><td><b>Terminal simulation score</b><span className="ds-method" style={{ display: 'block' }}>The simulation’s own evaluation of the company built: finances, strategic position and organization.</span></td><td className="num"><span className="ds-score-big" data-testid="v2-final-overall">{sc.overall.toFixed(1)}</span><span className="ds-muted"> / 100</span></td></tr>
                 <tr><td><b>Shareholder value</b><span className="ds-method" style={{ display: 'block' }}>The simulated share price, from $100 at {calendarLabel(0)}.</span></td><td className="num"><b>{fmtPrice(end.price)}</b></td></tr>
-                <tr><td><b>Executive functional scores</b><span className="ds-method" style={{ display: 'block' }}>How the company performed under each function’s responsibilities (section 8) — not individual students.</span></td><td className="num ds-small">{cards.map(c => `${c.role === 'Product' ? 'CPO' : c.role === 'Growth' ? 'CGO' : c.role === 'People' ? 'CPeO' : c.role} ${c.functional.toFixed(0)}`).join(' · ')}</td></tr>
-                <tr><td><b>Board assessment</b><span className="ds-method" style={{ display: 'block' }}>Rule-based reading of the KPI evidence in the board verdict above.</span></td><td className="num ds-small">{verdict.map(d => `${d.label.split(' ')[0]} ${d.assessment.toLowerCase()}`).join(' · ')}</td></tr>
+                <tr><td><b>Executive functional scores</b><span className="ds-method" style={{ display: 'block' }}>How the company performed under each function’s responsibilities (section 8) — not individual students.</span></td><td className="num ds-small ds-wrap">{cards.map(c => `${c.role === 'Product' ? 'CPO' : c.role === 'Growth' ? 'CGO' : c.role === 'People' ? 'CPeO' : c.role} ${c.functional.toFixed(0)}`).join(' · ')}</td></tr>
+                <tr><td><b>Board assessment</b><span className="ds-method" style={{ display: 'block' }}>Rule-based reading of the KPI evidence in the board verdict above.</span></td><td className="num ds-small ds-wrap">{verdict.map(d => `${d.label.split(' ')[0]} ${d.assessment.toLowerCase()}`).join(' · ')}</td></tr>
               </tbody>
             </table>
+            </div>
           </div>
           <div className="ds-figures" style={{ marginTop: 16 }} data-testid="v2-final-dimensions">
             {report.dimensions.map(d => (
@@ -143,7 +154,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           </div>
           <table className="ds-table ds-table-compact" style={{ marginTop: 12 }}>
             <thead><tr><th>Valuation factor</th><th className="num">Weight</th><th className="num">{calendarShort(0)}</th><th className="num">{calendarShort(8)}</th></tr></thead>
-            <tbody>{FACTOR_IDS.map(k => <tr key={k}><td>{FACTOR_INFO[k].label} <span className="ds-muted">· {FACTOR_INFO[k].horizon === 'expectations' ? 'future expectations' : 'present performance'}</span></td><td className="num">{(val.config.weights[k] * 100).toFixed(0)}%</td><td className="num ds-muted">{(s0.factors[k] * 100).toFixed(0)}</td><td className="num">{(end.factors[k] * 100).toFixed(0)}</td></tr>)}</tbody>
+            <tbody>{val.config.factors.map(k => <tr key={k}><td>{FACTOR_INFO[k].label} <span className="ds-muted">· {FACTOR_INFO[k].horizon === 'expectations' ? 'future expectations' : 'present performance'}</span></td><td className="num">{((val.config.weights[k] ?? 0) * 100).toFixed(0)}%</td><td className="num ds-muted">{(s0.factors[k] * 100).toFixed(0)}</td><td className="num">{(end.factors[k] * 100).toFixed(0)}</td></tr>)}</tbody>
           </table>
           <p className="ds-method">Simulated with a documented, deterministic model ({val.version}); the price does not feed back into the simulation. Present-vs-expectations split is the contribution of each factor group relative to {calendarLabel(0)}, before the distress discount, dilution and quarterly smoothing.</p>
         </section>
@@ -158,6 +169,11 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
         <section className="ds-report-section" data-testid="v2-report-decisions">
           <h2><span className="ds-sec-n">{sec()}</span>Strategic decisions</h2>
           <DecisionHistory report={report} agreementOf={agreementOf} prices={val.points.map(p => p.price)} />
+        </section>
+
+        <section className="ds-report-section" data-testid="v2-report-intent">
+          <h2><span className="ds-sec-n">{sec()}</span>Intent and outcome</h2>
+          <IntentOutcome rows={intent} />
         </section>
 
         <section className="ds-report-section" data-testid="v2-report-scorecards">
@@ -192,7 +208,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
         </section>
       </article>
 
-      <BoardDefense teamName={game.teamName} price={end.price} prompts={prompts} />
+      <BoardDefense teamName={game.teamName} price={end.price} prompts={prompts} rationale={rationale} />
     </div>
   );
 }
@@ -256,19 +272,21 @@ function ScorecardSummary({ cards, mode }: { cards: ReturnType<typeof allScoreca
   const [open, setOpen] = useState<string | null>(null);
   return (
     <div className="ds-stack">
+      <div className="ds-table-wrap">
       <table className="ds-table" data-testid="v2-scorecard-summary">
-        <thead><tr><th>Executive function</th><th className="num">Functional</th><th className="num">Company</th><th className="num">Executive score</th><th>Main challenge</th><th className="ds-sr">Detail</th></tr></thead>
+        <thead><tr><th>Executive function</th><th className="num">Functional</th><th className="num ds-hide-sm">Company</th><th className="num">Executive score</th><th className="ds-hide-sm">Main challenge</th><th className="ds-sr">Detail</th></tr></thead>
         <tbody>{cards.map(c => (
           <tr key={c.role} data-role={c.role}>
             <td><b>{c.title}</b></td>
             <td className="num">{c.functional.toFixed(0)}</td>
-            <td className="num">{c.company.toFixed(0)}</td>
+            <td className="num ds-hide-sm">{c.company.toFixed(0)}</td>
             <td className="num"><b>{c.executive.toFixed(0)}</b></td>
-            <td className="ds-small">{c.challenges[0] ?? <span className="ds-muted">None material</span>}</td>
+            <td className="ds-small ds-hide-sm">{c.challenges[0] ?? <span className="ds-muted">None material</span>}</td>
             <td><button className="ds-btn ds-btn-ghost ds-no-print" style={{ fontSize: 'var(--fs-note)' }} onClick={() => setOpen(open === c.role ? null : c.role)} aria-expanded={open === c.role}>{open === c.role ? 'Hide' : 'Scorecard'}</button></td>
           </tr>
         ))}</tbody>
       </table>
+      </div>
       {open && <ScorecardView card={cards.find(c => c.role === open)!} mode={mode} />}
       <p className="ds-method" style={{ margin: 0 }}>Scorecards rate how the team handled each function, not individual students; in a smaller team one person may have held several roles. Model {EXECUTIVE_VERSION}.</p>
     </div>
@@ -287,7 +305,7 @@ function FindingList({ title, items, empty, testId }: { title: string; items: Fi
 }
 
 /** Printable board defense: the board's question and a three-minute framework. */
-function BoardDefense({ teamName, price, prompts }: { teamName: string; price: number; prompts: DefensePrompt[] }) {
+function BoardDefense({ teamName, price, prompts, rationale }: { teamName: string; price: number; prompts: DefensePrompt[]; rationale: RationalePrompt[] }) {
   return (
     <section className="ds-defense" data-testid="v2-board-defense">
       <p className="ds-verdict-kicker">Board defense · {teamName}</p>
@@ -304,8 +322,37 @@ function BoardDefense({ teamName, price, prompts }: { teamName: string; price: n
         <p className="ds-h4">Questions the board will ask — from your recorded results</p>
         <ul className="ds-list-plain">{prompts.map(p => <li key={p.id} data-prompt={p.id}><b>{p.question}</b><span className="ds-small" style={{ display: 'block', color: 'var(--ds-ink-2)' }}>{p.evidence}</span></li>)}</ul>
       </div>
+      {rationale.length > 0 && (
+        <div style={{ marginTop: 14 }} data-testid="v2-defense-rationale">
+          <p className="ds-h4">Questions from your own recorded reasoning</p>
+          <ul className="ds-list-plain">{rationale.map(p => <li key={p.id} data-prompt={p.id}><b>{p.question}</b><span className="ds-small" style={{ display: 'block', color: 'var(--ds-ink-2)' }}>{p.evidence}</span></li>)}</ul>
+        </div>
+      )}
       <div className="ds-stack" style={{ marginTop: 14, gap: 0 }} aria-hidden>{Array.from({ length: 5 }, (_, i) => <div key={i} className="ds-lines" />)}</div>
       <div className="ds-actions ds-no-print"><button className="ds-btn ds-btn-secondary" onClick={() => window.print()} data-testid="v2-print-defense">Print the board pack</button></div>
     </section>
+  );
+}
+
+/** Batch 10E: per quarter, what the team intended, decided, saw happen and learned — recorded facts, no grade. */
+function IntentOutcome({ rows }: { rows: TimelineRow[] }) {
+  return (
+    <div className="ds-stack" style={{ gap: 8 }}>
+      <div className="ds-table-wrap">
+        <table className="ds-table ds-table-compact" data-testid="v2-intent-outcome">
+          <thead><tr><th>Quarter</th><th>What we intended</th><th>What we decided</th><th>What happened</th><th>What we learned</th></tr></thead>
+          <tbody>{rows.map(r => (
+            <tr key={r.quarter} data-quarter={r.quarter}>
+              <td style={{ whiteSpace: 'nowrap' }}><b>{calendarLabel(r.quarter)}</b></td>
+              <td className="ds-small"><b>{r.cols.intended.priority ?? 'Not recorded'}</b>{r.cols.intended.belief && <div>{r.cols.intended.belief}{r.cols.intended.confidence ? ` (${r.cols.intended.confidence.toLowerCase()} confidence)` : ''}</div>}{r.cols.intended.signals.length > 0 && <div>Signals: {r.cols.intended.signals.join(' · ')}</div>}{r.cols.intended.risk && <div>Biggest risk: {r.cols.intended.risk}</div>}</td>
+              <td className="ds-small">{r.cols.decided.allocation}{r.cols.decided.event && <div><b>{r.cols.decided.event}</b></div>}{r.pattern === 'adaptation' && <div className="ds-muted">{r.patternText}</div>}</td>
+              <td className="ds-small">Revenue {r.cols.happened.revenue}<div>Share price {r.cols.happened.price}</div></td>
+              <td className="ds-small">{r.cols.learned.choices.length ? r.cols.learned.choices.join(' · ') : <span className="ds-muted">Not recorded</span>}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <p className="ds-method" style={{ margin: 0 }}>Recorded intentions and results side by side. Results also reflect market conditions and earlier decisions; one quarter rarely proves a call right or wrong.</p>
+    </div>
   );
 }
