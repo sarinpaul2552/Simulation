@@ -13,7 +13,14 @@
 --                           V3 version that existed before this migration); V2 sessions always keep NULL.
 --                           '1.0' | '1.1' when chosen explicitly at creation (V3 sessions only).
 --
---   v3_create_session_v(email, team_names, participation, pacing, market_path, econ_version)  — new; explicit version
+--   v3_engine_versions     server-side release registry: which V3 engine versions NEW sessions may use.
+--                          Seeded '1.0' released, '1.1' NOT released. Not readable or writable with the public key.
+--                          Releasing a version is a deliberate administrator action (requires approval):
+--                            UPDATE v3_engine_versions SET released = true, released_at = now() WHERE econ_version = '1.1';
+--                          Re-running this migration never changes the release state. Existing sessions keep their
+--                          version whatever the registry says (they are pinned).
+--   v3_create_session_v(email, team_names, participation, pacing, market_path, econ_version)  — new; explicit version,
+--                          refused unless that version is released
 --   v3_create_session      UNCHANGED (still creates v3-econ-1.0 sessions, econ_version NULL)
 --   sessions trigger       econ_version, like econ_engine / market_path, is set only before any team has started; then
 --                          immutable (existing sessions stay on their original engine version)
@@ -28,6 +35,22 @@ DO $$ BEGIN
   ALTER TABLE sessions ADD CONSTRAINT sessions_econ_version_check CHECK (
     econ_version IS NULL OR (econ_engine = 'v3' AND econ_version IN ('1.0', '1.1')));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ---------------------------------------------------------------------------
+-- Release registry (server-side enforcement: an unreleased version cannot be selected, whatever the client sends).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS v3_engine_versions (
+  econ_version VARCHAR(8) PRIMARY KEY CHECK (econ_version IN ('1.0', '1.1')),
+  released BOOLEAN NOT NULL DEFAULT false,
+  released_at TIMESTAMPTZ
+);
+INSERT INTO v3_engine_versions (econ_version, released, released_at) VALUES ('1.0', true, now()), ('1.1', false, NULL)
+  ON CONFLICT (econ_version) DO NOTHING;
+ALTER TABLE v3_engine_versions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE v3_engine_versions FROM PUBLIC;
+DO $$ BEGIN
+  EXECUTE 'REVOKE ALL ON TABLE v3_engine_versions FROM anon, authenticated';
+EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
 -- ---------------------------------------------------------------------------
 -- Immutability: engine, path and engine version are chosen before the session starts and never change afterwards.
@@ -72,6 +95,9 @@ DECLARE
 BEGIN
   IF p_market_path IS NULL OR p_market_path NOT IN ('A', 'B', 'C') THEN RAISE EXCEPTION 'Invalid market path'; END IF;
   IF p_econ_version IS NULL OR p_econ_version NOT IN ('1.0', '1.1') THEN RAISE EXCEPTION 'Invalid engine version'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM v3_engine_versions WHERE econ_version = p_econ_version AND released) THEN
+    RAISE EXCEPTION 'Engine version % is not available', p_econ_version;
+  END IF;
   v_created := v2_create_session(p_facilitator_email, p_team_names, p_participation_mode, p_pacing);
   UPDATE sessions SET econ_engine = 'v3', market_path = p_market_path, econ_version = p_econ_version WHERE id = (v_created->>'session_id')::UUID;
   RETURN (v_created::JSONB || jsonb_build_object('econ_engine', 'v3', 'market_path', p_market_path, 'econ_version', p_econ_version))::JSON;

@@ -110,6 +110,9 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
       try {
         created = await api.createSession(email.trim(), names.map(n => n.trim() || 'Team'), mode, pacing, market === 'v2' ? undefined : market, market === 'v2' ? undefined : econVersion);
       } catch (e) {
+        if (market !== 'v2' && econVersion && /is not available/i.test((e as Error).message)) {
+          throw new Error(`NexLearn V3 engine version ${econVersion} is not available on this server.`);
+        }
         if (market !== 'v2' && econVersion && /v3_create_session_v|function/i.test((e as Error).message)) {
           throw new Error(`NexLearn V3 engine version ${econVersion} is not available on this database yet (the V3.1 engine-version migration has not been applied).`);
         }

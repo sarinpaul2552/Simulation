@@ -2,7 +2,7 @@
 -- ROLLBACK: NexLearn V3.1 Stage 2 — V3 engine versioning
 -- ============================================================================
 -- Restores the MIGRATION_V3_MARKET_PATHS.sql state exactly: the original guard trigger, snapshot check and reads;
--- drops v3_create_session_v, the constraint and the econ_version column.
+-- drops v3_create_session_v, the v3_engine_versions release registry, the constraint and the econ_version column.
 --
 -- SAFETY: refuses to run while any session has econ_version = '1.1' — those games could no longer be saved or
 -- verified after rollback. Sessions with econ_version NULL or '1.0' are v3-econ-1.0 games and are unaffected.
@@ -112,6 +112,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TABLE IF EXISTS v3_engine_versions;
 ALTER TABLE sessions DROP CONSTRAINT IF EXISTS sessions_econ_version_check;
 ALTER TABLE sessions DROP COLUMN IF EXISTS econ_version;
 

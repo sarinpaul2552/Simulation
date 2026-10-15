@@ -4,7 +4,9 @@
 #
 #  1. Build the pre-Stage-2 database (V3 migration only) and populate it with the V2 and V3 database suites.
 #  2. Fingerprint schema and data; dump every stored game.
-#  3. Apply MIGRATION_V3_1_ENGINE_VERSION.sql twice. Existing data must be unchanged (econ_version NULL everywhere),
+#  3. Apply MIGRATION_V3_1_ENGINE_VERSION.sql twice (production state: 1.1 NOT released). Through the public API, an
+#     unreleased version is refused and the release registry cannot be read or changed; re-running the migration never
+#     changes the release state. Existing data must be unchanged (econ_version NULL everywhere),
 #     every stored snapshot must pass the server check, and every stored game must restore and replay in the client.
 #  4. Superuser trigger/constraint checks (the paths the public key cannot reach at all).
 #  5. Run all three database suites on the migrated database.
@@ -30,6 +32,8 @@ data_fp() { $PSQL -c "SELECT md5(
   (SELECT coalesce(string_agg(concat_ws('|', team_id, state_version, completed_quarter, phase, snapshot::text, headline::text), ',' ORDER BY team_id), '') FROM v2_team_games) ||
   (SELECT coalesce(string_agg(concat_ws('|', team_id, quarter, input::text, state_version_after), ',' ORDER BY team_id, quarter), '') FROM v2_quarter_resolutions))"; }
 dump_games() { $PSQL -c "SELECT coalesce(json_agg(v2__game_json(g.team_id) ORDER BY g.team_id), '[]') FROM v2_team_games g" > "$1"; }
+API=http://localhost:54321/rest/v1
+rpc() { curl -s -o "$OUT/rpc.json" -w '%{http_code}' -X POST "$API/rpc/$1" -H "apikey: $KEY" -H 'content-type: application/json' -d "$2"; }
 expect_fail() { if $PSQL -c "$1" >/dev/null 2>"$OUT/err.txt"; then echo "UNEXPECTED SUCCESS: $1"; exit 1; else echo "  refused as expected: $(head -c 140 "$OUT/err.txt" | tr '\n' ' ')"; fi; }
 
 echo "== 1. pre-Stage-2 database, populated"
@@ -44,6 +48,18 @@ $PSQL -1 -f "$MIG"; $PSQL -1 -f "$MIG"
 [ "$(data_fp)" = "$DATA_PRE" ] && echo "  existing data unchanged" || { echo "DATA CHANGED"; exit 1; }
 [ "$($PSQL -c "SELECT count(*) FROM sessions WHERE econ_version IS NOT NULL")" = "0" ] && echo "  econ_version NULL on every existing session"
 $PSQL -c "SELECT count(*) FROM (SELECT v3__check_snapshot_engine(g.session_id, g.snapshot) FROM v2_team_games g) x" >/dev/null && echo "  every stored snapshot passes the server engine check"
+echo "  release registry: $($PSQL -c "SELECT string_agg(econ_version || '=' || released, ' ' ORDER BY econ_version) FROM v3_engine_versions")"
+[ "$($PSQL -c "SELECT string_agg(econ_version || '=' || released, ' ' ORDER BY econ_version) FROM v3_engine_versions")" = "1.0=true 1.1=false" ] || { echo "UNEXPECTED RELEASE STATE"; exit 1; }
+NEW='{"p_facilitator_email":"f@school.edu","p_team_names":["Gate"],"p_participation_mode":"team_device","p_pacing":"self","p_market_path":"A"'
+CODE=$(rpc v3_create_session_v "$NEW,\"p_econ_version\":\"1.1\"}"); grep -q "is not available" "$OUT/rpc.json" && [ "$CODE" != "200" ] && echo "  public API: unreleased 1.1 refused (HTTP $CODE: $(head -c 80 "$OUT/rpc.json"))" || { echo "1.1 NOT REFUSED ($CODE)"; cat "$OUT/rpc.json"; exit 1; }
+[ "$($PSQL -c "SELECT count(*) FROM sessions WHERE econ_version = '1.1'")" = "0" ] && echo "  no 1.1 session was created"
+CODE=$(rpc v3_create_session_v "$NEW,\"p_econ_version\":\"1.0\"}"); [ "$CODE" = "200" ] && echo "  public API: released 1.0 accepted" || { echo "1.0 REFUSED ($CODE)"; exit 1; }
+CODE=$(curl -s -o "$OUT/rpc.json" -w '%{http_code}' "$API/v3_engine_versions" -H "apikey: $KEY"); [ "$CODE" != "200" ] && echo "  public API: registry not readable (HTTP $CODE)" || { echo "REGISTRY READABLE"; exit 1; }
+CODE=$(curl -s -o "$OUT/rpc.json" -w '%{http_code}' -X PATCH "$API/v3_engine_versions?econ_version=eq.1.1" -H "apikey: $KEY" -H 'content-type: application/json' -d '{"released":true}')
+[ "$($PSQL -c "SELECT released FROM v3_engine_versions WHERE econ_version = '1.1'")" = "f" ] && echo "  public API: registry not writable (HTTP $CODE)" || { echo "REGISTRY WRITABLE"; exit 1; }
+expect_fail "SET ROLE anon; SELECT v3_create_session_v('f@school.edu', ARRAY['G'], 'team_device', 'self', 'A', '1.1')"
+$PSQL -f "$HERE/release-v31-local.sql"; $PSQL -1 -f "$MIG"
+[ "$($PSQL -c "SELECT released FROM v3_engine_versions WHERE econ_version = '1.1'")" = "t" ] && echo "  re-running the migration keeps the release state (released locally for the suites below)"
 dump_games "$OUT/games_post.json"
 (cd "$ROOT" && npx vite-node scripts/v2-local/verify-stored-games.ts "$OUT/games_post.json")
 cmp -s <(python3 -c "import json,sys;[print(json.dumps({k:v for k,v in {**g,'session':{k2:v2 for k2,v2 in g['session'].items() if k2!='econ_version'}}.items()},sort_keys=True)) for g in json.load(open(sys.argv[1]))]" "$OUT/games_pre.json") \
@@ -82,8 +98,9 @@ $PSQL -1 -f "$RB"
 dump_games "$OUT/games_rolledback.json"
 (cd "$ROOT" && npx vite-node scripts/v2-local/verify-stored-games.ts "$OUT/games_rolledback.json")
 suites src/production/v2/db.integration.test.ts src/production/v2/db.v3.integration.test.ts
+[ "$($PSQL -c "SELECT to_regclass('public.v3_engine_versions') IS NULL")" = "t" ] && echo "  release registry removed"
 echo "== 7. re-apply after rollback"
-$PSQL -1 -f "$MIG"
+$PSQL -1 -f "$MIG"; $PSQL -f "$HERE/release-v31-local.sql"
 suites src/production/v2/db.integration.test.ts src/production/v2/db.v3.integration.test.ts src/production/v2/db.v31.integration.test.ts
 echo "pre-migration schema fingerprint (run 1): $SCHEMA_PRE"
 echo "ALL V3.1 MIGRATION CHECKS PASSED"

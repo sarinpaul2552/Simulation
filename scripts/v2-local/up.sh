@@ -30,6 +30,8 @@ if [ "${V2_SKIP_BATCH7:-0}" != "1" ]; then
         # NexLearn V3.1 Stage 2 (engine versioning): tested here only.
         $PSQL -d sim -f "$ROOT/database/MIGRATION_V3_1_ENGINE_VERSION.sql"
         $PSQL -d sim -f "$ROOT/database/MIGRATION_V3_1_ENGINE_VERSION.sql"   # idempotent
+        # Local only: release 1.1 for the test suites (production keeps it unreleased). V2_LOCAL_V31_UNRELEASED=1 skips it.
+        if [ "${V2_LOCAL_V31_UNRELEASED:-0}" != "1" ]; then $PSQL -d sim -f "$HERE/release-v31-local.sql"; fi
       fi
     fi
   fi
