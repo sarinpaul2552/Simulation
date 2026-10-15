@@ -162,7 +162,7 @@ export const V3_ECONOMICS = {
    *   consumer lapse = retained base × (consumerDemandLoss × max(0, 1 − consumerDemand) + consumerMacroLoss × macro)
    *                    × (1 − consumerShieldMax × ramp(consumer retention, consumerShieldRamp));
    *   consumer win-back = consumerWinBack × lapsed pool × ramp(consumerDemand, consumerWinBackRamp);
-   *   enterprise contraction = renewing base × enterpriseMacroContraction × macro × (1 − 0.5 × ramp(CS, 30, 80));
+   *   enterprise contraction = renewing base × renewal rate × enterpriseMacroContraction × macro × (1 − 0.5 × ramp(CS, 30, 80));
    *   enterprise restored = enterpriseRestore × contracted pool × (1 − macro);
    *   enterprise expansion × clamp(enterpriseDemand, expansionDemandBounds).
    */
@@ -230,7 +230,8 @@ export const V3_1_1_CHANGES: DeepPartial<V3EconomicsConfig> = {
     consumerShieldRamp: [78, 90],
     consumerWinBack: 0.30,
     consumerWinBackRamp: [0.8, 1.0],
-    enterpriseMacroContraction: 0.15,
+    // Checkpoint A final calibration: 0.15 → 0.10 so enterprise (annual contracts) is no more cyclical than consumer
+    enterpriseMacroContraction: 0.10,
     enterpriseRestore: 0.20,
     expansionDemandBounds: [0.6, 1.3],
   },

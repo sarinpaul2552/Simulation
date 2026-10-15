@@ -494,12 +494,13 @@ export function calculateV2RevenueConsequence(
   const eExposed = E0 * ke.renewalExposure;
   const eChurn = eExposed * (1 - eRenewal);
   const eExpansionBase = eExposed * ke.expansionRate * ramp(company.capabilities.customerSuccess, ke.expansionCsRamp[0], ke.expansionCsRamp[1]) * eHeadroom;
-  // Stage 3A (1.1): seats contract at renewal in a recession (Customer Success halves it, as for renewal pressure),
+  // Stage 3A (1.1): renewing customers cut seats in a recession (Customer Success halves it, as for renewal pressure),
   // contracted seats are restored as the recession eases, and expansion follows enterprise demand.
   let eContraction = 0, eRestored = 0, eDemandFactor = 1, eContracted1 = 0;
   if (ibd) {
     const P0 = opening.lapsed?.enterprise ?? 0;
-    eContraction = eExposed * D.enterpriseMacroContraction * market.macroPressure * (1 - ke.macroCsShield * ramp(company.capabilities.customerSuccess, 30, 80));
+    // Seats are cut by customers who RENEW (customers who churn are already gone in eChurn — no double counting).
+    eContraction = eExposed * eRenewal * D.enterpriseMacroContraction * market.macroPressure * (1 - ke.macroCsShield * ramp(company.capabilities.customerSuccess, 30, 80));
     eRestored = D.enterpriseRestore * P0 * Math.max(0, 1 - market.macroPressure);
     eDemandFactor = clamp(market.enterpriseDemand, D.expansionDemandBounds[0], D.expansionDemandBounds[1]);
     eContracted1 = P0 - eRestored + eContraction;

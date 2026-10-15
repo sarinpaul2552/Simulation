@@ -29,7 +29,7 @@ const sum = (a: number[]) => a.reduce((t, x) => t + x, 0);
 type Lapsed = { consumer: number; enterprise: number };
 const lapsedOf = (st: unknown) => (st as { lapsedRevenue?: Lapsed }).lapsedRevenue;
 type CDiag = { retained: number; marketLapse?: number; retentionShield?: number; winBack?: number };
-type EDiag = { exposedBase: number; seatContraction?: number; expansionDemandFactor?: number };
+type EDiag = { exposedBase: number; renewalRate: number; seatContraction?: number; expansionDemandFactor?: number };
 const cOf = (pq: PlayedGame['quarters'][number]) => pq.consequence.revenue.consumer as unknown as CDiag;
 const eOf = (pq: PlayedGame['quarters'][number]) => pq.consequence.revenue.enterprise as unknown as EDiag;
 const marketC = (q: number) => V3.getScenarioMarket(q, 'C');
@@ -110,7 +110,7 @@ describe('Stage 3A · existing customers respond to the market (1.1)', () => {
       const e = eOf(pq);
       const m = marketC(pq.quarter);
       const cs = pq.after.capabilities.customerSuccess;
-      expect(e.seatContraction!).toBeCloseTo(e.exposedBase * D.enterpriseMacroContraction * m.macroPressure * (1 - 0.5 * ramp(cs, 30, 80)), 12);
+      expect(e.seatContraction!).toBeCloseTo(e.exposedBase * e.renewalRate * D.enterpriseMacroContraction * m.macroPressure * (1 - 0.5 * ramp(cs, 30, 80)), 12);
       expect(e.expansionDemandFactor!).toBe(Math.min(D.expansionDemandBounds[1], Math.max(D.expansionDemandBounds[0], m.enterpriseDemand)));
     }
   });
@@ -141,7 +141,7 @@ describe('Stage 3A · existing customers respond to the market (1.1)', () => {
   });
 
   it('strong Customer Success reduces seat contraction (share of the renewing base, path C Q6)', () => {
-    const share = (id: string) => { const e = eOf(play(S(id), { engine: 'v3', path: 'C', version: V11 }).quarters[5]); return e.seatContraction! / e.exposedBase; };
+    const share = (id: string) => { const e = eOf(play(S(id), { engine: 'v3', path: 'C', version: V11 }).quarters[5]); return e.seatContraction! / (e.exposedBase * e.renewalRate); };
     expect(share('enterprise-only')).toBeLessThan(share('consumer-only'));
   });
 });
