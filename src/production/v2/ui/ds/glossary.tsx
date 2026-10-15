@@ -90,6 +90,7 @@ const LABEL_TERM: Record<string, string> = {
   'Consumer retention': 'retention', 'Cost to win a customer (index)': 'cac', 'Enterprise pipeline': 'pipeline',
   'University renewals': 'renewal', 'Change load vs capacity': 'org-load', 'Capacity': 'execution-capacity',
   'Strategic readiness': 'strategic-readiness', 'Pricing power': 'pricing-power', 'Trust': 'trust', 'Enterprise win rate': 'win-rate',
+  'Free cash flow': 'free-cash-flow', 'Strategic investment': 'strategic-investment', 'One-off costs': 'one-off-costs',
 };
 /** Render a label, as a tappable glossary term when one exists. */
 export function Termed({ label }: { label: string }) {

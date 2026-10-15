@@ -253,7 +253,7 @@ export const PATH_B_CONTENT: PathContent = {
     },
     {
       id: 'q3-consumer-paid-cohorts', source: 'CFO brief', verdict: 'reliable',
-      showed: 'The estimated 6%–10% fall in paying-subscriber revenue matched what the market did.',
+      showed: 'The estimated 6%–10% fall matched the market’s fall in paying consumer demand.',
       lesson: 'Evidence closest to what customers pay for was a sound guide. Here it and usage told the same story.',
       measures: ['consumerRevenue', 'consumerRetention'],
     },
@@ -265,7 +265,7 @@ export const PATH_B_CONTENT: PathContent = {
     },
     {
       id: 'q3-ai-engagement', source: 'Product brief', verdict: 'misleading',
-      showed: 'The engagement came from enterprise pilots. Paying demand for stand-alone AI products stayed modest and eased slightly from Q2.',
+      showed: 'The engagement came from enterprise pilots. Paying demand for stand-alone AI products stayed only modestly above normal, slightly lower than in Q2.',
       lesson: 'Ask who is engaging. Pilot users inside company programmes are not stand-alone customers ready to pay.',
       measures: ['aiAdoption', 'aiRevenue'],
     },

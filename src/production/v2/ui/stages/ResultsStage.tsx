@@ -23,7 +23,7 @@ import { materialDevelopments, boardQuestion } from '../../insights/briefing';
 import { LEARNING_OPTIONS, encodeReflection, decodeReflection } from '../../content/deliberationContent';
 import { AGREEMENTS } from './CommitStage';
 import { accountabilityRows, ACCOUNTABILITY_CAVEAT } from '../../insights/accountability';
-import { buildSignalReveal, signalRevealAvailable } from '../../insights/signalReveal';
+import { buildSignalReveal, signalRevealAvailable, AGAINST_MARKET_NOTE } from '../../insights/signalReveal';
 import { revealSummaryFor } from '../../content/paths';
 import type { V2Deliberation } from '../../types';
 import { Card, ChoiceList, Figure, Icon, KpiTile, LineChart, Section, Segmented } from '../ds/components';
@@ -203,9 +203,10 @@ export function BridgeView({ bridge, mode }: { bridge: CashBridge; mode: V2Prese
   };
   step('Operating profit', bridge.operatingProfit, 'operating-profit');
   step('Strategic investment', -bridge.investment, 'investment');
-  step('Event costs', -bridge.eventCosts, 'event-costs', bridge.eventItems.map(i => ({ label: i.label, amount: -i.amount })), mode === 'mba');
+  step('One-off costs', -bridge.eventCosts, 'event-costs', bridge.eventItems.map(i => ({ label: i.label, amount: -i.amount })), mode === 'mba');
   step('Financing', bridge.financing, 'financing', bridge.financingItems, mode === 'mba');
   rows.push({ label: 'Closing cash', value: bridge.closing, kind: 'total', from: 0, to: bridge.closing, testId: 'closing' });
+  const fcf = bridge.operatingProfit - bridge.investment - bridge.eventCosts;
   const lo = Math.min(0, ...rows.flatMap(r => [r.from, r.to])), hi = Math.max(...rows.flatMap(r => [r.from, r.to]));
   const x = (v: number) => ((v - lo) / (hi - lo || 1)) * 100;
   const signed = (v: number, k: Row['kind']) => k === 'total' ? fmtM(v) : Math.abs(v) < 0.05 ? '$0.0M' : `${v >= 0 ? '+' : '−'}$${Math.abs(v).toFixed(1)}M`;
@@ -226,9 +227,13 @@ export function BridgeView({ bridge, mode }: { bridge: CashBridge; mode: V2Prese
           </div>
         ))}
       </div>
+      <div className="ds-bridge-row total" data-testid="v2-bridge-fcf" data-value={fcf}>
+        <span><Termed label="Free cash flow" /> (before financing)</span><span />
+        <span className="ds-bridge-val">{`${fcf >= 0 ? '+' : '−'}$${Math.abs(fcf).toFixed(1)}M`}</span>
+      </div>
       <p className="ds-muted" style={{ margin: '10px 0 0' }}>{mode === 'mba'
-        ? `Opening + operating profit − strategic investment − event costs + financing = closing (${bridge.reconciles ? 'reconciles with the engine ledger' : 'see ledger'}). Money kept as cash is simply not spent.`
-        : 'Money you kept as cash was simply not spent. Event costs and financing appear when they happen.'}</p>
+        ? `Free cash flow = operating profit − strategic investment − one-off costs. Opening cash + free cash flow + financing = closing cash (${bridge.reconciles ? 'reconciles with the engine ledger' : 'see ledger'}). Money kept as cash is simply not spent.`
+        : 'Free cash flow is the cash the business generated after its investment and one-off costs, before any borrowing or repayments. Money you kept as cash was simply not spent.'}</p>
     </section>
   );
 }
@@ -284,8 +289,8 @@ export function ExecutiveIntelligence({ history, quarter, mode }: { history: Qua
           <div className="ds-table-wrap">
             <table className="ds-table ds-table-compact" data-testid="v2-cash-history">
               <caption>Cash movement by quarter (recorded ledger)</caption>
-              <thead><tr><th>Quarter</th><th className="num">Opening</th><th className="num">Operating profit</th><th className="num">Investment</th><th className="num">One-off costs</th><th className="num">Financing</th><th className="num">Closing</th></tr></thead>
-              <tbody>{history.slice(0, quarter).map(h => { const b = cashBridge(h); return <tr key={h.quarter}><td>{calendarLabel(h.quarter)}</td><td className="num">{fmtM(b.opening)}</td><td className="num">{fmtSigned(b.operatingProfit)}</td><td className="num">{fmtSigned(-b.investment)}</td><td className="num">{fmtSigned(-b.eventCosts)}</td><td className="num">{fmtSigned(b.financing)}</td><td className="num"><b>{fmtM(b.closing)}</b></td></tr>; })}</tbody>
+              <thead><tr><th>Quarter</th><th className="num">Opening</th><th className="num">Operating profit</th><th className="num">Investment</th><th className="num">One-off costs</th><th className="num">Free cash flow</th><th className="num">Financing</th><th className="num">Closing</th></tr></thead>
+              <tbody>{history.slice(0, quarter).map(h => { const b = cashBridge(h); return <tr key={h.quarter}><td>{calendarLabel(h.quarter)}</td><td className="num">{fmtM(b.opening)}</td><td className="num">{fmtSigned(b.operatingProfit)}</td><td className="num">{fmtSigned(-b.investment)}</td><td className="num">{fmtSigned(-b.eventCosts)}</td><td className="num" data-testid="v2-cash-history-fcf">{fmtSigned(b.operatingProfit - b.investment - b.eventCosts)}</td><td className="num">{fmtSigned(b.financing)}</td><td className="num"><b>{fmtM(b.closing)}</b></td></tr>; })}</tbody>
             </table>
           </div>
         </div>
@@ -494,11 +499,21 @@ function SignalReveal({ history, quarter, cited }: { history: QuarterRecord[]; q
         <div data-testid="v2-reveal-rows">{rows.map(r => (
           <div className="ds-reveal-row" key={r.id} data-signal={r.id} data-verdict={r.verdict}>
             <div><span className="ds-muted ds-small" style={{ display: 'block' }}>{r.source}{r.cited ? ' · you cited this' : ''}</span>{r.headline}</div>
-            <div><b>{r.verdictLabel}.</b> {r.showed}<span className="ds-muted" style={{ display: 'block', marginTop: 2 }}>{r.lesson}</span></div>
-            <div className="ds-small"><span className="ds-muted" style={{ display: 'block' }}>Your records, start of {calendarShort(3)} → end of {calendarShort(4)}</span>{r.recorded.map(m => <span key={m.label} style={{ display: 'block' }}>{m.label}: {m.start} → {m.end}</span>)}</div>
+            <div data-testid="v2-reveal-market">
+              <span className="ds-muted ds-small" style={{ display: 'block' }}>What happened in the market</span>
+              <b>{r.verdictLabel}.</b> {r.showed}
+              {r.market && <span className="ds-small" style={{ display: 'block', marginTop: 2 }} data-testid="v2-reveal-market-measure">{r.market.statement}</span>}
+              <span className="ds-muted" style={{ display: 'block', marginTop: 2 }}>{r.lesson}</span>
+            </div>
+            <div className="ds-small" data-testid="v2-reveal-company">
+              <span className="ds-muted" style={{ display: 'block' }}>What happened to our company, start of {calendarShort(3)} → end of {calendarShort(4)}</span>
+              {r.company.map(c => <span key={c.id} style={{ display: 'block' }} data-measure={c.id} data-direction={c.direction} data-against-market={c.againstMarket}>{c.statement}</span>)}
+              {r.company.some(c => c.againstMarket) && <span style={{ display: 'block', marginTop: 2 }}>{AGAINST_MARKET_NOTE}</span>}
+              {r.company.find(c => c.transmission) && <span className="ds-muted" style={{ display: 'block', marginTop: 2 }}>{r.company.find(c => c.transmission)!.transmission}</span>}
+            </div>
           </div>
         ))}</div>
-        <p className="ds-method" style={{ margin: 0 }}>Assessments describe the scenario’s market in {calendarLabel(3)} only. Your records also reflect your own decisions, so they are shown, not interpreted.</p>
+        <p className="ds-method" style={{ margin: 0 }}>Market statements describe the scenario’s market in {calendarLabel(3)}; the market measure is an index against its normal level. Company statements are calculated from your own records, which reflect both the market and your decisions.</p>
       </div>
     </details>
   );

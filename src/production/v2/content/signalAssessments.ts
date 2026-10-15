@@ -44,7 +44,7 @@ export const Q3_SIGNAL_ASSESSMENTS: SignalAssessment[] = [
   },
   {
     id: 'q3-consumer-paid-cohorts', source: 'CFO brief', verdict: 'reliable',
-    showed: 'The estimated 2%–5% fall in paying-subscriber revenue was consistent with what the market did.',
+    showed: 'The estimated 2%–5% fall was consistent with the market’s fall in paying consumer demand.',
     lesson: 'Evidence closest to what customers pay for was the better guide to consumer revenue.',
     measures: ['consumerRevenue', 'consumerRetention'],
   },
@@ -56,8 +56,8 @@ export const Q3_SIGNAL_ASSESSMENTS: SignalAssessment[] = [
   },
   {
     id: 'q3-ai-engagement', source: 'Product brief', verdict: 'misleading',
-    showed: 'Engagement rose, yet paying demand for AI-native products eased compared with Q2.',
-    lesson: 'Engagement is not willingness to pay. Enthusiasm and revenue can move in different directions.',
+    showed: 'Engagement rose strongly. Paying demand for AI-native products stayed well above normal but fell from its Q2 level, so rising engagement did not mean rising paying demand.',
+    lesson: 'Engagement is not willingness to pay. Enthusiasm can grow much faster than paying demand.',
     measures: ['aiAdoption', 'aiRevenue'],
   },
   {

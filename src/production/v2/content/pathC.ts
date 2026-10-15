@@ -250,13 +250,13 @@ export const PATH_C_CONTENT: PathContent = {
   q3Assessments: [
     {
       id: 'q3-consumer-usage', source: 'Growth brief', verdict: 'misleading',
-      showed: 'Usage barely fell, but paying demand fell about 10%. Many learners kept using the app after dropping to free tiers.',
+      showed: 'Across the market, usage barely fell but paying demand fell about 10%: many learners kept using apps after dropping to free tiers.',
       lesson: 'Usage is not revenue. Stable activity can hide paying customers who have quietly downgraded.',
       measures: ['consumerRevenue', 'consumerRetention'],
     },
     {
       id: 'q3-consumer-paid-cohorts', source: 'CFO brief', verdict: 'reliable',
-      showed: 'The estimated 7%–12% fall in paying-subscriber revenue matched what the market did.',
+      showed: 'The estimated 7%–12% fall matched the market’s fall in paying consumer demand.',
       lesson: 'Evidence based on what customers actually pay was the better guide to consumer revenue.',
       measures: ['consumerRevenue', 'consumerRetention'],
     },
@@ -268,8 +268,8 @@ export const PATH_C_CONTENT: PathContent = {
     },
     {
       id: 'q3-ai-engagement', source: 'Product brief', verdict: 'misleading',
-      showed: 'Engagement rose, mostly on free tiers, while paying demand for AI-native products eased compared with Q2.',
-      lesson: 'Engagement is not willingness to pay. Free use can grow while paid demand shrinks.',
+      showed: 'Engagement rose, mostly on free tiers. Paying demand for AI-native products stayed above normal, though slightly lower than in Q2: free use grew much faster than paying use.',
+      lesson: 'Engagement is not willingness to pay. Free use can grow much faster than paying use.',
       measures: ['aiAdoption', 'aiRevenue'],
     },
     {
@@ -280,7 +280,7 @@ export const PATH_C_CONTENT: PathContent = {
     },
     {
       id: 'q3-university', source: 'CEO brief', verdict: 'reliable',
-      showed: 'Career-change credential demand genuinely grew while other segments weakened.',
+      showed: 'Across the market, career-change credential demand rose modestly while other segments weakened.',
       lesson: 'Some demand moves against the economic cycle. A downturn does not hit every segment equally.',
       measures: ['universityRevenue'],
     },

@@ -3,7 +3,8 @@ import { calendarLabel, calendarShort } from '../../content/calendar';
 import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { buildLearningReport, Finding } from '../../insights/report';
-import { gameHistory } from '../../insights/history';
+import { gameHistory, type QuarterRecord } from '../../insights/history';
+import { periodFinancials } from '../../insights/financials';
 import { configOf } from '../../engine';
 import { PATH_INFO } from '../../content/paths';
 import { fmtM } from '../../insights/dashboard';
@@ -163,6 +164,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           <section className="ds-report-section" key={secId} data-testid={`v2-report-${secId}`}>
             <h2><span className="ds-sec-n">{sec()}</span>{secId === 'financial' ? 'Financial performance' : secId === 'commercial' ? 'Commercial performance' : secId === 'product' ? 'Product and innovation' : 'People and organization'}</h2>
             <KpiTable rows={kpis.filter(k => k.section === secId)} testId={`v2-report-kpis-${secId}`} />
+            {secId === 'financial' && <CashFlowSummary history={history} />}
           </section>
         ))}
 
@@ -209,6 +211,31 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
       </article>
 
       <BoardDefense teamName={game.teamName} price={end.price} prompts={prompts} rationale={rationale} />
+    </div>
+  );
+}
+
+/** Eight-quarter cash-flow summary from the recorded ledger (V3.1 Stage 1: presentation only). */
+function CashFlowSummary({ history }: { history: QuarterRecord[] }) {
+  const p = periodFinancials(history);
+  const sig = (x: number) => `${x >= 0 ? '+' : '−'}$${Math.abs(x).toFixed(1)}M`;
+  const rows: [string, string, string][] = [
+    ['Operating profit (before strategic investment)', sig(p.operatingProfit), 'operating-profit'],
+    ['Strategic investment', sig(-p.strategicInvestment), 'investment'],
+    ['One-off costs', sig(-p.oneOffCosts), 'one-off'],
+    ['Free cash flow (before financing)', sig(p.freeCashFlow), 'fcf'],
+    ['Financing (borrowing, new shares, repayments)', sig(p.financing), 'financing'],
+    ['Change in cash', sig(p.cashChange), 'cash-change'],
+  ];
+  return (
+    <div className="ds-table-wrap" style={{ marginTop: 12 }}>
+      <table className="ds-table ds-table-compact" data-testid="v2-report-cashflow" data-reconciles={p.reconciles}>
+        <caption>Where the cash went, {calendarLabel(1)}–{calendarLabel(p.quarters)} (recorded ledger)</caption>
+        <tbody>{rows.map(([label, value, id]) => (
+          <tr key={id} data-row={id}><td>{id === 'fcf' || id === 'cash-change' ? <b>{label}</b> : label}</td><td className="num">{id === 'fcf' || id === 'cash-change' ? <b>{value}</b> : value}</td></tr>
+        ))}</tbody>
+      </table>
+      <p className="ds-muted ds-small" style={{ margin: '6px 0 0' }}>Cash went from {fmtM(p.openingCash)} to {fmtM(p.closingCash)}. Free cash flow + financing = change in cash.</p>
     </div>
   );
 }

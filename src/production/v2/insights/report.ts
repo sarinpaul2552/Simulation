@@ -319,7 +319,7 @@ export function companyConclusion(snap: V2GameSnapshot, mode: V2PresentationMode
   const scale = growth >= 0.1 ? 'fast-growing' : growth >= 0.03 ? 'growing' : growth > -0.03 ? 'stable' : 'shrinking';
   const money = s.cash >= 40 && s.financing.debt === 0 ? 'a strong balance sheet' : s.cash >= 25 ? 'an adequate cash position' : 'a thin cash position';
   const people = s.culture >= 70 && s.capabilities.talent >= 60 ? 'a healthy, capable organization' : s.culture < 65 ? 'an organization under strain' : 'an organization that held steady';
-  const lead = `You built a ${scale} ${kind}: quarterly revenue ${growth >= 0 ? 'grew' : 'fell'} ${Math.abs(growth * 100).toFixed(0)}% to ${fmtM(s.revenue)} at a ${(margin * 100).toFixed(0)}% operating margin, with ${money}${s.financing.debt > 0 ? ` (${fmtM(s.financing.debt)} of debt)` : ''}.`;
+  const lead = `You built a ${scale} ${kind}: quarterly revenue ${growth >= 0 ? 'grew' : 'fell'} ${Math.abs(growth * 100).toFixed(0)}% to ${fmtM(s.revenue)} at a ${(margin * 100).toFixed(0)}% operating margin, with ${money} (${fmtM(s.cash)} of cash${s.financing.debt > 0 ? ` and ${fmtM(s.financing.debt)} of debt` : ', no debt'}).`;
   const strengths = `Its strongest capabilities are ${CAP_LABEL[caps[0][0]] ?? caps[0][0]} (${caps[0][1].toFixed(0)}) and ${CAP_LABEL[caps[1][0]] ?? caps[1][0]} (${caps[1][1].toFixed(0)}), carried by ${people}.`;
   return pick(mode, mt(`${lead} ${strengths}`, `${lead} ${strengths} Final decision: ${s.final.record ? FINAL[s.final.record.option] : '—'}.`));
 }
