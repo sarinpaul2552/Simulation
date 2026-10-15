@@ -8,6 +8,13 @@
  * Production code never changes these values; `withV3Economics` is for the laboratory and tests only and always
  * restores the previous values.
  *
+ * V3.1 Stage 2 — engine versioning. Each V3 engine version has its own registered, frozen configuration
+ * (`V3_CONFIGS`). `V3_ECONOMICS` is the *active* configuration the engine modules read; it holds the v3-econ-1.0
+ * values at rest. `withV3Version(version, fn)` makes a version's configuration active for the duration of `fn` and
+ * restores the previous values afterwards (even on error). The production facade (`production/v2/engine.ts`) wraps every
+ * V3 call in the game's own version, so a game always computes with the configuration of the version it was created
+ * with, and a later version can receive economic changes without altering earlier ones.
+ *
  * Each mechanism is documented with its economic rationale in docs/BATCH10B_V3_ECONOMIC_REPORT.md.
  */
 export interface V3Mechanisms {
@@ -27,8 +34,15 @@ export interface V3Mechanisms {
   financingExpansion: boolean;
 }
 
+/** Every V3 engine version, oldest first. A version, once released, is never edited — later economics get a new version. */
+export const V3_ENGINE_VERSIONS = ['v3-econ-1.0', 'v3-econ-1.1'] as const;
+export type V3EngineVersion = (typeof V3_ENGINE_VERSIONS)[number];
+/** The version new V3 sessions use unless one is selected explicitly. */
+export const V3_DEFAULT_ENGINE_VERSION: V3EngineVersion = 'v3-econ-1.0';
+export const isV3EngineVersion = (v: unknown): v is V3EngineVersion => typeof v === 'string' && (V3_ENGINE_VERSIONS as readonly string[]).includes(v);
+
 export const V3_ECONOMICS = {
-  version: 'v3-econ-1.0',
+  version: 'v3-econ-1.0' as V3EngineVersion,
   mechanisms: {
     aiRevenueLevel: true,
     enterpriseConversion: true,
@@ -118,6 +132,60 @@ export function withV3Economics<T>(overrides: DeepPartial<V3EconomicsConfig>, fn
   } finally {
     assignDeep(V3_ECONOMICS as unknown as Record<string, unknown>, saved as unknown as Record<string, unknown>);
   }
+}
+
+// ============ VERSION REGISTRY (V3.1 Stage 2) ============
+
+function deepFreeze<T>(o: T): T {
+  if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o as object)) deepFreeze(v); }
+  return o;
+}
+const cloneConfig = (c: V3EconomicsConfig): V3EconomicsConfig => JSON.parse(JSON.stringify(c));
+
+/** v3-econ-1.0: the released V3 economics, captured from the values above at module load and frozen. */
+const V3_ECON_1_0: V3EconomicsConfig = deepFreeze(cloneConfig(V3_ECONOMICS));
+/**
+ * v3-econ-1.1: introduced in Stage 2 with economics identical to 1.0 (only the version string differs). Stage 3 economic
+ * changes are made here — and only here — so 1.0 games are never affected.
+ */
+const V3_ECON_1_1: V3EconomicsConfig = deepFreeze({ ...cloneConfig(V3_ECONOMICS), version: 'v3-econ-1.1' });
+
+const REGISTRY: Record<V3EngineVersion, V3EconomicsConfig> = { 'v3-econ-1.0': V3_ECON_1_0, 'v3-econ-1.1': V3_ECON_1_1 };
+
+/** The registered (frozen) configuration of a V3 engine version. Throws for an unknown version. */
+export function v3ConfigFor(version: string): V3EconomicsConfig {
+  if (!isV3EngineVersion(version)) throw new Error(`Unknown V3 engine version ${String(version)}`);
+  return REGISTRY[version];
+}
+
+/**
+ * Run `fn` with `version`'s configuration active, then restore the previous active values (even on error).
+ * If that version is already active, `fn` runs unchanged — so nested calls are cheap, and a laboratory override applied
+ * inside `withV3Version(v, …)` (or on 1.0, the at-rest version) stays in effect for engine calls made within it.
+ */
+export function withV3Version<T>(version: string, fn: () => T): T {
+  const cfg = v3ConfigFor(version);
+  if (V3_ECONOMICS.version === cfg.version) return fn();
+  const saved = snapshotConfig();
+  try {
+    assignDeep(V3_ECONOMICS as unknown as Record<string, unknown>, cloneConfig(cfg) as unknown as Record<string, unknown>);
+    return fn();
+  } finally {
+    assignDeep(V3_ECONOMICS as unknown as Record<string, unknown>, saved as unknown as Record<string, unknown>);
+  }
+}
+
+/**
+ * Tests only: temporarily replace a version's *registered* configuration (e.g. give 1.1 different economics) to prove
+ * that other versions are unaffected. Restores the registry entry afterwards (even on error).
+ */
+export function withRegisteredV3Config<T>(version: V3EngineVersion, overrides: DeepPartial<V3EconomicsConfig>, fn: () => T): T {
+  const original = REGISTRY[version];
+  const next = cloneConfig(original);
+  assignDeep(next as unknown as Record<string, unknown>, overrides as unknown as Record<string, unknown>);
+  next.version = version;
+  REGISTRY[version] = deepFreeze(next);
+  try { return fn(); } finally { REGISTRY[version] = original; }
 }
 
 export const ALL_MECHANISMS_OFF: V3Mechanisms = {

@@ -9,6 +9,7 @@
  */
 import type { V2TeamState } from '../../simulation/engineV2';
 import type { V2PlayerQuarterInput } from './types';
+import { isV3EngineVersion, V3_ENGINE_VERSIONS, type V3EngineVersion } from '../../simulationV3/engineV3Config';
 
 export const V2_SNAPSHOT_SCHEMA = 'v2-game-snapshot' as const;
 export const V2_SNAPSHOT_SCHEMA_VERSION = 1 as const;
@@ -19,7 +20,13 @@ export const V2_ENGINE_VERSION = 'v2-econ-batch4-frozen' as const;
  * A V3 snapshot carries its session's market path. V2 snapshots never carry one and keep replaying on the frozen engine.
  */
 export const V3_ENGINE_VERSION = 'v3-econ-1.0' as const;
-export type EngineVersion = typeof V2_ENGINE_VERSION | typeof V3_ENGINE_VERSION;
+/**
+ * V3.1 Stage 2: V3 engine versions are registered in `simulationV3/engineV3Config.ts`. 'v3-econ-1.0' is the released
+ * version (and the default); 'v3-econ-1.1' is selected explicitly per session. A snapshot keeps the version it was
+ * created with for its whole life.
+ */
+export { V3_ENGINE_VERSIONS, isV3EngineVersion, type V3EngineVersion } from '../../simulationV3/engineV3Config';
+export type EngineVersion = typeof V2_ENGINE_VERSION | V3EngineVersion;
 export type MarketPathId = 'A' | 'B' | 'C';
 export const MARKET_PATH_IDS: MarketPathId[] = ['A', 'B', 'C'];
 
@@ -88,14 +95,14 @@ export function fromStorable(stored: unknown): V2GameSnapshot {
 
 /** V2 or V3 contract, chosen by the snapshot's own engine version. */
 export function assertAnySnapshotContract(snap: V2GameSnapshot): void {
-  if (snap && typeof snap === 'object' && snap.engineVersion === V3_ENGINE_VERSION) assertV3SnapshotContract(snap);
+  if (snap && typeof snap === 'object' && isV3EngineVersion(snap.engineVersion)) assertV3SnapshotContract(snap);
   else assertSnapshotContract(snap);
 }
 
 /** The V3 contract: the same structure as V2, a V3 engine version and a valid market path. */
 export function assertV3SnapshotContract(snap: V2GameSnapshot): void {
   if (!snap || typeof snap !== 'object') throw new V2SnapshotContractError('Snapshot missing');
-  if (snap.engineVersion !== V3_ENGINE_VERSION) throw new V2SnapshotContractError(`Snapshot was produced by engine ${String(snap.engineVersion)}, expected ${V3_ENGINE_VERSION}`);
+  if (!isV3EngineVersion(snap.engineVersion)) throw new V2SnapshotContractError(`Snapshot was produced by engine ${String(snap.engineVersion)}, expected one of ${V3_ENGINE_VERSIONS.join(', ')}`);
   if (!snap.marketPath || !MARKET_PATH_IDS.includes(snap.marketPath)) throw new V2SnapshotContractError(`V3 snapshot has no valid market path (${String(snap.marketPath)})`);
   checkStructure(snap);
 }

@@ -1,6 +1,6 @@
 import { ReactNode, useMemo, useState } from 'react';
 import { supabase } from '../../../services/supabase';
-import { createV2Api, V2ParticipationMode, V2Pacing, V2CreatedSession } from '../api';
+import { createV2Api, V2ParticipationMode, V2Pacing, V2CreatedSession, econVersionFlag } from '../api';
 import { V2_ROLES } from '../engine';
 import type { V2Role } from '../types';
 import type { V2PresentationMode } from '../content/modes';
@@ -91,6 +91,11 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
   const [commitment, setCommitment] = useState<'team_commitment' | 'private_vote'>('team_commitment');
   /** NexLearn V3 market path ('A' | 'B' | 'C'), or 'v2' for the original V2 economics. Fixed once the session is created. */
   const [market, setMarket] = useState<MarketPathId | 'v2'>('A');
+  /**
+   * V3.1 Stage 2: explicit V3 engine-version selection. Hidden: only a `?econ=1.1` URL flag selects it (for testing and
+   * piloting before release); otherwise sessions are created exactly as before, on v3-econ-1.0.
+   */
+  const econVersion = useMemo(() => econVersionFlag(typeof window === 'undefined' ? '' : window.location.search), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const setTeamCount = (n: number) => {
@@ -103,8 +108,11 @@ function FacilitatorSetup({ api, onCancel, onCreated }: { api: ReturnType<typeof
     try {
       let created: V2CreatedSession;
       try {
-        created = await api.createSession(email.trim(), names.map(n => n.trim() || 'Team'), mode, pacing, market === 'v2' ? undefined : market);
+        created = await api.createSession(email.trim(), names.map(n => n.trim() || 'Team'), mode, pacing, market === 'v2' ? undefined : market, market === 'v2' ? undefined : econVersion);
       } catch (e) {
+        if (market !== 'v2' && econVersion && /v3_create_session_v|function/i.test((e as Error).message)) {
+          throw new Error(`NexLearn V3 engine version ${econVersion} is not available on this database yet (the V3.1 engine-version migration has not been applied).`);
+        }
         if (market !== 'v2' && /v3_create_session|function/i.test((e as Error).message)) {
           throw new Error('NexLearn V3 market paths are not available on this database yet (the V3 migration has not been applied). Choose “Original NexLearn (V2)” or ask your administrator.');
         }
@@ -178,6 +186,7 @@ function SessionCreated({ created, warning, onContinue }: { created: V2CreatedSe
           <div><div className="ds-muted">Admin PIN (keep private)</div><div className="ds-kpi-value" data-testid="v2-created-pin">{created.admin_pin}</div></div>
         </div>
         <p style={{ margin: 0 }} data-testid="v2-created-market" data-path={created.market_path ?? 'v2'}><span className="ds-muted">Market path: </span><b>{created.market_path ? PATH_INFO[created.market_path].name : 'Original NexLearn (V2 economics)'}</b> <span className="ds-muted">— the same for every team; fixed for this session.</span></p>
+        {created.econ_version && created.econ_version !== '1.0' && <p style={{ margin: 0 }} data-testid="v2-created-econ-version" data-version={created.econ_version}><span className="ds-muted">Engine version: </span><b>v3-econ-{created.econ_version}</b></p>}
         <table className="ds-table">
           <thead><tr><th>Team</th><th>Team code</th></tr></thead>
           <tbody>{created.teams.map(t => <tr key={t.team_id} data-testid="v2-created-team"><td>{t.team_name}</td><td><code data-testid="v2-created-team-code">{t.team_code}</code></td></tr>)}</tbody>

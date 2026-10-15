@@ -39,10 +39,11 @@ import { crisisView as v3CrisisView, finalView as v3FinalView } from '../../../s
 import { buildPlayerSignals as v2Signals, getScenarioQuarter as v2Sq } from '../../../src/simulation/engineV2Scenario';
 import { buildPlayerSignals as v3Signals, getScenarioQuarter as v3Sq } from '../../../src/simulationV3/engineV3Scenario';
 import { pathArc, type V3MarketPathId } from '../../../src/simulationV3/engineV3Paths';
-import { V3_ECONOMICS } from '../../../src/simulationV3/engineV3Config';
+import { V3_ECONOMICS, withV3Version, type V3EngineVersion } from '../../../src/simulationV3/engineV3Config';
 
 export type LabEngineId = 'v2' | 'v3';
-export interface LabConfig { engine: LabEngineId; path?: V3MarketPathId }
+/** `version` (V3 only, V3.1 Stage 2): the V3 engine version to play; absent = the active version (v3-econ-1.0 at rest). */
+export interface LabConfig { engine: LabEngineId; path?: V3MarketPathId; version?: V3EngineVersion }
 
 export interface PlayOptions {
   /** E7 (V3 only): largest financing-funded expansion the player requests each quarter Q2–Q7 ($M; 0 = never). */
@@ -95,7 +96,7 @@ function engineFor(cfg: LabConfig): Engine {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const S = (x: any) => x as V2TeamState & any;
   return {
-    init: () => V3A.initializeGame(path),
+    init: () => V3A.initializeGame(path, cfg.version),
     resolve: (s, i) => V3A.resolveQuarter(s, i) as unknown as { snapshot: V2GameSnapshot; consequence: V2Consequence },
     validate: (s, i) => V3A.validateQuarterInput(s, i),
     forecast: (s, i) => V3A.forecastQuarter(s, i) as never,
@@ -128,6 +129,13 @@ function toReserve(x: V2Allocation, amount: number, protect: (keyof V2Allocation
 const isCut = (m: V2ManagementActions | undefined) => !!m && (!!m.workforceReduction || m.hiringFreeze === true || (m.marketingLevel !== undefined && m.marketingLevel < 1) || m.closeWeakOfferings === true);
 
 export function play(strategy: V2ArcStrategy, cfg: LabConfig, opts: PlayOptions = {}): PlayedGame {
+  // V3.1 Stage 2: a game is played entirely under its engine version's configuration (laboratory overrides applied
+  // inside withV3Version(version, …) stay in effect, because a nested call in the active version changes nothing).
+  if (cfg.engine === 'v3' && cfg.version) return withV3Version(cfg.version, () => playGame(strategy, cfg, opts));
+  return playGame(strategy, cfg, opts);
+}
+
+function playGame(strategy: V2ArcStrategy, cfg: LabConfig, opts: PlayOptions): PlayedGame {
   const E = engineFor(cfg);
   const v3 = cfg.engine === 'v3';
   const policy: V2ArcPolicy = { ...DEFAULT_POLICY, ...(strategy.policy ?? {}), ...(opts.policy ?? {}) };

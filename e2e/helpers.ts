@@ -27,8 +27,9 @@ export async function newPage(browser: Browser): Promise<{ ctx: BrowserContext; 
  * Create a session through the facilitator UI. `market`: a NexLearn V3 path ('A' | 'B' | 'C') or 'v2' (default — the
  * pre-V3 suites test the original V2 economics, which stays available as "Original NexLearn").
  */
-export async function createSession(page: Page, teams: string[], opts: { mode?: string; pacing?: string; presentation?: 'undergraduate' | 'mba'; commitment?: 'team_commitment' | 'private_vote'; market?: 'A' | 'B' | 'C' | 'v2' } = {}) {
-  await page.goto('/');
+export async function createSession(page: Page, teams: string[], opts: { mode?: string; pacing?: string; presentation?: 'undergraduate' | 'mba'; commitment?: 'team_commitment' | 'private_vote'; market?: 'A' | 'B' | 'C' | 'v2'; econ?: '1.0' | '1.1' } = {}) {
+  // V3.1 Stage 2: an explicit V3 engine version is selected only through the hidden `?econ=` flag.
+  await page.goto(opts.econ ? `/?econ=${opts.econ}` : '/');
   await page.getByTestId('v2-home-facilitator').click();
   await page.getByTestId('v2-setup-email').fill('facilitator@school.edu');
   await page.getByTestId('v2-setup-count').fill(String(teams.length));

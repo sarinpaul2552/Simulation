@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Term } from '../ds/glossary';
-import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, V2Forecast } from '../../engine';
-import { V3_ECONOMICS } from '../../../../simulationV3/engineV3Config';
+import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, economicsOf, V2Forecast } from '../../engine';
 import { saturationStatus } from '../../insights/saturation';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
 import type { V2Allocation } from '../../../../simulation/engineV2';
@@ -79,6 +78,8 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   const input: V2PlayerQuarterInput = { ...defaultInput(q), ...(ctl.draft?.input ?? {}), quarter: q } as V2PlayerQuarterInput;
   const delib: V2Deliberation = ctl.draft?.deliberation ?? {};
   const v3 = isV3(snap);
+  /** The game's own engine-version configuration (V3.1 Stage 2): limits shown to students match the economics applied. */
+  const econ = economicsOf(snap);
   const envelope = envelopeForInput(snap, input);
   const invested = BUCKETS.reduce((t, b) => t + (input.allocation[b] || 0), 0);
 
@@ -181,7 +182,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
                   options={[{ id: 'accept', label: <span data-testid="v2-opp-accept">Accept the contract</span> }, { id: 'decline', label: <span data-testid="v2-opp-decline">Decline</span> }]} />
               </Card>
             )}
-            {spec.management && v3 && <StanceCard value={input.recessionStance} reserve={input.allocation.cashReserve} people={input.allocation.people}
+            {spec.management && v3 && <StanceCard minRes={econ.recession.slowMinimumReserve} value={input.recessionStance} reserve={input.allocation.cashReserve} people={input.allocation.people}
               onChange={st => set({ recessionStance: st, management: st === 'cut' ? input.management : withoutCuts(input.management) })}
               onMoveToCash={x => set({ allocation: freeCash(input.allocation, x) })} />}
             {spec.management && <ManagementCard spec={spec.management} value={input.management ?? {}} mode={mode}
@@ -213,7 +214,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
           {prefillAfterFinal && <p className="ds-muted" data-testid="v2-prefill-after-final" style={{ margin: 0 }}>Choose your final strategic decision first: the budget depends on it. You can then start from last quarter’s allocation.</p>}
           <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} />
           <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode}
-            expansion={v3 && V3_ECONOMICS.financing.quarters.includes(q) && !spec.final ? { value: input.expansion ?? 0, max: V3_ECONOMICS.financing.maxExpansion, floor: V3_ECONOMICS.financing.cashFloor, onChange: x => set({ expansion: x > 0 ? x : undefined }) } : undefined} />
+            expansion={v3 && econ.financing.quarters.includes(q) && !spec.final ? { value: input.expansion ?? 0, max: econ.financing.maxExpansion, floor: econ.financing.cashFloor, onChange: x => set({ expansion: x > 0 ? x : undefined }) } : undefined} />
         </div>
 
         <div className="ds-stack" data-testid="v2-discussion">
@@ -388,8 +389,7 @@ function ContractClaim({ upfront, envelope, accepted, reserve, onMakeRoom }: { u
 }
 
 /** V3 (E6): the recession stance, one required choice. */
-function StanceCard({ value, reserve, people, onChange, onMoveToCash }: { value?: 'protect' | 'slow' | 'cut'; reserve: number; people: number; onChange: (s: 'protect' | 'slow' | 'cut') => void; onMoveToCash: (x: number) => void }) {
-  const minRes = V3_ECONOMICS.recession.slowMinimumReserve;
+function StanceCard({ minRes, value, reserve, people, onChange, onMoveToCash }: { minRes: number; value?: 'protect' | 'slow' | 'cut'; reserve: number; people: number; onChange: (s: 'protect' | 'slow' | 'cut') => void; onMoveToCash: (x: number) => void }) {
   return (
     <Card title="Recession stance" sub="Required: choose one" icon="alert" testId="v2-stance">
       <ChoiceList name="stance" testIdPrefix="v2-stance" value={value ? [value] : []} onChange={v => onChange(v[0] as 'protect' | 'slow' | 'cut')}

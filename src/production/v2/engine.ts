@@ -5,23 +5,34 @@
  * engine version:
  *   - V2 games ('v2-econ-batch4-frozen') → the frozen V2 adapter (`./adapter`, unchanged) — existing sessions replay
  *     exactly as before;
- *   - V3 games ('v3-econ-1.0') → the V3 adapter (`../v3/adapter`) with the game's market path.
- * Functions that have no snapshot take a GameConfig (engine + market path), defaulting to V2.
+ *   - V3 games ('v3-econ-1.0', 'v3-econ-1.1', …) → the V3 adapter (`../v3/adapter`) with the game's market path and
+ *     engine version. The adapter runs every V3 calculation with that version's registered configuration.
+ * Functions that have no snapshot take a GameConfig (engine + market path + V3 engine version), defaulting to V2.
+ * V3.1 Stage 2: a V3 GameConfig without a version means 'v3-econ-1.0', so existing callers keep their behaviour.
  */
 import * as V2 from './adapter';
 import * as V3 from '../v3/adapter';
-import { V3_ENGINE_VERSION, type MarketPathId, type V2GameSnapshot } from './snapshot';
+import { v3ConfigFor, type V3EconomicsConfig } from '../../simulationV3/engineV3Config';
+import { V3_ENGINE_VERSION, isV3EngineVersion, type MarketPathId, type V2GameSnapshot, type V3EngineVersion } from './snapshot';
 import type { V2PlayerQuarterInput, V2Role } from './types';
 import type { V2FinalOptionId } from '../../simulation/engineV2Final';
 
-export type GameConfig = { engine: 'v2' } | { engine: 'v3'; path: MarketPathId };
+export type GameConfig = { engine: 'v2' } | { engine: 'v3'; path: MarketPathId; version?: V3EngineVersion };
 export const V2_CONFIG: GameConfig = { engine: 'v2' };
-export const v3Config = (path: MarketPathId): GameConfig => ({ engine: 'v3', path });
+export const v3Config = (path: MarketPathId, version: V3EngineVersion = V3_ENGINE_VERSION): GameConfig => ({ engine: 'v3', path, version });
+/** The V3 engine version of a V3 GameConfig (absent = the released 'v3-econ-1.0'). */
+const verOf = (cfg: { version?: V3EngineVersion }): V3EngineVersion => cfg.version ?? V3_ENGINE_VERSION;
 
-export const isV3 = (snap: V2GameSnapshot): boolean => snap.engineVersion === V3_ENGINE_VERSION;
+export const isV3 = (snap: V2GameSnapshot): boolean => isV3EngineVersion(snap.engineVersion);
 export function configOf(snap: V2GameSnapshot): GameConfig {
-  return isV3(snap) ? { engine: 'v3', path: snap.marketPath ?? 'A' } : V2_CONFIG;
+  return isV3(snap) ? { engine: 'v3', path: snap.marketPath ?? 'A', version: snap.engineVersion as V3EngineVersion } : V2_CONFIG;
 }
+/**
+ * The registered economic configuration of a game's V3 engine version (V3.1 Stage 2), for UI limits such as the
+ * expansion cap or the recession reserve. V2 games have no V3 configuration; callers only read it for V3 games, so they
+ * receive the released 1.0 values.
+ */
+export const economicsOf = (snap: V2GameSnapshot): V3EconomicsConfig => v3ConfigFor(isV3(snap) ? snap.engineVersion : V3_ENGINE_VERSION);
 export const engineOf = (snap: V2GameSnapshot): 'v2' | 'v3' => (isV3(snap) ? 'v3' : 'v2');
 
 export type V2Forecast = V3.V2Forecast;
@@ -37,14 +48,14 @@ export const canonical = V2.canonical;
 export const severityBand = V2.severityBand;
 
 export function initializeGame(cfg: GameConfig = V2_CONFIG): V2GameSnapshot {
-  return cfg.engine === 'v3' ? V3.initializeGame(cfg.path) : V2.initializeGame();
+  return cfg.engine === 'v3' ? V3.initializeGame(cfg.path, verOf(cfg)) : V2.initializeGame();
 }
 
 export const workingQuarter = (snap: V2GameSnapshot): number | null => (isV3(snap) ? V3.workingQuarter(snap) : V2.workingQuarter(snap));
 export const isComplete = (snap: V2GameSnapshot): boolean => (isV3(snap) ? V3.isComplete(snap) : V2.isComplete(snap));
 
 export function getQuarterBriefing(quarter: number, cfg: GameConfig = V2_CONFIG): V2QuarterBriefing {
-  return cfg.engine === 'v3' ? V3.getQuarterBriefing(quarter, cfg.path) : V2.getQuarterBriefing(quarter);
+  return cfg.engine === 'v3' ? V3.getQuarterBriefing(quarter, cfg.path, verOf(cfg)) : V2.getQuarterBriefing(quarter);
 }
 
 export const getRoleBrief = (snap: V2GameSnapshot, role: V2Role) => (isV3(snap) ? V3.getRoleBrief(snap, role) : V2.getRoleBrief(snap, role));
@@ -52,7 +63,7 @@ export const getDecisionSpec = (snap: V2GameSnapshot): V2DecisionSpec | null => 
 
 /** The base strategic budget of a quarter: $30M, or the Q8 option's budget. */
 export function envelopeFor(quarter: number, finalOption?: V2FinalOptionId, cfg: GameConfig = V2_CONFIG): number {
-  return cfg.engine === 'v3' ? V3.envelopeFor(quarter, finalOption, cfg.path) : V2.envelopeFor(quarter, finalOption);
+  return cfg.engine === 'v3' ? V3.envelopeFor(quarter, finalOption, cfg.path, verOf(cfg)) : V2.envelopeFor(quarter, finalOption);
 }
 
 /**
@@ -65,7 +76,7 @@ export function envelopeForInput(snap: V2GameSnapshot, input: V2PlayerQuarterInp
 
 /** The budget a decision allocates, computed from the decision itself and the game's configuration. */
 export function budgetFor(input: V2PlayerQuarterInput, cfg: GameConfig = V2_CONFIG): number {
-  return cfg.engine === 'v3' ? V3.budgetForInput(input, cfg.path) : V2.envelopeFor(input.quarter, input.finalOption);
+  return cfg.engine === 'v3' ? V3.budgetForInput(input, cfg.path, verOf(cfg)) : V2.envelopeFor(input.quarter, input.finalOption);
 }
 
 export function validateQuarterInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): string[] {
@@ -80,11 +91,11 @@ export const resolveQuarter = (snap: V2GameSnapshot, input: V2PlayerQuarterInput
   (isV3(snap) ? V3.resolveQuarter(snap, input) : V2.resolveQuarter(snap, input));
 
 export function storedInput(input: V2PlayerQuarterInput, cfg: GameConfig = V2_CONFIG): V2PlayerQuarterInput {
-  return cfg.engine === 'v3' ? V3.storedInput(input, cfg.path) : V2.storedInput(input);
+  return cfg.engine === 'v3' ? V3.storedInput(input, cfg.path, verOf(cfg)) : V2.storedInput(input);
 }
 
 export function replayInputs(inputs: V2PlayerQuarterInput[], cfg: GameConfig = V2_CONFIG): V2GameSnapshot {
-  return cfg.engine === 'v3' ? V3.replayInputs(inputs, cfg.path) : V2.replayInputs(inputs);
+  return cfg.engine === 'v3' ? V3.replayInputs(inputs, cfg.path, verOf(cfg)) : V2.replayInputs(inputs);
 }
 
 export const verifySnapshot = (snap: V2GameSnapshot) => (isV3(snap) ? V3.verifySnapshot(snap) : V2.verifySnapshot(snap));

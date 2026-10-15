@@ -179,6 +179,6 @@ describe('V3 snapshots', () => {
     expect(s.engineVersion).toBe('v3-econ-1.0');
     expect(s.marketPath).toBe('A');
     expect(V3.verifySnapshot(s).ok).toBe(true);
-    expect(F.configOf(s)).toEqual({ engine: 'v3', path: 'A' });
+    expect(F.configOf(s)).toEqual({ engine: 'v3', path: 'A', version: 'v3-econ-1.0' });
   });
 });

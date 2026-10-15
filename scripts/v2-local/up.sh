@@ -26,6 +26,11 @@ if [ "${V2_SKIP_BATCH7:-0}" != "1" ]; then
       # NexLearn V3 (Batch 10D): tested here only — this local database is recreated on every run.
       $PSQL -d sim -f "$ROOT/database/MIGRATION_V3_MARKET_PATHS.sql"
       $PSQL -d sim -f "$ROOT/database/MIGRATION_V3_MARKET_PATHS.sql"   # idempotent
+      if [ "${V2_SKIP_V31:-0}" != "1" ]; then
+        # NexLearn V3.1 Stage 2 (engine versioning): tested here only.
+        $PSQL -d sim -f "$ROOT/database/MIGRATION_V3_1_ENGINE_VERSION.sql"
+        $PSQL -d sim -f "$ROOT/database/MIGRATION_V3_1_ENGINE_VERSION.sql"   # idempotent
+      fi
     fi
   fi
 fi

@@ -38,6 +38,20 @@ export interface V2SessionInfo {
   econ_engine?: 'v2' | 'v3';
   /** NexLearn V3: the session's market path (V3 sessions only; fixed when the session is created). */
   market_path?: MarketPathId | null;
+  /**
+   * NexLearn V3.1 Stage 2 (absent before MIGRATION_V3_1_ENGINE_VERSION.sql): the V3 engine version of a V3 session,
+   * fixed at creation. null/absent on a V3 session = '1.0' (sessions created before versioning). Always null for V2.
+   */
+  econ_version?: V3EconVersion | null;
+}
+
+/** A V3 engine version as stored on a session ('1.0' ↔ 'v3-econ-1.0', '1.1' ↔ 'v3-econ-1.1'). */
+export type V3EconVersion = '1.0' | '1.1';
+export const V3_ECON_VERSIONS: V3EconVersion[] = ['1.0', '1.1'];
+/** The explicitly selected V3 engine version in a URL query (`?econ=1.1`), or undefined (= the default, 1.0). */
+export function econVersionFlag(search: string): V3EconVersion | undefined {
+  const v = new URLSearchParams(search).get('econ');
+  return v && (V3_ECON_VERSIONS as string[]).includes(v) ? (v as V3EconVersion) : undefined;
 }
 
 /** The working-quarter draft persisted for refresh/reconnect. */
@@ -97,6 +111,7 @@ export interface V2CreatedSession {
   commitment_mode?: V2CommitmentMode;
   econ_engine?: 'v2' | 'v3';
   market_path?: MarketPathId;
+  econ_version?: V3EconVersion | null;
   teams: { team_id: string; team_code: string; team_name: string }[];
 }
 
@@ -124,6 +139,7 @@ export interface V2FacilitatorOverview {
   /** NexLearn V3: economic engine and market path (absent before the V3 migration = V2). */
   econ_engine?: 'v2' | 'v3';
   market_path?: MarketPathId | null;
+  econ_version?: V3EconVersion | null;
   teams: V2FacilitatorTeam[];
 }
 
@@ -150,11 +166,18 @@ export function createV2Api(client: SupabaseClient) {
     return data as T;
   }
   return {
-    /** V2 session (original economics), or — with a market path — a NexLearn V3 session (requires the V3 migration). */
-    createSession: (email: string, teamNames: string[], participationMode: V2ParticipationMode, pacing: V2Pacing, marketPath?: MarketPathId) =>
-      marketPath
+    /**
+     * V2 session (original economics), or — with a market path — a NexLearn V3 session (requires the V3 migration).
+     * V3.1 Stage 2: an explicit `econVersion` selects the V3 engine version (requires MIGRATION_V3_1_ENGINE_VERSION.sql);
+     * without one the session is created exactly as before (v3_create_session → 'v3-econ-1.0').
+     */
+    createSession: (email: string, teamNames: string[], participationMode: V2ParticipationMode, pacing: V2Pacing, marketPath?: MarketPathId, econVersion?: V3EconVersion) => {
+      if (econVersion && !marketPath) return Promise.reject(new Error('An engine version can only be chosen for a V3 session'));
+      if (marketPath && econVersion) return call<V2CreatedSession>('v3_create_session_v', { p_facilitator_email: email, p_team_names: teamNames, p_participation_mode: participationMode, p_pacing: pacing, p_market_path: marketPath, p_econ_version: econVersion });
+      return marketPath
         ? call<V2CreatedSession>('v3_create_session', { p_facilitator_email: email, p_team_names: teamNames, p_participation_mode: participationMode, p_pacing: pacing, p_market_path: marketPath })
-        : call<V2CreatedSession>('v2_create_session', { p_facilitator_email: email, p_team_names: teamNames, p_participation_mode: participationMode, p_pacing: pacing }),
+        : call<V2CreatedSession>('v2_create_session', { p_facilitator_email: email, p_team_names: teamNames, p_participation_mode: participationMode, p_pacing: pacing });
+    },
     facilitatorOverview: (sessionCode: string, adminPin: string) =>
       call<V2FacilitatorOverview>('v2_facilitator_overview', { p_session_code: sessionCode, p_admin_pin: adminPin }),
     setOpenQuarter: (sessionCode: string, adminPin: string, quarter: number) =>

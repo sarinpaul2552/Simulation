@@ -8,6 +8,7 @@ import {
   initializeGame, headlineOf, resolveQuarter, storedInput, verifySnapshot, workingQuarter, validateQuarterInput, replayInputs,
   configOf, V2_CONFIG, v3Config, type GameConfig,
 } from './engine';
+import { isV3EngineVersion, type V3EngineVersion } from './snapshot';
 import { V2GameSnapshot, toStorable, fromStorable, encodeLossless, firstDifference, V2_REPLAY_TOLERANCE } from './snapshot';
 import type { V2Api, V2GameRecord, V2ResolutionRecord, V2SessionInfo, V2TeamGameResponse, V2Draft } from './api';
 import type { V2PlayerQuarterInput } from './types';
@@ -32,12 +33,20 @@ export function storableInput(input: V2PlayerQuarterInput, cfg: GameConfig = V2_
 /**
  * The economic engine a session plays (NexLearn V3): V3 with its market path when the session was created for V3,
  * otherwise V2. Older databases without the V3 columns are V2.
+ * V3.1 Stage 2: a V3 session also records its V3 engine version (`econ_version`, '1.0' | '1.1'). Sessions created before
+ * the column existed (null / absent) are 'v3-econ-1.0' — the only V3 version that existed then.
  */
-export function sessionConfig(session: { econ_engine?: string | null; market_path?: string | null }): GameConfig {
+export function sessionEngineVersion(econVersion: string | null | undefined): V3EngineVersion {
+  const v = `v3-econ-${econVersion ?? '1.0'}`;
+  if (!isV3EngineVersion(v)) throw new V2IntegrityError(`This V3 session uses an unknown engine version (${String(econVersion)})`);
+  return v;
+}
+export function sessionConfig(session: { econ_engine?: string | null; market_path?: string | null; econ_version?: string | null }): GameConfig {
   if (session.econ_engine === 'v3') {
     if (session.market_path !== 'A' && session.market_path !== 'B' && session.market_path !== 'C') throw new V2IntegrityError('This V3 session has no valid market path');
-    return v3Config(session.market_path);
+    return v3Config(session.market_path, sessionEngineVersion(session.econ_version));
   }
+  if (session.econ_version != null) throw new V2IntegrityError('A V2 session cannot carry a V3 engine version');
   return V2_CONFIG;
 }
 
@@ -55,8 +64,9 @@ export function fromResponse(teamCode: string, resp: V2TeamGameResponse): V2Load
   if (diff) throw new V2IntegrityError(`Snapshot input log disagrees with the resolution log (${diff})`);
   const expected = sessionConfig(resp.session);
   const actual = configOf(snapshot);
-  if (expected.engine !== actual.engine || (expected.engine === 'v3' && actual.engine === 'v3' && expected.path !== actual.path)) {
-    throw new V2IntegrityError(`Stored game uses ${actual.engine === 'v3' ? `V3 path ${actual.path}` : 'V2'} but the session uses ${expected.engine === 'v3' ? `V3 path ${expected.path}` : 'V2'}`);
+  const describe = (c: GameConfig) => (c.engine === 'v3' ? `V3 path ${c.path} (${c.version ?? 'v3-econ-1.0'})` : 'V2');
+  if (expected.engine !== actual.engine || (expected.engine === 'v3' && actual.engine === 'v3' && (expected.path !== actual.path || (expected.version ?? 'v3-econ-1.0') !== (actual.version ?? 'v3-econ-1.0')))) {
+    throw new V2IntegrityError(`Stored game uses ${describe(actual)} but the session uses ${describe(expected)}`);
   }
   const v = verifySnapshot(snapshot);
   if (!v.ok) throw new V2IntegrityError(`Stored game does not replay exactly (${v.difference})`);

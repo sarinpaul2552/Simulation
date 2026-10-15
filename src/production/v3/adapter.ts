@@ -9,7 +9,7 @@
  * V3-only decision mechanics (10C) live here and in the engine fork: the Q5 contract's claim on the strategic budget,
  * the Q6 recession stance, and financing-expanded investment.
  */
-import { V3_ECONOMICS } from '../../simulationV3/engineV3Config';
+import { V3_ECONOMICS, v3ConfigFor, withV3Version, isV3EngineVersion, type V3EngineVersion } from '../../simulationV3/engineV3Config';
 import {
   V2TeamState, V2QuarterInput, V2Consequence, V2Allocation, V2_INTEGRATED_MODE, V2_INVESTMENT_BUCKETS,
   getV2Baseline, calculateV2QuarterConsequence, applyV2Consequence, assessLiquidity, crisisView, finalView,
@@ -25,13 +25,27 @@ import { V2_MANAGEMENT_CALIBRATION } from '../../simulationV3/engineV3Management
 import type { V2FinancingAction, V2FinancingOptions } from '../../simulationV3/engineV3Financing';
 import { scoreV2Company, V2TerminalScore } from '../../simulationV3/engineV3Scoring';
 import {
-  V2GameSnapshot, V2_SNAPSHOT_SCHEMA, V2_SNAPSHOT_SCHEMA_VERSION, V3_ENGINE_VERSION, firstDifference, assertV3SnapshotContract, V2_REPLAY_TOLERANCE,
+  V2GameSnapshot, V2_SNAPSHOT_SCHEMA, V2_SNAPSHOT_SCHEMA_VERSION, firstDifference, V2SnapshotContractError, assertV3SnapshotContract, V2_REPLAY_TOLERANCE,
 } from '../v2/snapshot';
 import type {
   V2PlayerQuarterInput, V2RoleBrief, V2Signal, V2QuarterResult, V2ExplanationLine, V2Headline, V2SeverityBand,
 } from '../v2/types';
 
 export const V2_TOTAL_QUARTERS = lastAuthoredQuarter(pathArc('A'));
+
+// ============ ENGINE VERSION (V3.1 Stage 2) ============
+// Every exported function that computes economics runs with its game's engine-version configuration active
+// (`withV3Version`). Functions that take a snapshot use the snapshot's own version; functions that take a market path
+// accept an explicit version and otherwise use the active one. Nested calls in the same version cost nothing.
+
+const activeVersion = (): V3EngineVersion => V3_ECONOMICS.version;
+/** The V3 engine version a snapshot was created with (throws for a snapshot that is not a V3 game). */
+export function versionOf(snap: V2GameSnapshot): V3EngineVersion {
+  if (!snap || !isV3EngineVersion(snap.engineVersion)) throw new V2SnapshotContractError(`Not a V3 snapshot (engine ${String(snap?.engineVersion)})`);
+  return snap.engineVersion;
+}
+const inSnapVersion = <T>(snap: V2GameSnapshot, fn: () => T): T => withV3Version(versionOf(snap), fn);
+const inVersion = <T>(version: string | undefined, fn: () => T): T => (version === undefined ? fn() : withV3Version(version, fn));
 
 /** The market path of a V3 game (every V3 snapshot carries one). */
 export function pathOf(snap: V2GameSnapshot): V3MarketPathId {
@@ -46,12 +60,17 @@ export { V2_ROLES };
 
 // ============ LIFECYCLE ============
 
-export function initializeGame(path: V3MarketPathId): V2GameSnapshot {
+/**
+ * A new V3 game on a market path. `version` selects the V3 engine version explicitly (V3.1 Stage 2); without it the game
+ * takes the active version, which is 'v3-econ-1.0' in production (the facade always passes the session's version).
+ */
+export function initializeGame(path: V3MarketPathId, version?: string): V2GameSnapshot {
   pathArc(path); // throws for an unknown path
+  const engineVersion = version === undefined ? activeVersion() : v3ConfigFor(version).version;
   return {
     schema: V2_SNAPSHOT_SCHEMA,
     schemaVersion: V2_SNAPSHOT_SCHEMA_VERSION,
-    engineVersion: V3_ENGINE_VERSION,
+    engineVersion,
     marketPath: path,
     completedQuarter: 0,
     state: getV2Baseline(),
@@ -79,7 +98,7 @@ export interface V2QuarterBriefing {
   events: { opportunity: boolean; recession: boolean; crisis: boolean; finalDecision: boolean; destination: boolean };
 }
 
-export function getQuarterBriefing(quarter: number, path: V3MarketPathId): V2QuarterBriefing {
+function getQuarterBriefingImpl(quarter: number, path: V3MarketPathId): V2QuarterBriefing {
   const sq = getScenarioQuarter(quarter, path);
   if (!sq) throw new Error(`No scenario authored for Q${quarter}`);
   return {
@@ -116,7 +135,7 @@ const m = (id: string, label: string, value: number, unit: string): V2Signal => 
  * lagging — possibly noisy) plus measured KPIs the role owns, taken from the company's own last-quarter state.
  * Hidden market truth (demand indices, competitor pace, crisis drivers) is never included.
  */
-export function getRoleBrief(snap: V2GameSnapshot, role: V2Role): V2RoleBrief {
+function getRoleBriefImpl(snap: V2GameSnapshot, role: V2Role): V2RoleBrief {
   const q = workingQuarter(snap) ?? snap.completedQuarter;
   const s = snap.state;
   const sq = getScenarioQuarter(q, pathOf(snap));
@@ -208,7 +227,7 @@ export function severityBand(severity: number): V2SeverityBand {
   return severity >= 0.45 ? 'serious' : severity >= 0.3 ? 'moderate' : 'minor';
 }
 
-export function getDecisionSpec(snap: V2GameSnapshot): V2DecisionSpec | null {
+function getDecisionSpecImpl(snap: V2GameSnapshot): V2DecisionSpec | null {
   const q = workingQuarter(snap);
   if (q === null) return null;
   const s = snap.state;
@@ -268,19 +287,19 @@ function currentCrisis(s: V2TeamState): V2CrisisAssessment {
 }
 
 /** Strategic envelope for a quarter: $30M, or the Q8 option's envelope. */
-export function envelopeFor(quarter: number, finalOption?: V2FinalOptionId, path: V3MarketPathId = 'A'): number {
+function envelopeForImpl(quarter: number, finalOption?: V2FinalOptionId, path: V3MarketPathId = 'A'): number {
   const sq = getScenarioQuarter(quarter, path);
   if (sq?.events?.finalDecision) return maxEnvelope(finalOption ?? 'continue');
   return V2_BASE_ENVELOPE;
 }
 
 /** The budget a decision must allocate (10C adds financing-funded expansion). */
-export function envelopeForInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): number {
+function envelopeForInputImpl(snap: V2GameSnapshot, input: V2PlayerQuarterInput): number {
   return budgetForInput(input, pathOf(snap));
 }
 
 /** The budget a stored decision allocates, from the decision alone (base budget + any financing expansion, 10C). */
-export function budgetForInput(input: V2PlayerQuarterInput, path: V3MarketPathId = 'A'): number {
+function budgetForInputImpl(input: V2PlayerQuarterInput, path: V3MarketPathId = 'A'): number {
   const base = envelopeFor(input.quarter, input.finalOption, path);
   const exp = input.expansion ?? 0;
   return exp > 0 && Number.isFinite(exp) ? base + exp : base;
@@ -304,7 +323,7 @@ export function canonical<T>(v: T): T {
   return v;
 }
 
-export function toEngineInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2QuarterInput {
+function toEngineInputImpl(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2QuarterInput {
   const q = input.quarter;
   const path = pathOf(snap);
   const sq = getScenarioQuarter(q, path);
@@ -340,7 +359,7 @@ export function toEngineInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput)
 const FIN_KINDS = ['equity', 'debt', 'repay', 'partner', 'restructure'];
 
 /** Structural checks, then a dry run of the frozen engine (which enforces availability rules). [] = valid. */
-export function validateQuarterInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): string[] {
+function validateQuarterInputImpl(snap: V2GameSnapshot, input: V2PlayerQuarterInput): string[] {
   const errors: string[] = [];
   const q = workingQuarter(snap);
   if (q === null) return ['The game is complete'];
@@ -388,7 +407,7 @@ export interface V2Forecast {
 }
 
 /** CFO forecast: the quarter as planned WITHOUT financing actions, plus the financing terms on offer (same as the Test Lab). */
-export function forecastQuarter(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Forecast {
+function forecastQuarterImpl(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Forecast {
   const f = assessLiquidity(snap.state, toEngineInput(snap, input));
   return { projectedClosingCash: f.projectedClosingCash, minimumOperatingCash: f.minimumOperatingCash, gap: f.gap, options: f.options };
 }
@@ -402,7 +421,7 @@ export interface V2Resolution {
 }
 
 /** Resolve the working quarter. Pure and deterministic: same snapshot + same input → same next snapshot. */
-export function resolveQuarter(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Resolution {
+function resolveQuarterImpl(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Resolution {
   assertV3SnapshotContract(snap);
   const errors = validateQuarterInput(snap, input);
   if (errors.length) throw new Error(`Invalid Q${input.quarter} decision: ${errors.join('; ')}`);
@@ -414,7 +433,7 @@ export function resolveQuarter(snap: V2GameSnapshot, input: V2PlayerQuarterInput
 }
 
 /** Normalized form of an input as it is logged (only the fields relevant to its quarter, canonical key order). */
-export function storedInput(input: V2PlayerQuarterInput, path: V3MarketPathId): V2PlayerQuarterInput {
+function storedInputImpl(input: V2PlayerQuarterInput, path: V3MarketPathId): V2PlayerQuarterInput {
   const sq = getScenarioQuarter(input.quarter, path);
   const z = (x: number) => x + 0; // −0 → 0 so the logged input is identical in JSON and jsonb
   const al = input.allocation;
@@ -437,8 +456,8 @@ export function storedInput(input: V2PlayerQuarterInput, path: V3MarketPathId): 
 }
 
 /** Rebuild a game from its input log (the replayable source of truth). */
-export function replayInputs(inputs: V2PlayerQuarterInput[], path: V3MarketPathId): V2GameSnapshot {
-  let snap = initializeGame(path);
+export function replayInputs(inputs: V2PlayerQuarterInput[], path: V3MarketPathId, version?: string): V2GameSnapshot {
+  let snap = initializeGame(path, version);
   for (const inp of inputs) snap = resolveQuarter(snap, inp).snapshot;
   return snap;
 }
@@ -450,7 +469,8 @@ export function replayInputs(inputs: V2PlayerQuarterInput[], path: V3MarketPathI
 export function verifySnapshot(snap: V2GameSnapshot): { ok: boolean; difference: string | null } {
   try {
     assertV3SnapshotContract(snap);
-    const replayed = replayInputs(snap.inputs, pathOf(snap));
+    // Replayed on the snapshot's own engine version: a game is only ever verified against the economics it was played with.
+    const replayed = replayInputs(snap.inputs, pathOf(snap), snap.engineVersion);
     const difference = firstDifference(replayed.state, snap.state, '', V2_REPLAY_TOLERANCE);
     return { ok: difference === null, difference };
   } catch (e) {
@@ -459,7 +479,7 @@ export function verifySnapshot(snap: V2GameSnapshot): { ok: boolean; difference:
 }
 
 /** The result screen for any resolved quarter, recomputed from the input log (never trusted from storage). */
-export function resultForQuarter(snap: V2GameSnapshot, quarter: number): V2QuarterResult {
+function resultForQuarterImpl(snap: V2GameSnapshot, quarter: number): V2QuarterResult {
   if (quarter < 1 || quarter > snap.completedQuarter) throw new Error(`Q${quarter} has not been resolved`);
   const before = replayInputs(snap.inputs.slice(0, quarter - 1), pathOf(snap));
   return resolveQuarter(before, snap.inputs[quarter - 1]).result;
@@ -599,7 +619,7 @@ export function explainQuarter(before: V2TeamState, after: V2TeamState, c: V2Con
 
 // ============ FACILITATOR HEADLINE / FINAL OUTCOME ============
 
-export function headlineOf(snap: V2GameSnapshot): V2Headline {
+function headlineOfImpl(snap: V2GameSnapshot): V2Headline {
   const s = snap.state;
   const score = isComplete(snap) ? scoreV2Company(s) : null;
   return {
@@ -629,7 +649,7 @@ export interface V2FinalOutcome {
 }
 
 /** Terminal outcome after Q8: the frozen V2 terminal score plus the Q8 option the company earned and chose. */
-export function getFinalOutcome(snap: V2GameSnapshot): V2FinalOutcome {
+function getFinalOutcomeImpl(snap: V2GameSnapshot): V2FinalOutcome {
   if (!isComplete(snap)) throw new Error('The final outcome is available after Q8 is resolved');
   const s = snap.state;
   return {
@@ -642,3 +662,19 @@ export function getFinalOutcome(snap: V2GameSnapshot): V2FinalOutcome {
 }
 
 export type { V2FinancingAction };
+
+// ============ VERSIONED ENTRY POINTS (V3.1 Stage 2) ============
+export function getRoleBrief(snap: V2GameSnapshot, role: V2Role): V2RoleBrief { return inSnapVersion(snap, () => getRoleBriefImpl(snap, role)); }
+export function getDecisionSpec(snap: V2GameSnapshot): V2DecisionSpec | null { return inSnapVersion(snap, () => getDecisionSpecImpl(snap)); }
+export function envelopeForInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): number { return inSnapVersion(snap, () => envelopeForInputImpl(snap, input)); }
+export function toEngineInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2QuarterInput { return inSnapVersion(snap, () => toEngineInputImpl(snap, input)); }
+export function validateQuarterInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): string[] { return inSnapVersion(snap, () => validateQuarterInputImpl(snap, input)); }
+export function forecastQuarter(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Forecast { return inSnapVersion(snap, () => forecastQuarterImpl(snap, input)); }
+export function resolveQuarter(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Resolution { return inSnapVersion(snap, () => resolveQuarterImpl(snap, input)); }
+export function resultForQuarter(snap: V2GameSnapshot, quarter: number): V2QuarterResult { return inSnapVersion(snap, () => resultForQuarterImpl(snap, quarter)); }
+export function headlineOf(snap: V2GameSnapshot): V2Headline { return inSnapVersion(snap, () => headlineOfImpl(snap)); }
+export function getFinalOutcome(snap: V2GameSnapshot): V2FinalOutcome { return inSnapVersion(snap, () => getFinalOutcomeImpl(snap)); }
+export function getQuarterBriefing(quarter: number, path: V3MarketPathId, version?: string): V2QuarterBriefing { return inVersion(version, () => getQuarterBriefingImpl(quarter, path)); }
+export function envelopeFor(quarter: number, finalOption?: V2FinalOptionId, path: V3MarketPathId = 'A', version?: string): number { return inVersion(version, () => envelopeForImpl(quarter, finalOption, path)); }
+export function budgetForInput(input: V2PlayerQuarterInput, path: V3MarketPathId = 'A', version?: string): number { return inVersion(version, () => budgetForInputImpl(input, path)); }
+export function storedInput(input: V2PlayerQuarterInput, path: V3MarketPathId, version?: string): V2PlayerQuarterInput { return inVersion(version, () => storedInputImpl(input, path)); }
