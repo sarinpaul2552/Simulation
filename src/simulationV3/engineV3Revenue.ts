@@ -515,7 +515,7 @@ export function calculateV2RevenueConsequence(
   let aChurn = aExposed * (1 - aiRetention);
   const qe = aiQualityExecutionFactor(company.productQuality, company.capabilities.execution);
   const aHeadroom = headroomMultiplier(A0, market.segmentCapacity.aiNative, K.start.aiNative);
-  const aMacro = Math.max(0, 1 - ka.macroMonetization * market.macroPressure);
+  const aMacro = Math.max(0, 1 - V3_ECONOMICS.ai.macroMonetization * market.macroPressure);
   let aNew = aiNewMonetization(adoption, market.aiNativeDemand, qe) * aHeadroom * aMacro;
   let aTarget: number | undefined;
   if (V3_ECONOMICS.mechanisms.aiRevenueLevel) {

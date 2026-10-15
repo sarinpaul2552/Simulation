@@ -53,7 +53,14 @@ export const V3_ECONOMICS = {
     financingExpansion: true,
   } as V3Mechanisms,
   /** E1 — AI-native revenue level. target = base + perPoint × (adoption − 10) × demand × quality × macro; moves `speed` of the gap per quarter. */
-  ai: { revenuePerAdoptionPoint: 0.3, convergenceSpeed: 0.35 },
+  ai: {
+    revenuePerAdoptionPoint: 0.3, convergenceSpeed: 0.35,
+    /**
+     * Stage 3A (moved from engineV3Revenue `aiNative.macroMonetization`, value unchanged for 1.0): AI-native new
+     * monetization × (1 − macroMonetization × macroPressure) — buyer funding/procurement pressure.
+     */
+    macroMonetization: 0.15,
+  },
   /** E2 — Enterprise conversion. */
   enterprise: {
     winPerRelCapability: 0.2,
@@ -104,6 +111,18 @@ export const V3_ECONOMICS = {
     quarters: [2, 3, 4, 5, 6, 7] as readonly number[],
     /** Forecast closing cash after the expanded plan must stay at or above this ($M). */
     cashFloor: 25,
+  },
+  /**
+   * Stage 3A — credit terms (moved from engineV3Financing `V2_FINANCING_CALIBRATION.debt`, values unchanged for 1.0).
+   * Rate per quarter = base + leverage spread × max(0, min(leverage, 10) − 1) + distress spread; capacity =
+   * min(opMultiple × annual OP, revenueShare × annual revenue) − debt.
+   */
+  credit: {
+    baseRatePerQuarter: 0.02,
+    leverageSpreadPerTurn: 0.0025,
+    distressSpread: 0.015,
+    capacityOpMultiple: 2.5,
+    capacityRevenueShare: 0.4,
   },
 };
 

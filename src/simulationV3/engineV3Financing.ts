@@ -25,6 +25,7 @@
  */
 
 import { V2QuarterEffects, emptyEffects, V2SegmentKey, V2StateShock, availableCut } from './engineV3Effects';
+import { V3_ECONOMICS } from './engineV3Config';
 
 // ============ CALIBRATION ============
 
@@ -210,13 +211,13 @@ export interface V2FinancingView extends V2ValuationView {
 
 export function debtCapacity(v: V2FinancingView, f: V2FinancingState): number {
   if (v.status === 'insolvent') return 0;
-  const K = V2_FINANCING_CALIBRATION.debt;
+  const K = V3_ECONOMICS.credit;
   const cap = Math.min(K.capacityOpMultiple * Math.max(0, 4 * v.operatingProfit), K.capacityRevenueShare * 4 * v.revenue);
   return Math.max(0, cap - f.debt);
 }
 
 export function debtRate(v: V2FinancingView, debtAfter: number): number {
-  const K = V2_FINANCING_CALIBRATION.debt;
+  const K = V3_ECONOMICS.credit;
   const annualOP = 4 * v.operatingProfit;
   const leverage = annualOP > 0 ? debtAfter / annualOP : Infinity;
   return K.baseRatePerQuarter + K.leverageSpreadPerTurn * Math.max(0, Math.min(leverage, 10) - 1) + (v.distressed ? K.distressSpread : 0);
