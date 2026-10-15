@@ -13,6 +13,11 @@ import { V3_LAB_STRATEGIES } from '../../../scripts/lab/v3/strategies';
 import { gameHistory } from './insights/history';
 import { buildSignalReveal, marketEvidence, AGAINST_MARKET_NOTE } from './insights/signalReveal';
 import { quarterFinancials, periodFinancials } from './insights/financials';
+import * as V3 from '../v3/adapter';
+import { getScenarioQuarter as v2ScenarioQuarter } from '../../simulation/engineV2Scenario';
+import { getNeutralMarket as v2NeutralMarket } from '../../simulation/engineV2Commercial';
+import { DECISION_FRAMING } from './content/decisionFraming';
+import { studentMessage } from './ui/stages/DecisionStage';
 import { cashBridge } from './insights/consequences';
 import { q3AssessmentsFor } from './content/paths';
 import { pathArc } from '../../simulationV3/engineV3Paths';
@@ -105,7 +110,7 @@ describe('V3.1 Stage 1 · Q3 reveal: market evidence and company evidence are se
 });
 
 describe('V3.1 Stage 1 · financial reporting reconciles with the engine ledger', () => {
-  it('per quarter: free cash flow = operating profit − strategic investment − one-off costs; FCF + financing = change in cash; equals the cash bridge', () => {
+  it('per quarter: free cash flow = operating profit − strategic investment − one-off costs; FCF − acquisitions + financing = change in cash; equals the cash bridge', () => {
     for (const { cfg, g } of games) {
       for (const rec of gameHistory(g.snapshot)) {
         const f = quarterFinancials(rec);
@@ -115,16 +120,17 @@ describe('V3.1 Stage 1 · financial reporting reconciles with the engine ledger'
         expect(f.reconciles, ctx).toBe(true);
         expect(f.operatingProfit).toBe(l.operatingProfit);
         expect(f.strategicInvestment).toBe(l.strategicInvestment);
-        expect(f.oneOffCosts).toBe(l.eventCosts);
-        expect(f.freeCashFlow).toBeCloseTo(b.operatingProfit - b.investment - b.eventCosts, 9);
-        expect(f.freeCashFlow + f.financing).toBeCloseTo(f.closingCash - f.openingCash, 9);
+        expect(f.oneOffCosts + f.acquisitions).toBeCloseTo(l.eventCosts, 9);
+        expect(f.acquisitions).toBe(b.acquisitions);
+        expect(f.freeCashFlow).toBeCloseTo(b.operatingProfit - b.investment - (b.eventCosts - b.acquisitions), 9);
+        expect(f.freeCashFlow - f.acquisitions + f.financing).toBeCloseTo(f.closingCash - f.openingCash, 9);
         expect(f.closingCash).toBe(rec.after.cash);
         expect(b.reconciles, ctx).toBe(true);
       }
     }
   });
 
-  it('eight-quarter totals reconcile: Σ FCF + Σ financing = closing − opening cash', () => {
+  it('eight-quarter totals reconcile: Σ FCF − Σ acquisitions + Σ financing = closing − opening cash', () => {
     for (const { cfg, g } of games) {
       const h = gameHistory(g.snapshot);
       const p = periodFinancials(h);
@@ -132,7 +138,73 @@ describe('V3.1 Stage 1 · financial reporting reconciles with the engine ledger'
       expect(p.quarters).toBe(8);
       expect(p.openingCash).toBe(h[0].before.cash);
       expect(p.closingCash).toBe(g.snapshot.state.cash);
-      expect(p.freeCashFlow + p.financing).toBeCloseTo(p.closingCash - p.openingCash, 6);
+      expect(p.freeCashFlow - p.acquisitions + p.financing).toBeCloseTo(p.closingCash - p.openingCash, 6);
     }
+  });
+});
+
+// Team A of the independent evaluation (path C): finances an expansion, accepts the Q5 contract and acquires in Q8.
+const TEAM_A = [{"quarter":1,"allocation":{"consumer":4,"enterprise":9,"aiProduct":11,"people":6,"universityCredentials":0,"cashReserve":0}},{"quarter":2,"allocation":{"consumer":3,"enterprise":11,"aiProduct":13,"people":6,"universityCredentials":2,"cashReserve":0},"financing":[{"kind":"debt","amount":5}],"expansion":5},{"quarter":3,"allocation":{"consumer":3,"enterprise":12,"aiProduct":13,"people":5,"universityCredentials":2,"cashReserve":0},"financing":[{"kind":"debt","amount":5}],"expansion":5},{"quarter":4,"allocation":{"consumer":2,"enterprise":14,"aiProduct":13,"people":6,"universityCredentials":0,"cashReserve":0},"destination":"enterprise-ai","financing":[{"kind":"debt","amount":5}],"expansion":5},{"quarter":5,"allocation":{"consumer":0,"enterprise":12,"aiProduct":9,"people":4,"universityCredentials":0,"cashReserve":5},"opportunity":{"offerId":"q5-vendor-consolidation","accept":true}},{"quarter":6,"allocation":{"consumer":0,"enterprise":12,"aiProduct":10,"people":5,"universityCredentials":3,"cashReserve":0},"recessionStance":"protect"},{"quarter":7,"allocation":{"consumer":0,"enterprise":12,"aiProduct":9,"people":6,"universityCredentials":3,"cashReserve":0},"crisisResponse":"remediate"},{"quarter":8,"allocation":{"consumer":0,"enterprise":10,"aiProduct":6,"people":4,"universityCredentials":0,"cashReserve":10},"finalOption":"acquire-consolidate","financing":[{"kind":"debt","amount":20}]}] as const;
+
+describe('V3.1 Stage 1 cleanup · acquisitions, Q5 claim wording, People evidence label, V2 market data', () => {
+  it('acquisitions are separated from other one-off costs only where the ledger records an acquisition item, and the cash still reconciles', () => {
+    let snap = V3.initializeGame('C');
+    for (const i of TEAM_A) snap = V3.resolveQuarter(snap, i as never).snapshot;
+    const h = gameHistory(snap);
+    const q8 = quarterFinancials(h[7]);
+    const item = h[7].consequence.ledger.eventCostItems.find(i => i.id === 'acquisition-Q8')!;
+    expect(q8.acquisitions).toBe(item.amount);
+    expect(q8.acquisitions).toBeGreaterThan(50);
+    expect(q8.oneOffCosts).toBeCloseTo(h[7].consequence.ledger.eventCosts - item.amount, 9);
+    expect(q8.reconciles).toBe(true);
+    for (const r of h.slice(0, 7)) expect(quarterFinancials(r).acquisitions).toBe(0); // crisis and contract costs stay one-off costs
+    expect(quarterFinancials(h[4]).oneOffCosts).toBeGreaterThan(0);
+    expect(quarterFinancials(h[6]).oneOffCosts).toBeGreaterThan(0);
+    const p = periodFinancials(h);
+    expect(p.reconciles).toBe(true);
+    expect(p.acquisitions).toBe(item.amount);
+    expect(p.closingCash).toBe(snap.state.cash);
+  });
+
+  it('the Q5 claim message names the contract (no internal id) and uses the claim card\'s amount; the rule itself is unchanged', () => {
+    for (const path of ['A', 'B', 'C'] as const) {
+      let snap = V3.initializeGame(path);
+      const base = { consumer: 6, enterprise: 6, aiProduct: 6, people: 6, universityCredentials: 6, cashReserve: 0 };
+      for (let q = 1; q <= 4; q++) snap = V3.resolveQuarter(snap, { quarter: q, allocation: base, ...(q === 4 ? { destination: 'balanced-marketplace' } : {}) } as never).snapshot;
+      const spec = V3.getDecisionSpec(snap)!;
+      const input = { quarter: 5, allocation: base, opportunity: { offerId: spec.opportunity!.offerId, accept: true } };
+      const raw = V3.validateQuarterInput(snap, input as never);
+      const claim = raw.find(e => e.startsWith('Accepting '))!;
+      expect(claim).toContain(spec.opportunity!.offerId); // the engine's own message (unchanged)
+      const shown = studentMessage(claim, spec.opportunity!.upfrontCash, 0);
+      expect(shown).not.toMatch(/q5-/);
+      expect(shown).toContain(`$${(Math.ceil(spec.opportunity!.upfrontCash * 10 - 1e-9) / 10).toFixed(1)}M`);
+      // the engine's figure and the shown figure describe the same amount (differ only by display rounding)
+      const engineAmount = Number(/claims \$([\d.]+)M/.exec(claim)![1]);
+      expect(Math.abs(engineAmount - spec.opportunity!.upfrontCash)).toBeLessThan(0.051);
+      // other messages are passed through untouched
+      expect(studentMessage('Choose a crisis response', 5, 0)).toBe('Choose a crisis response');
+    }
+  });
+
+  it('the People Q3 evidence label describes staff attrition and morale, which every path\'s People brief reports', () => {
+    const label = DECISION_FRAMING[3].evidence!.find(e => e.id === 'q3-people-strain')!.label;
+    expect(typeof label === 'string' ? label : label.mba).toBe('Staff attrition and morale (People brief)');
+    for (const path of ['A', 'B', 'C'] as const) {
+      const sig = pathArc(path).find(s => s.quarter === 3)!.signals.find(s => s.id === 'q3-people-strain')!;
+      expect(sig.audience).toBe('People');
+      expect(sig.headline).toMatch(/attrition|hired away|poached|leave|engagement/i);
+    }
+  });
+
+  it('V2 games are given the original market: path A data used by the reveal equals the frozen V2 scenario and neutral market', () => {
+    for (const q of [2, 3]) {
+      const v2 = v2ScenarioQuarter(q)!, a = pathArc('A').find(s => s.quarter === q)!;
+      expect(a.demand).toEqual(v2.demand);
+      expect(a.competitorProgress).toEqual(v2.competitorProgress);
+    }
+    const sigs = (sq: { signals: { id: string; truthReference?: unknown }[] }) => sq.signals.map(s => [s.id, s.truthReference]);
+    expect(sigs(pathArc('A').find(s => s.quarter === 3)!)).toEqual(sigs(v2ScenarioQuarter(3)!));
+    expect(getNeutralMarket()).toEqual(v2NeutralMarket());
   });
 });

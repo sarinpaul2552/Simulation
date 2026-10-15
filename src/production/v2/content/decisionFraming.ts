@@ -83,7 +83,7 @@ export const DECISION_FRAMING: Record<number, DecisionFraming> = {
       { id: 'q3-ai-wtp', label: mt('AI pilot-to-paid conversion estimates (shared)') },
       { id: 'q3-university', label: mt('University partners (CEO brief)') },
       { id: 'q3-competition', label: mt('Competitor moves (shared)') },
-      { id: 'q3-people-strain', label: mt('Talent market (People brief)') },
+      { id: 'q3-people-strain', label: mt('Staff attrition and morale (People brief)') },
     ],
   },
   4: MAJOR(mt('This commitment shapes the rest of the game. Agree what matters most, then choose and fund it.', 'An irreversible commitment: align on the objective before choosing.')),

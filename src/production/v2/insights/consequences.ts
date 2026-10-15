@@ -15,6 +15,7 @@ import {
 import { V2_DESTINATIONS } from '../../../simulation/engineV2Destination';
 import type { V2PlayerQuarterInput } from '../types';
 import type { QuarterRecord } from './history';
+import { acquisitionSpend, ACQUISITION_ITEM } from './financials';
 import { V2PresentationMode, mt, pick } from '../content/modes';
 
 const fmtM = (x: number, d = 1) => `${x < 0 ? '−' : ''}$${Math.abs(x).toFixed(d)}M`;
@@ -82,7 +83,9 @@ export interface CashBridge {
   operatingProfit: number;
   investment: number;
   eventCosts: number;
-  eventItems: { label: string; amount: number }[];
+  /** Part of eventCosts paid as acquisition consideration (event-cost items `acquisition-Q<n>`). */
+  acquisitions: number;
+  eventItems: { label: string; amount: number; acquisition: boolean }[];
   financing: number;
   financingItems: { label: string; amount: number }[];
   closing: number;
@@ -102,7 +105,8 @@ export function cashBridge(rec: QuarterRecord): CashBridge {
     operatingProfit: l.operatingProfit,
     investment: l.strategicInvestment,
     eventCosts: l.eventCosts,
-    eventItems: l.eventCostItems.map(i => ({ label: cleanLabel(i.description), amount: i.amount })),
+    acquisitions: acquisitionSpend(l.eventCostItems),
+    eventItems: l.eventCostItems.map(i => ({ label: cleanLabel(i.description), amount: i.amount, acquisition: ACQUISITION_ITEM.test(i.id) })),
     financing: l.financing,
     financingItems: l.financingItems.map(i => ({ label: cleanLabel(i.description), amount: i.amount })),
     closing: l.closingCash,

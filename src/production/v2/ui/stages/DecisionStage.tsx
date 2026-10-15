@@ -16,7 +16,7 @@ import { framingFor, rationaleMissing } from '../../content/decisionFraming';
 import { gameHistory } from '../../insights/history';
 import { canPrefill, prefillAllocation, prefillLimit } from '../../insights/prefill';
 import { pick, V2PresentationMode } from '../../content/modes';
-import { chapterFor, contentPath } from '../../content/paths';
+import { chapterFor, contentPath, contractShort } from '../../content/paths';
 import { calendarLabel } from '../../content/calendar';
 import { FINAL_LABELS, money, pct } from '../format';
 import { Card, ChoiceList, Fold, Icon, Section, Segmented } from '../ds/components';
@@ -42,6 +42,17 @@ const EVENT_HEADING: Record<number, string> = {
 const ROLE_SHORT: Record<string, string> = { CEO: 'CEO', CFO: 'CFO', Product: 'Product (CPO)', Growth: 'Growth (CGO)', People: 'People (CPeO)' };
 const r1 = (x: number) => Math.round(x * 100) / 100;
 const up1 = (x: number) => Math.ceil(x * 10 - 1e-9) / 10;
+
+/**
+ * V3 (E5): the engine reports a contract claim with its internal offer id and its own rounding. Show the contract's
+ * name and the same rounded-up amount as the claim card (holding the shown amount always satisfies the rule).
+ */
+export function studentMessage(e: string, upfront: number | undefined, reserve: number): string {
+  const m = /^Accepting (\S+) claims \$[\d.]+M of the strategic budget/.exec(e);
+  if (!m || upfront === undefined) return e;
+  const need = money(up1(upfront));
+  return `Accepting the ${contractShort(m[1])} claims ${need} of this quarter’s budget for implementation: keep at least ${need} as cash in the plan (now ${money(reserve)}).`;
+}
 /** Move `amount` of planned investment to cash, cutting every bucket in proportion (amounts kept to $0.1M). */
 function freeCash(a: V2Allocation, amount: number): V2Allocation {
   const inv = BUCKETS.reduce((t, b) => t + a[b], 0);
@@ -81,7 +92,8 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
   const setBucket = (b: keyof V2Allocation, v: number) => set({ allocation: { ...input.allocation, [b]: Number.isFinite(v) && v > 0 ? v : 0 } });
   const setDelib = (patch: Partial<V2Deliberation>) => ctl.updateDeliberation(patch);
 
-  const errors = useMemo(() => validateQuarterInput(snap, input), [snap, input]);
+  // Validation messages as students see them (the rule and its threshold are unchanged; only the wording is translated).
+  const errors = useMemo(() => validateQuarterInput(snap, input).map(e => studentMessage(e, spec.opportunity?.upfrontCash, input.allocation.cashReserve)), [snap, input, spec]);
   // While the plan is over budget (e.g. before a financed expansion is entered), the CFO panel still needs the terms on
   // offer: forecast with the plan scaled down to the budget, so the financing and expansion controls stay available.
   const forecast: V2Forecast | null = useMemo(() => {

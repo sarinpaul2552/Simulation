@@ -203,10 +203,11 @@ export function BridgeView({ bridge, mode }: { bridge: CashBridge; mode: V2Prese
   };
   step('Operating profit', bridge.operatingProfit, 'operating-profit');
   step('Strategic investment', -bridge.investment, 'investment');
-  step('One-off costs', -bridge.eventCosts, 'event-costs', bridge.eventItems.map(i => ({ label: i.label, amount: -i.amount })), mode === 'mba');
+  step('One-off costs', -(bridge.eventCosts - bridge.acquisitions), 'event-costs', bridge.eventItems.filter(i => !i.acquisition).map(i => ({ label: i.label, amount: -i.amount })), mode === 'mba');
+  step('Acquisitions', -bridge.acquisitions, 'acquisitions', undefined, false);
   step('Financing', bridge.financing, 'financing', bridge.financingItems, mode === 'mba');
   rows.push({ label: 'Closing cash', value: bridge.closing, kind: 'total', from: 0, to: bridge.closing, testId: 'closing' });
-  const fcf = bridge.operatingProfit - bridge.investment - bridge.eventCosts;
+  const fcf = bridge.operatingProfit - bridge.investment - (bridge.eventCosts - bridge.acquisitions);
   const lo = Math.min(0, ...rows.flatMap(r => [r.from, r.to])), hi = Math.max(...rows.flatMap(r => [r.from, r.to]));
   const x = (v: number) => ((v - lo) / (hi - lo || 1)) * 100;
   const signed = (v: number, k: Row['kind']) => k === 'total' ? fmtM(v) : Math.abs(v) < 0.05 ? '$0.0M' : `${v >= 0 ? '+' : '−'}$${Math.abs(v).toFixed(1)}M`;
@@ -228,12 +229,12 @@ export function BridgeView({ bridge, mode }: { bridge: CashBridge; mode: V2Prese
         ))}
       </div>
       <div className="ds-bridge-row total" data-testid="v2-bridge-fcf" data-value={fcf}>
-        <span><Termed label="Free cash flow" /> (before financing)</span><span />
+        <span><Termed label="Free cash flow" /> (before acquisitions and financing)</span><span />
         <span className="ds-bridge-val">{`${fcf >= 0 ? '+' : '−'}$${Math.abs(fcf).toFixed(1)}M`}</span>
       </div>
       <p className="ds-muted" style={{ margin: '10px 0 0' }}>{mode === 'mba'
-        ? `Free cash flow = operating profit − strategic investment − one-off costs. Opening cash + free cash flow + financing = closing cash (${bridge.reconciles ? 'reconciles with the engine ledger' : 'see ledger'}). Money kept as cash is simply not spent.`
-        : 'Free cash flow is the cash the business generated after its investment and one-off costs, before any borrowing or repayments. Money you kept as cash was simply not spent.'}</p>
+        ? `Free cash flow = operating profit − strategic investment − one-off costs (before acquisitions and financing). Opening cash + free cash flow − acquisitions + financing = closing cash (${bridge.reconciles ? 'reconciles with the engine ledger' : 'see ledger'}). Money kept as cash is simply not spent.`
+        : 'Free cash flow is the cash the business generated after its investment and one-off costs, before any acquisition, borrowing or repayment. Money you kept as cash was simply not spent.'}</p>
     </section>
   );
 }
@@ -259,6 +260,7 @@ export function ExecutiveIntelligence({ history, quarter, mode }: { history: Qua
   const s = history[quarter - 1].after;
   const trend = trendSeries(history.slice(0, quarter));
   const margin = s.revenue > 0 ? s.operatingProfit / s.revenue : 0;
+  const anyAcq = history.slice(0, quarter).some(h => cashBridge(h).acquisitions > 0);
   return (
     <Section eyebrow="Executive intelligence" testId="v2-explore">
       <div className="ds-tabs" role="tablist" aria-label="Executive intelligence">
@@ -289,8 +291,8 @@ export function ExecutiveIntelligence({ history, quarter, mode }: { history: Qua
           <div className="ds-table-wrap">
             <table className="ds-table ds-table-compact" data-testid="v2-cash-history">
               <caption>Cash movement by quarter (recorded ledger)</caption>
-              <thead><tr><th>Quarter</th><th className="num">Opening</th><th className="num">Operating profit</th><th className="num">Investment</th><th className="num">One-off costs</th><th className="num">Free cash flow</th><th className="num">Financing</th><th className="num">Closing</th></tr></thead>
-              <tbody>{history.slice(0, quarter).map(h => { const b = cashBridge(h); return <tr key={h.quarter}><td>{calendarLabel(h.quarter)}</td><td className="num">{fmtM(b.opening)}</td><td className="num">{fmtSigned(b.operatingProfit)}</td><td className="num">{fmtSigned(-b.investment)}</td><td className="num">{fmtSigned(-b.eventCosts)}</td><td className="num" data-testid="v2-cash-history-fcf">{fmtSigned(b.operatingProfit - b.investment - b.eventCosts)}</td><td className="num">{fmtSigned(b.financing)}</td><td className="num"><b>{fmtM(b.closing)}</b></td></tr>; })}</tbody>
+              <thead><tr><th>Quarter</th><th className="num">Opening</th><th className="num">Operating profit</th><th className="num">Investment</th><th className="num">One-off costs</th><th className="num">Free cash flow</th>{anyAcq && <th className="num">Acquisitions</th>}<th className="num">Financing</th><th className="num">Closing</th></tr></thead>
+              <tbody>{history.slice(0, quarter).map(h => { const b = cashBridge(h); return <tr key={h.quarter}><td>{calendarLabel(h.quarter)}</td><td className="num">{fmtM(b.opening)}</td><td className="num">{fmtSigned(b.operatingProfit)}</td><td className="num">{fmtSigned(-b.investment)}</td><td className="num">{fmtSigned(-(b.eventCosts - b.acquisitions))}</td><td className="num" data-testid="v2-cash-history-fcf">{fmtSigned(b.operatingProfit - b.investment - (b.eventCosts - b.acquisitions))}</td>{anyAcq && <td className="num">{fmtSigned(-b.acquisitions)}</td>}<td className="num">{fmtSigned(b.financing)}</td><td className="num"><b>{fmtM(b.closing)}</b></td></tr>; })}</tbody>
             </table>
           </div>
         </div>

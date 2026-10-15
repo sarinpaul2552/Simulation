@@ -223,7 +223,8 @@ function CashFlowSummary({ history }: { history: QuarterRecord[] }) {
     ['Operating profit (before strategic investment)', sig(p.operatingProfit), 'operating-profit'],
     ['Strategic investment', sig(-p.strategicInvestment), 'investment'],
     ['One-off costs', sig(-p.oneOffCosts), 'one-off'],
-    ['Free cash flow (before financing)', sig(p.freeCashFlow), 'fcf'],
+    ['Free cash flow (before acquisitions and financing)', sig(p.freeCashFlow), 'fcf'],
+    ...(p.acquisitions > 0 ? [['Acquisitions', sig(-p.acquisitions), 'acquisitions'] as [string, string, string]] : []),
     ['Financing (borrowing, new shares, repayments)', sig(p.financing), 'financing'],
     ['Change in cash', sig(p.cashChange), 'cash-change'],
   ];
@@ -235,7 +236,7 @@ function CashFlowSummary({ history }: { history: QuarterRecord[] }) {
           <tr key={id} data-row={id}><td>{id === 'fcf' || id === 'cash-change' ? <b>{label}</b> : label}</td><td className="num">{id === 'fcf' || id === 'cash-change' ? <b>{value}</b> : value}</td></tr>
         ))}</tbody>
       </table>
-      <p className="ds-muted ds-small" style={{ margin: '6px 0 0' }}>Cash went from {fmtM(p.openingCash)} to {fmtM(p.closingCash)}. Free cash flow + financing = change in cash.</p>
+      <p className="ds-muted ds-small" style={{ margin: '6px 0 0' }}>{`Cash went from ${fmtM(p.openingCash)} to ${fmtM(p.closingCash)}. Free cash flow${p.acquisitions > 0 ? ' − acquisitions' : ''} + financing = change in cash.`}</p>
     </div>
   );
 }
