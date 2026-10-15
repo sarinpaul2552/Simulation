@@ -11,7 +11,22 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   V3_ECONOMICS, V3_ENGINE_VERSIONS, v3ConfigFor, withV3Version, withRegisteredV3Config, withV3Economics, ALL_MECHANISMS_OFF,
+  V3_1_1_CHANGES, type V3EconomicsConfig, type DeepPartial,
 } from '../../simulationV3/engineV3Config';
+
+/**
+ * Stage 3A: 1.1 now differs from 1.0 by exactly V3_1_1_CHANGES. Reverting those values (to the registered 1.0 values)
+ * must reproduce 1.0 exactly — proving that every 1.1 difference is a listed configuration change.
+ */
+function revertedTo10(): DeepPartial<V3EconomicsConfig> {
+  const c10 = JSON.parse(JSON.stringify(v3ConfigFor('v3-econ-1.0'))) as Record<string, Record<string, unknown>>;
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [block, vals] of Object.entries(V3_1_1_CHANGES as Record<string, Record<string, unknown>>)) {
+    out[block] = {};
+    for (const k of Object.keys(vals)) out[block][k] = c10[block][k];
+  }
+  return out as DeepPartial<V3EconomicsConfig>;
+}
 import * as V3 from './adapter';
 import * as F from '../v2/engine';
 import { assertAnySnapshotContract, firstDifference, toStorable, type V2GameSnapshot } from '../v2/snapshot';
@@ -34,12 +49,20 @@ const fingerprint = (snap: V2GameSnapshot) => ({
 const sameExceptVersion = (a: V2GameSnapshot, b: V2GameSnapshot) => firstDifference({ ...a, engineVersion: 'x' }, { ...b, engineVersion: 'x' });
 
 describe('V3.1 Stage 2 · version registry', () => {
-  it('registers v3-econ-1.0 and v3-econ-1.1; 1.1 economics equal 1.0; the active configuration is 1.0 at rest', () => {
+  it('registers v3-econ-1.0 and v3-econ-1.1; 1.1 differs from 1.0 only by V3_1_1_CHANGES; the active configuration is 1.0 at rest', () => {
     expect([...V3_ENGINE_VERSIONS]).toEqual(['v3-econ-1.0', 'v3-econ-1.1']);
     const c10 = v3ConfigFor('v3-econ-1.0'), c11 = v3ConfigFor('v3-econ-1.1');
     expect(c10.version).toBe('v3-econ-1.0');
     expect(c11.version).toBe('v3-econ-1.1');
-    expect(firstDifference({ ...c11, version: '' }, { ...c10, version: '' })).toBeNull();
+    expect(firstDifference({ ...c11, version: '' }, { ...c10, version: '' })).not.toBeNull();
+    withRegisteredV3Config('v3-econ-1.1', revertedTo10(), () => {
+      const r11 = v3ConfigFor('v3-econ-1.1');
+      expect(firstDifference({ ...r11, version: '' }, { ...c10, version: '' })).toBeNull();
+    });
+    expect(c10.mechanisms.installedBaseDemand).toBe(false);
+    expect(c10.mechanisms.creditCycle).toBe(false);
+    expect(c11.mechanisms.installedBaseDemand).toBe(true);
+    expect(c11.mechanisms.creditCycle).toBe(true);
     expect(firstDifference(JSON.parse(JSON.stringify(V3_ECONOMICS)), JSON.parse(JSON.stringify(c10)))).toBeNull();
     expect(() => v3ConfigFor('v3-econ-9.9')).toThrow(/Unknown V3 engine version/);
   });
@@ -73,8 +96,8 @@ describe('V3.1 Stage 2 · version registry', () => {
   });
 });
 
-describe('V3.1 Stage 2 · v3-econ-1.1 parity with v3-econ-1.0 (all paths × all laboratory strategies)', () => {
-  it.each(PATHS)('path %s', path => {
+describe('V3.1 Stage 2 · v3-econ-1.1 with the Stage 3A changes reverted equals v3-econ-1.0 (all paths × all laboratory strategies)', () => {
+  it.each(PATHS)('path %s', path => withRegisteredV3Config('v3-econ-1.1', revertedTo10(), () => {
     let games = 0;
     for (const s of V3_LAB_STRATEGIES) {
       for (const opts of [{}, { expansion: 5 }]) {
@@ -94,7 +117,7 @@ describe('V3.1 Stage 2 · v3-econ-1.1 parity with v3-econ-1.0 (all paths × all 
       }
     }
     expect(games).toBe(V3_LAB_STRATEGIES.length * 2);
-  });
+  }));
 
   it('the facade creates and replays a game on the version it is given', () => {
     const cfg = F.v3Config('B', 'v3-econ-1.1');

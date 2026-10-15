@@ -136,10 +136,21 @@ export interface V2BookingCohort {
   remaining: number;
 }
 
+/**
+ * Stage 3A (v3-econ-1.1, installedBaseDemand): quarterly run-rate that existing customers have withdrawn because of the
+ * market — lapsed consumer customers and contracted enterprise seats. It is not revenue; part of it returns as the
+ * market recovers. Absent (undefined) whenever the mechanism is off, so 1.0 states are unchanged.
+ */
+export interface V2LapsedRevenue {
+  consumer: number;
+  enterprise: number;
+}
+
 export interface V2RevenueState {
   segments: V2SegmentRevenue;
   enterpriseBacklog: V2BookingCohort[];
   universityBacklog: V2BookingCohort[];
+  lapsed?: V2LapsedRevenue;
 }
 
 export interface V2ConsumerRevenueDiagnostic {
@@ -163,6 +174,11 @@ export interface V2ConsumerRevenueDiagnostic {
   headroom: number;
   pricingPowerChange: number;
   priceMix: number;
+  /** Stage 3A (1.1 only): market-driven lapse of retained customers, the retention shield applied, and win-back. */
+  marketLapse?: number;
+  retentionShield?: number;
+  winBack?: number;
+  lapsedClosing?: number;
   closing: number;
 }
 
@@ -190,6 +206,11 @@ export interface V2EnterpriseRevenueDiagnostic {
   expansion: number;
   liveFromCurrentBookings: number;
   liveFromEarlierBookings: number;
+  /** Stage 3A (1.1 only): recession seat contraction at renewal, seats restored, demand factor on expansion. */
+  seatContraction?: number;
+  seatsRestored?: number;
+  expansionDemandFactor?: number;
+  contractedClosing?: number;
   closing: number;
   backlogRunRate: number;
   /** Backlog expressed as annual contract value (run-rate × 4). */
@@ -440,7 +461,22 @@ export function calculateV2RevenueConsequence(
   const cPrice = cRetained * kc.pricePerPricingPoint * ppChange;
   const cPriceAction = cRetained * (adj?.consumerPriceChange ?? []).reduce((t, p) => t + p.fraction, 0);
   const cAcquired = acquiredOf('consumer');
-  const C1 = Math.max(0, cRetained + cAcq + cPrice + cPriceAction + cAcquired);
+  // Stage 3A (1.1): existing customers respond to market demand. Lapsed run-rate leaves revenue for a separate pool and
+  // part of it returns once demand recovers. Strong retention (the retention indicator) shields up to consumerShieldMax.
+  const ibd = V3_ECONOMICS.mechanisms.installedBaseDemand;
+  const D = V3_ECONOMICS.demand;
+  let cLapse = 0, cWinBack = 0, cShield = 0, cLapsed1 = 0;
+  if (ibd) {
+    const L0 = opening.lapsed?.consumer ?? 0;
+    cShield = D.consumerShieldMax * ramp(cc.consumerRetention, D.consumerShieldRamp[0], D.consumerShieldRamp[1]);
+    const lapseRate = (D.consumerDemandLoss * Math.max(0, 1 - market.consumerDemand) + D.consumerMacroLoss * market.macroPressure) * (1 - cShield);
+    cLapse = cRetained * lapseRate;
+    cWinBack = D.consumerWinBack * L0 * ramp(market.consumerDemand, D.consumerWinBackRamp[0], D.consumerWinBackRamp[1]);
+    cLapsed1 = L0 - cWinBack + cLapse;
+  }
+  const C1 = ibd
+    ? Math.max(0, cRetained + cAcq + cPrice + cPriceAction + cAcquired - cLapse + cWinBack)
+    : Math.max(0, cRetained + cAcq + cPrice + cPriceAction + cAcquired);
 
   // ---- Enterprise: renewals + expansion + bookings recognized from backlog ----
   const ke = K.enterprise;
@@ -457,7 +493,18 @@ export function calculateV2RevenueConsequence(
   const eRenewal = enterpriseRenewalRate(company, market);
   const eExposed = E0 * ke.renewalExposure;
   const eChurn = eExposed * (1 - eRenewal);
-  const eExpansion = eExposed * ke.expansionRate * ramp(company.capabilities.customerSuccess, ke.expansionCsRamp[0], ke.expansionCsRamp[1]) * eHeadroom;
+  const eExpansionBase = eExposed * ke.expansionRate * ramp(company.capabilities.customerSuccess, ke.expansionCsRamp[0], ke.expansionCsRamp[1]) * eHeadroom;
+  // Stage 3A (1.1): seats contract at renewal in a recession (Customer Success halves it, as for renewal pressure),
+  // contracted seats are restored as the recession eases, and expansion follows enterprise demand.
+  let eContraction = 0, eRestored = 0, eDemandFactor = 1, eContracted1 = 0;
+  if (ibd) {
+    const P0 = opening.lapsed?.enterprise ?? 0;
+    eContraction = eExposed * D.enterpriseMacroContraction * market.macroPressure * (1 - ke.macroCsShield * ramp(company.capabilities.customerSuccess, 30, 80));
+    eRestored = D.enterpriseRestore * P0 * Math.max(0, 1 - market.macroPressure);
+    eDemandFactor = clamp(market.enterpriseDemand, D.expansionDemandBounds[0], D.expansionDemandBounds[1]);
+    eContracted1 = P0 - eRestored + eContraction;
+  }
+  const eExpansion = ibd ? eExpansionBase * eDemandFactor : eExpansionBase;
   const entNewCohort: V2BookingCohort = {
     id: `E-Q${quarter}`, quarterBooked: quarter, bookingsACV, runRate: newRunRate,
     liveThisQuarter: 0, liveToDate: 0, remaining: newRunRate,
@@ -477,7 +524,9 @@ export function calculateV2RevenueConsequence(
   const contractBookingsRunRate = contractCohorts.reduce((t, c) => t + c.runRate, 0);
   const eAcquired = acquiredOf('enterprise');
   const entRelease = releaseBacklog([...cancelled, ...(newRunRate > 0 ? [entNewCohort] : []), ...contractCohorts], enterpriseRecognition(), quarter);
-  const E1 = Math.max(0, E0 - eChurn + eExpansion + entRelease.liveCurrent + entRelease.liveEarlier + eAcquired);
+  const E1 = ibd
+    ? Math.max(0, E0 - eChurn + eExpansion + entRelease.liveCurrent + entRelease.liveEarlier + eAcquired - eContraction + eRestored)
+    : Math.max(0, E0 - eChurn + eExpansion + entRelease.liveCurrent + entRelease.liveEarlier + eAcquired);
   const entBacklogRunRate = entRelease.cohorts.reduce((s, c) => s + c.remaining, 0);
 
   // ---- University: renewals + institutional wins recognized slowly ----
@@ -535,12 +584,15 @@ export function calculateV2RevenueConsequence(
     consumer: {
       opening: C0, eventLoss: cLoss, acquisitionMultiplier: cAcqMult, priceAction: cPriceAction, acquired: cAcquired, exposedBase: cExposed, retention, retained: cRetained, churn: cChurn,
       demand: market.consumerDemand, cacIndex: cc.consumerCacIndex, acquisition: cAcq, headroom: cHeadroom,
-      pricingPowerChange: ppChange, priceMix: cPrice, closing: C1,
+      pricingPowerChange: ppChange, priceMix: cPrice,
+      ...(ibd ? { marketLapse: cLapse, retentionShield: cShield, winBack: cWinBack, lapsedClosing: cLapsed1 } : {}),
+      closing: C1,
     },
     enterprise: {
       opening: E0raw, eventLoss: eLoss, contractBookingsRunRate, backlogCancelled, acquired: eAcquired, openingPipeline: entPipe.opening, resolvedPipeline, winRate, headroom: eHeadroom, priceRealization, bookingsACV,
       newRunRateBooked: newRunRate, renewalRate: eRenewal, exposedBase: eExposed, churn: eChurn,
       expansion: eExpansion, liveFromCurrentBookings: entRelease.liveCurrent, liveFromEarlierBookings: entRelease.liveEarlier,
+      ...(ibd ? { seatContraction: eContraction, seatsRestored: eRestored, expansionDemandFactor: eDemandFactor, contractedClosing: eContracted1 } : {}),
       closing: E1, backlogRunRate: entBacklogRunRate, backlogACV: entBacklogRunRate / ke.acvToQuarterlyRunRate,
     },
     university: {
@@ -558,6 +610,7 @@ export function calculateV2RevenueConsequence(
       segments,
       enterpriseBacklog: entRelease.cohorts.filter(c => c.remaining > 1e-12),
       universityBacklog: uniRelease.cohorts.filter(c => c.remaining > 1e-12),
+      ...(ibd ? { lapsed: { consumer: cLapsed1, enterprise: eContracted1 } } : {}),
     },
     totalRevenue: totalRevenue(segments),
   };

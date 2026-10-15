@@ -3,7 +3,7 @@
  * MIGRATION_V3_1_ENGINE_VERSION.sql applied).
  *  - `?econ=1.1` creates a v3-econ-1.1 session (shown once on the created screen); without the flag nothing changes;
  *  - a team plays Q1–Q2 on 1.1 (including a financed expansion), the game survives a reload (it is restored and
- *    verified by replay on 1.1), and the results equal the same decisions played on a 1.0 session.
+ *    verified by replay on 1.1), and its results are 1.1's own (Stage 3A), not those of a 1.0 session.
  */
 import { test, expect, Page } from '@playwright/test';
 import { newPage, createSession, joinTeam, playQuarter, expectPhase, closeAllContexts } from './helpers';
@@ -76,10 +76,10 @@ test('?econ=1.1 creates a v3-econ-1.1 session; without the flag the created scre
   await expect(b.getByTestId('v2-created-econ-version')).toHaveCount(0);
 });
 
-test('a v3-econ-1.1 team plays Q1–Q2, survives a reload, and reaches exactly the 1.0 results', async ({ browser }) => {
+test('a v3-econ-1.1 team plays Q1–Q2, survives a reload, and gets its own (Stage 3A) results, not the 1.0 results', async ({ browser }) => {
   test.skip(UNRELEASED, '1.1 is unreleased on this database');
   const v11 = await playTwo(browser, '1.1');
   const v10 = await playTwo(browser);
   expect(v11.kpis.length).toBeGreaterThan(0);
-  expect(v11.kpis).toBe(v10.kpis);
+  expect(v11.kpis).not.toBe(v10.kpis); // path B Q2 consumer demand 0.92: 1.1 customers lapse, 1.0 customers do not
 });

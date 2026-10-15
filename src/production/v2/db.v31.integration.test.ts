@@ -81,7 +81,7 @@ describe.skipIf(!URL || !KEY)('NexLearn V3.1 · session engine versions (local D
     expect(upd.error !== null || (upd.data ?? []).length === 0).toBe(true);
   });
 
-  it('a v3-econ-1.1 team plays Q1–Q8 through the RPCs; the stored game equals the engine and the 1.0 economics exactly', async () => {
+  it('a v3-econ-1.1 team plays Q1–Q8 through the RPCs; the stored game equals the 1.1 engine exactly and differs from 1.0 (Stage 3A)', async () => {
     const api = newApi();
     const s = await api.createSession('f@school.edu', ['Team'], 'team_device', 'self', 'B', '1.1');
     const tc = s.teams[0].team_code;
@@ -97,8 +97,9 @@ describe.skipIf(!URL || !KEY)('NexLearn V3.1 · session engine versions (local D
     expect(game.snapshot.engineVersion).toBe('v3-econ-1.1');
     expect(game.record.completed_quarter).toBe(8);
     expect(firstDifference(toStorable(game.snapshot), toStorable(expected.snapshot))).toBeNull();
-    // identical economics to v3-econ-1.0 (only the version label differs)
-    expect(firstDifference(game.snapshot.state, baseline.snapshot.state)).toBeNull();
-    expect(firstDifference(game.snapshot.inputs, baseline.snapshot.inputs)).toBeNull();
+    // Stage 3A: the session plays its own version — 1.1 economics differ from 1.0, and the lapsed-revenue pool survives jsonb
+    expect(firstDifference(game.snapshot.state, baseline.snapshot.state)).not.toBeNull();
+    expect((game.snapshot.state as { lapsedRevenue?: unknown }).lapsedRevenue).toBeDefined();
+    expect((baseline.snapshot.state as { lapsedRevenue?: unknown }).lapsedRevenue).toBeUndefined();
   });
 });

@@ -32,6 +32,18 @@ export interface V3Mechanisms {
   recessionStance: boolean;
   /** E7 · Financing raised in a quarter can expand that quarter's investment budget, within limits. */
   financingExpansion: boolean;
+  /**
+   * Stage 3A (v3-econ-1.1) · Existing customers respond to the market: consumer customers lapse with weak demand and
+   * recession (shielded by strong retention) and return as demand recovers; enterprise customers cut seats at renewal
+   * in a recession (shielded by Customer Success) and restore them as it eases; enterprise expansion follows demand.
+   */
+  installedBaseDemand: boolean;
+  /**
+   * Stage 3A (v3-econ-1.1) · Credit cycle: floating-rate debt repriced every quarter with a market-wide credit spread,
+   * a leverage spread that widens in a recession, a liquidity credit for strong cash buffers, and debt capacity that
+   * tightens with recession pressure.
+   */
+  creditCycle: boolean;
 }
 
 /** Every V3 engine version, oldest first. A version, once released, is never edited — later economics get a new version. */
@@ -51,6 +63,9 @@ export const V3_ECONOMICS = {
     contractEnvelopeClaim: true,
     recessionStance: true,
     financingExpansion: true,
+    // Stage 3A mechanisms: explicitly off in 1.0 (explicit keys so a version switch always restores them)
+    installedBaseDemand: false,
+    creditCycle: false,
   } as V3Mechanisms,
   /** E1 — AI-native revenue level. target = base + perPoint × (adoption − 10) × demand × quality × macro; moves `speed` of the gap per quarter. */
   ai: {
@@ -123,6 +138,44 @@ export const V3_ECONOMICS = {
     distressSpread: 0.015,
     capacityOpMultiple: 2.5,
     capacityRevenueShare: 0.4,
+    /** Leverage turns counted by the leverage spread are capped here (moved from engineV3Financing; 1.0 value 10). */
+    maxLeverageTurns: 10,
+    /**
+     * Credit cycle only (inactive in 1.0). Leverage is measured as lenders measure it: NET debt (debt − cash, ≥ 0) ÷
+     * annualized operating profit BEFORE interest — for the rate, the debt capacity and the covenant. Gross debt ÷
+     * post-interest profit (1.0) lets interest feed back into its own spread.
+     */
+    /** Credit cycle only: ceiling on the quarterly rate (distressed-credit ceiling). */
+    rateCeiling: 0,
+    /** Credit cycle only (inactive in 1.0): rate added per unit of macro pressure (market-wide credit spread). */
+    marketSpread: 0,
+    /** Credit cycle only: the leverage spread is multiplied by (1 + leverageMacroAmplifier × macro). */
+    leverageMacroAmplifier: 0,
+    /** Credit cycle only: debt capacity × (1 − capacityMacroTightening × macro). */
+    capacityMacroTightening: 0,
+    /** Credit cycle only: rate reduction for an opening cash balance at or above cashBufferThreshold ($M). */
+    cashBufferCredit: 0,
+    cashBufferThreshold: 40,
+  },
+  /**
+   * Stage 3A — existing-customer demand response (installedBaseDemand; inactive in 1.0). Per quarter:
+   *   consumer lapse = retained base × (consumerDemandLoss × max(0, 1 − consumerDemand) + consumerMacroLoss × macro)
+   *                    × (1 − consumerShieldMax × ramp(consumer retention, consumerShieldRamp));
+   *   consumer win-back = consumerWinBack × lapsed pool × ramp(consumerDemand, consumerWinBackRamp);
+   *   enterprise contraction = renewing base × enterpriseMacroContraction × macro × (1 − 0.5 × ramp(CS, 30, 80));
+   *   enterprise restored = enterpriseRestore × contracted pool × (1 − macro);
+   *   enterprise expansion × clamp(enterpriseDemand, expansionDemandBounds).
+   */
+  demand: {
+    consumerDemandLoss: 0,
+    consumerMacroLoss: 0,
+    consumerShieldMax: 0,
+    consumerShieldRamp: [78, 90] as readonly number[],
+    consumerWinBack: 0,
+    consumerWinBackRamp: [0.8, 1.0] as readonly number[],
+    enterpriseMacroContraction: 0,
+    enterpriseRestore: 0,
+    expansionDemandBounds: [1, 1] as readonly number[],
   },
 };
 
@@ -164,10 +217,41 @@ const cloneConfig = (c: V3EconomicsConfig): V3EconomicsConfig => JSON.parse(JSON
 /** v3-econ-1.0: the released V3 economics, captured from the values above at module load and frozen. */
 const V3_ECON_1_0: V3EconomicsConfig = deepFreeze(cloneConfig(V3_ECONOMICS));
 /**
- * v3-econ-1.1: introduced in Stage 2 with economics identical to 1.0 (only the version string differs). Stage 3 economic
- * changes are made here — and only here — so 1.0 games are never affected.
+ * v3-econ-1.1: introduced in Stage 2 with economics identical to 1.0. Stage 3 economic changes are made here — and only
+ * here — so 1.0 games are never affected. Every 1.1 difference is listed in V3_1_1_CHANGES.
  */
-const V3_ECON_1_1: V3EconomicsConfig = deepFreeze({ ...cloneConfig(V3_ECONOMICS), version: 'v3-econ-1.1' });
+export const V3_1_1_CHANGES: DeepPartial<V3EconomicsConfig> = {
+  // Stage 3A — recession sensitivity of existing customers (Moderate calibration, Stage 3 design C1)
+  mechanisms: { installedBaseDemand: true, creditCycle: true },
+  demand: {
+    consumerDemandLoss: 0.10,
+    consumerMacroLoss: 0.02,
+    consumerShieldMax: 0.4,
+    consumerShieldRamp: [78, 90],
+    consumerWinBack: 0.30,
+    consumerWinBackRamp: [0.8, 1.0],
+    enterpriseMacroContraction: 0.15,
+    enterpriseRestore: 0.20,
+    expansionDemandBounds: [0.6, 1.3],
+  },
+  ai: { macroMonetization: 0.25 },
+  // Stage 3A — credit cycle (middle spread setting S2, Stage 3 design C2)
+  credit: {
+    leverageSpreadPerTurn: 0.005,
+    marketSpread: 0.01,
+    leverageMacroAmplifier: 1,
+    capacityMacroTightening: 0.4,
+    cashBufferCredit: 0.0025,
+    maxLeverageTurns: 6,
+    rateCeiling: 0.06,
+  },
+};
+const V3_ECON_1_1: V3EconomicsConfig = (() => {
+  const c = cloneConfig(V3_ECONOMICS);
+  assignDeep(c as unknown as Record<string, unknown>, JSON.parse(JSON.stringify(V3_1_1_CHANGES)) as Record<string, unknown>);
+  c.version = 'v3-econ-1.1';
+  return deepFreeze(c);
+})();
 
 const REGISTRY: Record<V3EngineVersion, V3EconomicsConfig> = { 'v3-econ-1.0': V3_ECON_1_0, 'v3-econ-1.1': V3_ECON_1_1 };
 
@@ -209,4 +293,5 @@ export function withRegisteredV3Config<T>(version: V3EngineVersion, overrides: D
 
 export const ALL_MECHANISMS_OFF: V3Mechanisms = {
   aiRevenueLevel: false, enterpriseConversion: false, universityConversion: false, organizationalHealth: false, contractEnvelopeClaim: false, recessionStance: false, financingExpansion: false,
+  installedBaseDemand: false, creditCycle: false,
 };

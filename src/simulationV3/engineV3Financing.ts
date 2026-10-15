@@ -205,14 +205,35 @@ export function companyValuation(v: V2ValuationView): V2Valuation {
 
 export interface V2FinancingView extends V2ValuationView {
   fixedSemiFixed: number;
+  /** Stage 3A (credit cycle): this quarter's market-wide recession pressure (0–1). Absent = 0. */
+  macroPressure?: number;
+  /** Stage 3A (credit cycle): last quarter's interest expense, added back to operating profit (EBIT). Absent = 0. */
+  interestExpense?: number;
   /** 0–1 strategic value (capability peaks + specialization) for a partner. */
   strategicValue: number;
+}
+
+/**
+ * Stage 3A (credit cycle): leverage as lenders measure it — net debt ÷ annualized operating profit before interest.
+ * 0 when cash covers the debt; Infinity when there is net debt and EBIT ≤ 0.
+ */
+export function netLeverage(debt: number, cash: number, operatingProfit: number, interest: number): number {
+  const net = Math.max(0, debt - cash);
+  if (net <= 0) return 0;
+  const ebit = 4 * (operatingProfit + interest);
+  return ebit > 0 ? net / ebit : Infinity;
 }
 
 export function debtCapacity(v: V2FinancingView, f: V2FinancingState): number {
   if (v.status === 'insolvent') return 0;
   const K = V3_ECONOMICS.credit;
   const cap = Math.min(K.capacityOpMultiple * Math.max(0, 4 * v.operatingProfit), K.capacityRevenueShare * 4 * v.revenue);
+  if (V3_ECONOMICS.mechanisms.creditCycle) {
+    // Stage 3A: lenders lend against operating profit before interest, and tighten in a recession —
+    // capacity = min(opMultiple × annual EBIT, revenueShare × annual revenue) × (1 − tightening × macro) − debt.
+    const ebitCap = Math.min(K.capacityOpMultiple * Math.max(0, 4 * (v.operatingProfit + (v.interestExpense ?? 0))), K.capacityRevenueShare * 4 * v.revenue);
+    return Math.max(0, ebitCap * (1 - K.capacityMacroTightening * (v.macroPressure ?? 0)) - f.debt);
+  }
   return Math.max(0, cap - f.debt);
 }
 
@@ -220,7 +241,20 @@ export function debtRate(v: V2FinancingView, debtAfter: number): number {
   const K = V3_ECONOMICS.credit;
   const annualOP = 4 * v.operatingProfit;
   const leverage = annualOP > 0 ? debtAfter / annualOP : Infinity;
-  return K.baseRatePerQuarter + K.leverageSpreadPerTurn * Math.max(0, Math.min(leverage, 10) - 1) + (v.distressed ? K.distressSpread : 0);
+  if (V3_ECONOMICS.mechanisms.creditCycle) {
+    // Stage 3A: rate = base + market spread × macro
+    //                  + leverage spread × (net leverage turns above 1, capped) × (1 + amplifier × macro)
+    //                  + distress spread − liquidity credit (opening cash ≥ threshold),
+    //   bounded below by half the base rate and above by the distressed-credit ceiling.
+    const m = v.macroPressure ?? 0;
+    const lev = netLeverage(debtAfter, v.cash, v.operatingProfit, v.interestExpense ?? 0);
+    const rate = K.baseRatePerQuarter + K.marketSpread * m
+      + K.leverageSpreadPerTurn * Math.max(0, Math.min(lev, K.maxLeverageTurns) - 1) * (1 + K.leverageMacroAmplifier * m)
+      + (v.distressed ? K.distressSpread : 0)
+      - (v.cash >= K.cashBufferThreshold ? K.cashBufferCredit : 0);
+    return Math.min(K.rateCeiling, Math.max(K.baseRatePerQuarter / 2, rate));
+  }
+  return K.baseRatePerQuarter + K.leverageSpreadPerTurn * Math.max(0, Math.min(leverage, K.maxLeverageTurns) - 1) + (v.distressed ? K.distressSpread : 0);
 }
 
 export function partnerTerms(v: V2FinancingView, f: V2FinancingState): { available: boolean; cash: number; reason: string } {
@@ -272,8 +306,10 @@ export function financingEffects(
   const e = emptyEffects();
   let state: V2FinancingState = { ...f, rounds: [...f.rounds], partner: f.partner ? { ...f.partner, segments: [...f.partner.segments] } : null };
 
-  // Interest on opening debt → operating financing cost (exactly once)
-  const interest = f.debt * f.interestRate;
+  // Interest on opening debt → operating financing cost (exactly once).
+  // Stage 3A (credit cycle): debt is floating — the whole opening balance pays this quarter's rate.
+  const floating = V3_ECONOMICS.mechanisms.creditCycle;
+  const interest = floating ? (f.debt > 0 ? f.debt * debtRate(view, f.debt) : 0) : f.debt * f.interestRate;
   e.cost.financingCost = interest;
   state.cumulativeInterest += interest;
 
@@ -353,6 +389,8 @@ export function financingEffects(
       }
     }
   }
+  // Stage 3A (credit cycle): the recorded rate is the floating rate on the closing balance at this quarter's terms.
+  if (floating) state.interestRate = state.debt > 0 ? debtRate(view, state.debt) : 0;
   return { effects: e, state };
 }
 
@@ -366,13 +404,17 @@ export function assessSolvency(
   netCashFlow: number,
   tookResolvingAction: boolean,
   debt: number,
-  operatingProfit: number
+  operatingProfit: number,
+  /** Stage 3A (credit cycle): this quarter's interest — the covenant then tests net debt ÷ EBIT. */
+  interestExpense?: number
 ): V2SolvencyState {
   const K = V2_FINANCING_CALIBRATION;
   const min = K.liquidity.minimumOperatingCash;
   const liquidityEvent = projectedWithoutResolution < min;
   const annualOP = 4 * operatingProfit;
-  const leverage = debt > 0 ? (annualOP > 0 ? debt / annualOP : Infinity) : null;
+  const leverage = interestExpense !== undefined
+    ? (debt > 0 ? netLeverage(debt, closingCash, operatingProfit, interestExpense) : null)
+    : (debt > 0 ? (annualOP > 0 ? debt / annualOP : Infinity) : null);
   const covenantBreach = leverage !== null && leverage > K.debt.covenantLeverage;
   const runwayQuarters = netCashFlow >= 0 ? null : closingCash > 0 ? closingCash / -netCashFlow : 0;
   let status: V2SolvencyStatus;

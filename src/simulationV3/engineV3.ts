@@ -48,6 +48,7 @@ import {
 export type { V2Capabilities, V2CapabilityConsequence, V2InvestmentCohort } from './engineV3Capabilities';
 import {
   V2BookingCohort,
+  type V2LapsedRevenue,
   V2RevenueConsequence,
   V2SegmentRevenue,
   calculateV2RevenueConsequence,
@@ -242,6 +243,8 @@ export interface V2TeamState {
   enterpriseBacklog: V2BookingCohort[];
   /** Won University run-rate not yet live (booking cohorts). */
   universityBacklog: V2BookingCohort[];
+  /** Stage 3A (1.1 only): run-rate existing customers withdrew because of the market (see V2LapsedRevenue). */
+  lapsedRevenue?: V2LapsedRevenue;
 
   /** Phase 3A operating cost structure (fixed/semi-fixed pool + recurring commitment cohorts). */
   costs: V2CostState;
@@ -970,7 +973,14 @@ function collectDecisionEffects(
 
   // Financing: interest on opening debt, partner revenue share, distress while insolvent, explicit actions
   const mgmtCut = -mgmt.effects.cost.fixedPoolDelta.reduce((t, d) => t + d.amount, 0);
-  const fview = { ...financingView(opening, input.quarter, dest), fixedSemiFixed: opening.costs.fixedSemiFixed - mgmtCut };
+  const fview = {
+    ...financingView(opening, input.quarter, dest), fixedSemiFixed: opening.costs.fixedSemiFixed - mgmtCut,
+    // Stage 3A (credit cycle): lenders price this quarter's market, on operating profit before last quarter's interest
+    ...(V3_ECONOMICS.mechanisms.creditCycle ? {
+      macroPressure: (input.market ?? getNeutralMarket()).macroPressure,
+      interestExpense: opening.costHistory.length ? opening.costHistory[opening.costHistory.length - 1].financingCost : 0,
+    } : {}),
+  };
   const finOpts = financingOptions(fview, opening.financing);
   const finActions: V2FinancingAction[] = [...(input.decisions?.financing ?? [])];
   if (finalEquity > 0) finActions.push({ kind: 'equity', amount: Math.min(finalEquity, finOpts.maxEquity) });
@@ -1080,7 +1090,7 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
 
   // Segment revenue consequence (Phase 2D) — reads commercial state; investment never enters
   const revenue = calculateV2RevenueConsequence(
-    { segments: opening.segmentRevenue, enterpriseBacklog: opening.enterpriseBacklog, universityBacklog: opening.universityBacklog },
+    { segments: opening.segmentRevenue, enterpriseBacklog: opening.enterpriseBacklog, universityBacklog: opening.universityBacklog, ...(opening.lapsedRevenue ? { lapsed: opening.lapsedRevenue } : {}) },
     commercialShocked.state,
     commercial,
     capability.closing,
@@ -1142,7 +1152,8 @@ export function calculateV2QuarterConsequence(opening: V2TeamState, input: V2Qua
   const resolving = finActions.some(a => a.kind !== 'repay');
   const solvency = assessSolvency(
     opening.solvency, input.quarter, ledger.closingCash, projectedWithoutResolution, ledger.netCashFlow, resolving,
-    decided.financing.debt, ledger.operatingProfit
+    decided.financing.debt, ledger.operatingProfit,
+    ...(V3_ECONOMICS.mechanisms.creditCycle ? [cost.financingCost] as [number] : [])
   );
   const rec = solvency.history[solvency.history.length - 1];
 
@@ -1205,6 +1216,7 @@ export function applyV2Consequence(state: V2TeamState, consequence: V2Consequenc
     segmentRevenue: consequence.revenue.closing.segments,
     enterpriseBacklog: consequence.revenue.closing.enterpriseBacklog,
     universityBacklog: consequence.revenue.closing.universityBacklog,
+    ...(consequence.revenue.closing.lapsed ? { lapsedRevenue: consequence.revenue.closing.lapsed } : {}),
     costs: consequence.cost.closing,
     destination: consequence.destinationState,
     contracts: consequence.contracts,
