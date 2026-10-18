@@ -22,12 +22,15 @@
  *   decisionCreditOnExercise — a Q8 growth option earns decision credit only as far as it is exercised (Q8 strategic
  *     investment above the default envelope ÷ the option's extra envelope); unexercised it scores like "continue".
  *   readinessStrategyPremium — the commitment half of destination coherence is min(strength, readiness now).
+ *   liquidityNeedBasedRecentEquity — Policy C: Q7–Q8 financing (equity and strategic-partner cash) neither deployed nor
+ *     needed to restore minimum operating cash ($15M) is left out of the liquidity component (recentEquityAdjustment), and
+ *     a Q8 option available only because of that unspent financing earns option credit only if exercised (optionWeight).
  *   The shareholder-value component uses companyValuation, whose 1.1 corrections (graded distress, readiness-based
  *   strategy premium, AI premium half-gated by AI-native revenue) are in engineV3Financing.
  */
 
 import type { V2TeamState } from './engineV3';
-import { companyValuation } from './engineV3Financing';
+import { companyValuation, V2_FINANCING_CALIBRATION, recentFinancingByQuarter } from './engineV3Financing';
 import { V2_DESTINATIONS, destinationStrength, destinationReadiness } from './engineV3Destination';
 import { contractConcentration } from './engineV3Opportunity';
 import { maxEnvelope, V2_FINAL_CALIBRATION } from './engineV3Final';
@@ -89,6 +92,54 @@ export function exercisedShare(q8StrategicInvestment: number, option: 'scale-ind
   return extra > 0 ? Math.max(0, Math.min(1, (q8StrategicInvestment - base) / extra)) : 0;
 }
 
+/**
+ * Stage 3C Policy C (v3-econ-1.1) — how much recent financing the liquidity score leaves out.
+ *   E  recent financing: equity rounds (incl. the Q8 raise option) and strategic-partner cash from
+ *      `recentEquityFromQuarter` (Q7) to the end. Partner revenue share, capabilities, stake and dilution are untouched.
+ *   X  financing deployed: Q7 financed expansion actually invested (strategic investment above the base envelope, at most
+ *      that quarter's financing) + Q8 investment above the default envelope when that envelope was funded by financing:
+ *      under raise-growth-capital, or under an option that was available only because of unspent recent financing.
+ *      Investment paid from the company's own cash (base envelope; a self-funded scale-up) is not X.
+ *   U  unspent = max(0, E − X)
+ *   counted  = min(U, max(0, minimum operating cash − (cash − U)))   — rescue: what restores the $15M minimum
+ *   excluded = U − counted
+ * The liquidity component scores (cash − debt) − excluded. Continuous in cash and in each raise; splitting a raise
+ * changes nothing (proceeds are summed); cash, debt, ownership and the valuation are untouched.
+ */
+export function recentEquityAdjustment(s: V2TeamState): { equity: number; deployed: number; unspent: number; counted: number; excluded: number } {
+  const from = V3_ECONOMICS.liquidityScore.recentEquityFromQuarter;
+  const base = V3_ECONOMICS.financing.baseEnvelope;
+  const raised = recentFinancingByQuarter(s.financing.rounds, from);
+  const equity = [...raised.values()].reduce((t, x) => t + x, 0);
+  const rec = s.final.record;
+  let deployed = 0;
+  for (const l of s.ledgerHistory) {
+    if (l.quarter < from) continue;
+    if (rec && l.quarter === rec.quarter) {
+      if (rec.option === 'raise-growth-capital' || unlockedByRecentFinancing(rec, rec.option)) deployed += Math.max(0, l.strategicInvestment - V2_FINAL_CALIBRATION.defaultEnvelope);
+    } else deployed += Math.min(raised.get(l.quarter) ?? 0, Math.max(0, l.strategicInvestment - base));
+  }
+  const unspent = Math.max(0, equity - deployed);
+  const counted = Math.min(unspent, Math.max(0, V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash - (s.cash - unspent)));
+  return { equity, deployed, unspent, counted, excluded: unspent - counted };
+}
+
+/** Stage 3C Policy C: an option was available at Q8 only because of unspent recent financing (1.1 metadata present). */
+function unlockedByRecentFinancing(rec: NonNullable<V2TeamState['final']['record']>, id: string): boolean {
+  return !!rec.optionsWithoutRecentFinancing && rec.availability.some(o => o.id === id && o.available) && !rec.optionsWithoutRecentFinancing.includes(id as never);
+}
+
+/**
+ * Stage 3C Policy C: weight of each available Q8 option in "options earned". An option available only because of unspent
+ * recent financing counts only if it was chosen, and then only as far as it was exercised (an acquisition is exercised
+ * when made); otherwise every available option counts 1, as before.
+ */
+function optionWeight(rec: NonNullable<V2TeamState['final']['record']>, id: string, q8Investment: number): number {
+  if (!V3_ECONOMICS.mechanisms.liquidityNeedBasedRecentEquity || !unlockedByRecentFinancing(rec, id)) return 1;
+  if (rec.option !== id) return 0;
+  return id === 'scale-independently' || id === 'raise-growth-capital' ? exercisedShare(q8Investment, id) : 1;
+}
+
 const sum = (cs: V2ScoreComponent[]) => 100 * cs.reduce((t, c) => t + c.score * c.weight, 0);
 const comp = (id: string, label: string, value: number, score: number, weight: number): V2ScoreComponent => ({ id, label, value, score, weight });
 
@@ -131,7 +182,7 @@ export function scoreV2Company(s: V2TeamState): V2TerminalScore {
     comp('growth', 'Revenue growth since Q0', growth, ramp(growth, -0.1, 0.3), 0.2),
     comp('quality', 'Revenue quality (recurring share, client concentration)', recurring, 0.7 * ramp(recurring, 0.2, 0.45) + 0.3 * (1 - ramp(conc, 0.15, 0.4)), 0.1),
     comp('margin', 'Operating margin (Q8)', margin, ramp(margin, 0, 0.25), 0.15),
-    comp('liquidity', 'Net cash (cash − debt)', netCash, ramp(netCash, -50, 150), 0.15),
+    comp('liquidity', 'Net cash (cash − debt)', netCash, ramp(V3_ECONOMICS.mechanisms.liquidityNeedBasedRecentEquity ? netCash - recentEquityAdjustment(s).excluded : netCash, -50, 150), 0.15),
     comp('leverage', 'Leverage (debt ÷ annualized OP)', leverage, 1 - ramp(leverage, 1, 4), 0.1),
     comp('ownership', 'Ownership retained (dilution)', s.financing.ownership, ramp(s.financing.ownership, 0.8, 1), 0.1),
     comp('value', sold ? 'Shareholder value (realized sale)' : 'Shareholder value (valuation)', tsr, ramp(tsr, 0.6, 3), 0.2),
@@ -176,11 +227,11 @@ export function scoreV2Company(s: V2TeamState): V2TerminalScore {
     ? 0.5 * (1 - crisis.assessment.severity) + 0.5 * (crisis.response === 'remediate' ? 1 : crisis.response === 'contain' ? 0.6 : 0.2)
     : 0.5;
   const adaptability = 0.6 * ramp(s.commercial.aiCommercialReadiness, 10, 70) + 0.4 * crisisHandling;
-  const earned = final ? final.availability.filter(o => o.available && o.id !== 'continue').length : 0;
+  const earned = final ? final.availability.filter(o => o.available && o.id !== 'continue').reduce((t, o) => t + optionWeight(final, o.id, last.strategicInvestment), 0) : 0;
   const optionality = sold ? 0 : Math.min(1, earned / 4);
   const largestSegment = total > 0 ? Math.max(seg.consumer, seg.enterprise, seg.university, seg.aiNative) / total : 1;
   const risk = 1 - Math.max(ramp(largestSegment, 0.6, 0.9), ramp(conc, 0.1, 0.35));
-  const growthOptionsExisted = final ? final.availability.some(o => o.available && ['scale-independently', 'raise-growth-capital', 'acquire-consolidate'].includes(o.id)) : false;
+  const growthOptionsExisted = final ? final.availability.some(o => o.available && ['scale-independently', 'raise-growth-capital', 'acquire-consolidate'].includes(o.id) && optionWeight(final, o.id, last.strategicInvestment) > 0) : false;
   const continueQuality = growthOptionsExisted ? 0.6 : 0.7;
   const decisionQuality = !final ? 0.5
     : V3_ECONOMICS.mechanisms.decisionCreditOnExercise && (final.option === 'scale-independently' || final.option === 'raise-growth-capital')

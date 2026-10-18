@@ -159,6 +159,12 @@ export interface V2FinalDecisionRecord {
   saleOffer: number | null;
   acquisition: { segment: V2SegmentKey; runRate: number; price: number; overhead: number } | null;
   equityRaised: number;
+  /**
+   * Stage 3C Policy C (v3-econ-1.1 only; absent in 1.0): the options that would have been available at the Q8 opening
+   * without unspent financing raised from Q7 (equity and strategic-partner cash). Scoring metadata only — the options
+   * actually offered to the team are `availability`, unchanged.
+   */
+  optionsWithoutRecentFinancing?: V2FinalOptionId[];
 }
 
 /** Maximum Q8 strategic envelope under an option. */

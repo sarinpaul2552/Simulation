@@ -73,6 +73,12 @@ export interface V3Mechanisms {
    * commercial proof (AI-native share of revenue): 0.8 × ramp(readiness) × (1 − proofShare + proofShare × ramp(AI share)).
    */
   aiPremiumOnProof: boolean;
+  /**
+   * Stage 3C-A follow-up (v3-econ-1.1) · Policy C: equity raised in the last quarters (from `liquidityScore.recentEquityFromQuarter`)
+   * and neither deployed nor needed to restore minimum operating cash ($15M) earns no credit in the score's liquidity
+   * component. Cash, debt, ownership and every engine figure are unchanged; only the score's net-cash input is adjusted.
+   */
+  liquidityNeedBasedRecentEquity: boolean;
 }
 
 /** Every V3 engine version, oldest first. A version, once released, is never edited — later economics get a new version. */
@@ -101,6 +107,7 @@ export const V3_ECONOMICS = {
     gradedDistressValuation: false,
     readinessStrategyPremium: false,
     aiPremiumOnProof: false,
+    liquidityNeedBasedRecentEquity: false,
   } as V3Mechanisms,
   /** E1 — AI-native revenue level. target = base + perPoint × (adoption − 10) × demand × quality × macro; moves `speed` of the gap per quarter. */
   ai: {
@@ -222,6 +229,8 @@ export const V3_ECONOMICS = {
    *     leverage  = covenantDiscount × ramp(net debt ÷ annualized EBIT, covenantRamp)   (∞ when net debt and EBIT ≤ 0)
    *   aiPremiumOnProof: AI term × (1 − aiProofShare + aiProofShare × ramp(AI-native revenue share, aiShareRamp)).
    */
+  /** Stage 3C-A follow-up — liquidity score (liquidityNeedBasedRecentEquity only): first quarter whose equity counts as recent. */
+  liquidityScore: { recentEquityFromQuarter: 7 },
   valuation: {
     maxDiscount: 0,
     liquidityRange: 30,
@@ -278,6 +287,7 @@ export const V3_1_1_CHANGES: DeepPartial<V3EconomicsConfig> = {
   mechanisms: {
     installedBaseDemand: true, creditCycle: true, enterpriseDemandConversion: true,
     decisionCreditOnExercise: true, gradedDistressValuation: true, readinessStrategyPremium: true, aiPremiumOnProof: true,
+    liquidityNeedBasedRecentEquity: true,
   },
   demand: {
     consumerDemandLoss: 0.10,
@@ -360,4 +370,5 @@ export const ALL_MECHANISMS_OFF: V3Mechanisms = {
   aiRevenueLevel: false, enterpriseConversion: false, universityConversion: false, organizationalHealth: false, contractEnvelopeClaim: false, recessionStance: false, financingExpansion: false,
   installedBaseDemand: false, creditCycle: false, enterpriseDemandConversion: false,
   decisionCreditOnExercise: false, gradedDistressValuation: false, readinessStrategyPremium: false, aiPremiumOnProof: false,
+  liquidityNeedBasedRecentEquity: false,
 };

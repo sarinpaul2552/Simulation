@@ -101,6 +101,7 @@ import {
   strategicValue,
   companyValuation,
   debtCapacity,
+  idleRecentFinancing,
 } from './engineV3Financing';
 export type { V2FinancingAction, V2FinancingState, V2SolvencyState, V2FinancingOptions } from './engineV3Financing';
 import { destinationStrength, destinationReadiness } from './engineV3Destination';
@@ -122,6 +123,7 @@ import {
   V2FinalDecisionRecord,
   V2FinalView,
   finalDecisionEffects,
+  finalOptions,
   maxEnvelope,
 } from './engineV3Final';
 export type { V2FinalOptionId, V2FinalDecisionRecord } from './engineV3Final';
@@ -974,6 +976,15 @@ function collectDecisionEffects(
     }
     const invested = input.allocation.consumer + input.allocation.enterprise + input.allocation.aiProduct + input.allocation.people + input.allocation.universityCredentials;
     const fd = finalDecisionEffects(option, finalView(opening, input.quarter), input.quarter, invested);
+    if (V3_ECONOMICS.mechanisms.liquidityNeedBasedRecentEquity) {
+      // Stage 3C Policy C (1.1): which options would exist without unspent Q7+ financing — scoring metadata only.
+      const idle = idleRecentFinancing(opening.financing.rounds, opening.ledgerHistory, V3_ECONOMICS.liquidityScore.recentEquityFromQuarter, input.quarter, V3_ECONOMICS.financing.baseEnvelope);
+      const cfCash = opening.cash - idle;
+      const cf = idle > 0
+        ? { ...opening, cash: cfCash, solvency: { ...opening.solvency, status: cfCash < 0 ? 'insolvent' as const : cfCash < V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash ? 'warning' as const : opening.solvency.status, distressed: opening.solvency.distressed || cfCash < V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash } }
+        : opening;
+      fd.record.optionsWithoutRecentFinancing = finalOptions(finalView(cf, input.quarter)).filter(o => o.available).map(o => o.id);
+    }
     parts.push(fd.effects);
     finalEquity = fd.equityAction;
     rateRelief = fd.rateRelief;

@@ -4,13 +4,14 @@
  *  achieved readiness · P1-4 half the AI premium needs AI-native revenue. v3-econ-1.0 (and V2) are unchanged.
  */
 import { describe, it, expect } from 'vitest';
-import { V3_ECONOMICS, v3ConfigFor, withV3Version, ALL_MECHANISMS_OFF } from '../../simulationV3/engineV3Config';
+import { V3_ECONOMICS, v3ConfigFor, withV3Version, withV3Economics, ALL_MECHANISMS_OFF } from '../../simulationV3/engineV3Config';
 import { companyValuation, gradedDistressMultiplier, type V2ValuationView } from '../../simulationV3/engineV3Financing';
 import { scoreV2Company, exercisedShare } from '../../simulationV3/engineV3Scoring';
 import * as V3 from './adapter';
 import * as F from '../v2/engine';
 import { buildLearningReport } from '../v2/insights/report';
 import type { V2PlayerQuarterInput } from '../v2/types';
+import type { V2FinalDecisionRecord as V3FinalDecisionRecord } from '../../simulationV3/engineV3Final';
 import { play } from '../../../scripts/lab/v3/player';
 import { V3_LAB_STRATEGIES } from '../../../scripts/lab/v3/strategies';
 
@@ -153,5 +154,77 @@ describe('Stage 3C-A · consistency', () => {
     const again = V3.replayInputs(g.snapshot.inputs, 'A', V11);
     expect(F.getFinalOutcome(again).score).toEqual(F.getFinalOutcome(g.snapshot).score);
     expect(F.verifySnapshot(g.snapshot).ok).toBe(true);
+  });
+});
+
+describe('Stage 3C Policy C · recent financing in the liquidity score (1.1 only)', () => {
+  const OFF = { mechanisms: { liquidityNeedBasedRecentEquity: false } } as const;
+  const v3rec = (s: { final: { record: unknown } }) => s.final.record as V3FinalDecisionRecord; // the V3 engine's record type carries the 1.1 metadata
+  const sc = (s: unknown) => withV3Version(V11, () => scoreV2Company(s as never));
+  const off = (s: unknown) => withV3Version(V11, () => withV3Economics(OFF as never, () => scoreV2Company(s as never)));
+  const at7 = (id: string, path: 'A' | 'B' | 'C') => { const g = play(S(id), { engine: 'v3', path, version: V11 }); return { g, s6: V3.replayInputs(g.snapshot.inputs.slice(0, 6), path, V11), s7: V3.replayInputs(g.snapshot.inputs.slice(0, 7), path, V11) }; };
+  const B5 = ['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const;
+  const mix = (a: V2PlayerQuarterInput['allocation'], env: number, invest: number) => {
+    const inv = B5.reduce((t, b) => t + a[b], 0); const o = { ...a };
+    for (const b of B5) o[b] = +(a[b] * invest / inv).toFixed(6);
+    o.cashReserve = +(env - B5.reduce((t, b) => t + o[b], 0)).toFixed(6); return o;
+  };
+
+  it('is off in 1.0 and ALL_MECHANISMS_OFF, on in 1.1; the Q8 record metadata exists only in 1.1 games', () => {
+    expect(v3ConfigFor(V10).mechanisms.liquidityNeedBasedRecentEquity).toBe(false);
+    expect(ALL_MECHANISMS_OFF.liquidityNeedBasedRecentEquity).toBe(false);
+    expect(v3ConfigFor(V11).mechanisms.liquidityNeedBasedRecentEquity).toBe(true);
+    const g10 = play(S('balanced'), { engine: 'v3', path: 'B', version: V10 }), g11 = play(S('balanced'), { engine: 'v3', path: 'B', version: V11 });
+    expect('optionsWithoutRecentFinancing' in g10.snapshot.state.final.record!).toBe(false);
+    expect(v3rec(g11.snapshot.state).optionsWithoutRecentFinancing).toBeDefined();
+  });
+
+  it('equity raised and held above $15M never helps; splitting a raise changes nothing; accounting is untouched', () => {
+    const { g, s7 } = at7('adaptive', 'B'); const al = mix(g.snapshot.inputs[6].allocation, 30, 30);
+    const run = (fin: V2PlayerQuarterInput['financing']) => V3.resolveQuarter(s7, { quarter: 8, allocation: al, finalOption: 'continue', financing: fin }).snapshot.state;
+    const none = run([]), one = run([{ kind: 'equity', amount: 40 }]), two = run([{ kind: 'equity', amount: 20 }, { kind: 'equity', amount: 20 }]);
+    expect(sc(one).overall).toBeLessThan(sc(none).overall);
+    expect(off(one).overall).toBeGreaterThan(off(none).overall); // the exploit that existed before
+    expect(Math.abs(sc(two).overall - sc(one).overall)).toBeLessThan(0.02);
+    expect(sc(one).components.financial.find(c => c.id === 'liquidity')!.score).toBeCloseTo(sc(none).components.financial.find(c => c.id === 'liquidity')!.score, 12);
+    expect(one.cash - none.cash).toBeCloseTo(40, 9); // cash, ownership and value unchanged by scoring
+    expect(sc(one).shareholderValue).toBeCloseTo(off(one).shareholderValue, 9);
+  });
+
+  it('rescue financing is credited up to minimum operating cash ($15M), with no step at $15M', () => {
+    const { g, s7 } = at7('people-only', 'C'); const i8 = g.snapshot.inputs[7];
+    const run = (amount: number) => V3.resolveQuarter(s7, { ...i8, financing: amount > 0 ? [{ kind: 'equity', amount }] : [] }).snapshot.state;
+    const insolvent = run(0), exact = 15 - insolvent.cash, rescue = run(exact); // equity that restores exactly $15M of closing cash
+    expect(insolvent.solvency.status).toBe('insolvent');
+    expect(rescue.cash).toBeCloseTo(15, 9);
+    expect(sc(rescue).overall).toBeCloseTo(off(rescue).overall, 9); // exactly the rescue amount: fully recognised
+    expect(sc(rescue).overall).toBeGreaterThan(sc(insolvent).overall);
+    const near = [exact - 0.12, exact, exact + 0.12].map(a => sc(run(a)).components.financial.find(c => c.id === 'liquidity')!.score);
+    expect(Math.abs(near[0] - near[1])).toBeLessThan(0.002);
+    expect(Math.abs(near[2] - near[1])).toBeLessThan(0.002);
+  });
+
+  it('idle Q7 equity that unlocks a Q8 option earns no option credit unless the option is exercised', () => {
+    const { g, s6 } = at7('university-led', 'A'); const i7 = g.snapshot.inputs[6];
+    const a = V3.resolveQuarter(s6, { ...i7, financing: [...(i7.financing ?? []), { kind: 'equity', amount: 30 }] }).snapshot;
+    const rec = (opt: 'continue' | 'scale-independently', invest: number) => V3.resolveQuarter(a, { quarter: 8, allocation: mix(i7.allocation, opt === 'continue' ? 30 : 45, invest), finalOption: opt }).snapshot.state;
+    const held = rec('continue', 30), exercised = rec('scale-independently', 45);
+    expect(held.final.record!.availability.some(o => o.id === 'scale-independently' && o.available)).toBe(true); // the option is still offered
+    expect(v3rec(held).optionsWithoutRecentFinancing).not.toContain('scale-independently');
+    const opt = (s: unknown, f: typeof sc) => f(s).components.strategic.find(c => c.id === 'optionality')!.score;
+    expect(opt(held, sc)).toBeLessThan(opt(held, off));
+    expect(opt(exercised, sc)).toBeCloseTo(opt(exercised, off), 12); // deployed capital keeps its credit
+    const base = V3.resolveQuarter(V3.replayInputs(g.snapshot.inputs.slice(0, 7), 'A', V11), { quarter: 8, allocation: mix(i7.allocation, 30, 30), finalOption: 'continue' }).snapshot.state;
+    expect(sc(held).overall).toBeLessThan(sc(base).overall);
+  });
+
+  it('strategic-partner cash held unused earns no liquidity credit; the partnership itself (stake, revenue share, ROFR) is unchanged', () => {
+    const { g, s7 } = at7('consumer-led', 'B'); const al = mix(g.snapshot.inputs[6].allocation, 30, 30);
+    const run = (fin: V2PlayerQuarterInput['financing']) => V3.resolveQuarter(s7, { quarter: 8, allocation: al, finalOption: 'continue', financing: fin }).snapshot.state;
+    const none = run([]), partner = run([{ kind: 'partner' }]);
+    expect(off(partner).overall).toBeGreaterThan(off(none).overall); // before: idle partner cash scored higher
+    expect(sc(partner).overall).toBeLessThan(sc(none).overall);
+    expect(partner.financing.partner).not.toBeNull();
+    expect(partner.financing.ownership).toBeCloseTo(0.94, 12);
   });
 });

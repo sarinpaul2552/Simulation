@@ -157,6 +157,33 @@ export function getSolvencyBaseline(): V2SolvencyState {
   return { status: 'healthy', distressed: false, everInsolvent: false, insolventQuarters: 0, firstInsolventQuarter: null, warningQuarters: 0, liquidityEvents: 0, history: [] };
 }
 
+// ============ RECENT FINANCING (Stage 3C Policy C, v3-econ-1.1) ============
+
+/**
+ * Financing proceeds per quarter from `fromQuarter` on: equity rounds plus strategic-partner cash (the partner buys a
+ * stake — the financing component of the partnership; its revenue share and capabilities are not touched here).
+ */
+export function recentFinancingByQuarter(rounds: { quarter: number; kind: string; amount: number }[], fromQuarter: number): Map<number, number> {
+  const m = new Map<number, number>();
+  for (const r of rounds) if (r.quarter >= fromQuarter && (r.kind === 'equity' || r.kind === 'partner')) m.set(r.quarter, (m.get(r.quarter) ?? 0) + r.amount);
+  return m;
+}
+
+/**
+ * Recent financing still unspent when a quarter opens: for each completed quarter from `fromQuarter` before `beforeQuarter`,
+ * the proceeds raised minus what funded that quarter's financed expansion (strategic investment above the base envelope).
+ */
+export function idleRecentFinancing(rounds: { quarter: number; kind: string; amount: number }[], ledger: { quarter: number; strategicInvestment: number }[], fromQuarter: number, beforeQuarter: number, baseEnvelope: number): number {
+  const raised = recentFinancingByQuarter(rounds, fromQuarter);
+  let idle = 0;
+  for (const l of ledger) {
+    if (l.quarter < fromQuarter || l.quarter >= beforeQuarter) continue;
+    const f = raised.get(l.quarter) ?? 0;
+    idle += f - Math.min(f, Math.max(0, l.strategicInvestment - baseEnvelope));
+  }
+  return idle;
+}
+
 // ============ VALUATION ============
 
 export interface V2ValuationView {
