@@ -74,11 +74,23 @@ export interface V3Mechanisms {
    */
   aiPremiumOnProof: boolean;
   /**
-   * Stage 3C-A follow-up (v3-econ-1.1) · Policy C: equity raised in the last quarters (from `liquidityScore.recentEquityFromQuarter`)
+   * Stage 3C-A follow-up (v3-econ-1.1) · Policy C: equity and strategic-partner cash raised in the last quarters (from `liquidityScore.recentEquityFromQuarter`)
    * and neither deployed nor needed to restore minimum operating cash ($15M) earns no credit in the score's liquidity
    * component. Cash, debt, ownership and every engine figure are unchanged; only the score's net-cash input is adjusted.
    */
   liquidityNeedBasedRecentEquity: boolean;
+  /**
+   * Stage 3C final liquidity correction (v3-econ-1.1) · L1 adequacy: the liquidity component credits net cash (after the
+   * Policy C exclusion) up to `liquidityScore.adequacyCash` ($40M — the engine's comfortable-cash level) instead of $150M.
+   * Cash beyond adequacy earns no further score. Scoring only: cash, debt, ownership and valuation are unchanged.
+   */
+  liquidityAdequacyCap: boolean;
+  /**
+   * Stage 3C final liquidity correction (v3-econ-1.1) · Policy C's unused-option protection also removes financing raised
+   * before Q7 (equity and partner cash) that was still idle at the Q8 opening: the part of it that the closing-cash path never
+   * needed to stay at minimum operating cash, net of financed expansion and partner revenue share. Q8 option-credit metadata only.
+   */
+  optionCheckAllFinancing: boolean;
 }
 
 /** Every V3 engine version, oldest first. A version, once released, is never edited — later economics get a new version. */
@@ -108,6 +120,8 @@ export const V3_ECONOMICS = {
     readinessStrategyPremium: false,
     aiPremiumOnProof: false,
     liquidityNeedBasedRecentEquity: false,
+    liquidityAdequacyCap: false,
+    optionCheckAllFinancing: false,
   } as V3Mechanisms,
   /** E1 — AI-native revenue level. target = base + perPoint × (adoption − 10) × demand × quality × macro; moves `speed` of the gap per quarter. */
   ai: {
@@ -229,8 +243,12 @@ export const V3_ECONOMICS = {
    *     leverage  = covenantDiscount × ramp(net debt ÷ annualized EBIT, covenantRamp)   (∞ when net debt and EBIT ≤ 0)
    *   aiPremiumOnProof: AI term × (1 − aiProofShare + aiProofShare × ramp(AI-native revenue share, aiShareRamp)).
    */
-  /** Stage 3C-A follow-up — liquidity score (liquidityNeedBasedRecentEquity only): first quarter whose equity counts as recent. */
-  liquidityScore: { recentEquityFromQuarter: 7 },
+  /**
+   * Stage 3C-A follow-up — liquidity score. recentEquityFromQuarter (liquidityNeedBasedRecentEquity only): first quarter whose
+   * financing counts as recent. adequacyCash (liquidityAdequacyCap only): net cash earning the full liquidity score
+   * (1.0 keeps the original $150M upper bound).
+   */
+  liquidityScore: { recentEquityFromQuarter: 7, adequacyCash: 150 },
   valuation: {
     maxDiscount: 0,
     liquidityRange: 30,
@@ -288,7 +306,10 @@ export const V3_1_1_CHANGES: DeepPartial<V3EconomicsConfig> = {
     installedBaseDemand: true, creditCycle: true, enterpriseDemandConversion: true,
     decisionCreditOnExercise: true, gradedDistressValuation: true, readinessStrategyPremium: true, aiPremiumOnProof: true,
     liquidityNeedBasedRecentEquity: true,
+    liquidityAdequacyCap: true, optionCheckAllFinancing: true,
   },
+  // Stage 3C final liquidity correction — L1: full liquidity credit at $40M of net cash (approved liquidity decision report)
+  liquidityScore: { adequacyCash: 40 },
   demand: {
     consumerDemandLoss: 0.10,
     consumerMacroLoss: 0.02,
@@ -371,4 +392,5 @@ export const ALL_MECHANISMS_OFF: V3Mechanisms = {
   installedBaseDemand: false, creditCycle: false, enterpriseDemandConversion: false,
   decisionCreditOnExercise: false, gradedDistressValuation: false, readinessStrategyPremium: false, aiPremiumOnProof: false,
   liquidityNeedBasedRecentEquity: false,
+  liquidityAdequacyCap: false, optionCheckAllFinancing: false,
 };

@@ -25,6 +25,9 @@
  *   liquidityNeedBasedRecentEquity — Policy C: Q7–Q8 financing (equity and strategic-partner cash) neither deployed nor
  *     needed to restore minimum operating cash ($15M) is left out of the liquidity component (recentEquityAdjustment), and
  *     a Q8 option available only because of that unspent financing earns option credit only if exercised (optionWeight).
+ *   liquidityAdequacyCap — L1: the liquidity component reaches its full score at $40M of net cash (after the Policy C
+ *     exclusion) instead of $150M: ramp(net cash − excluded, −50, 40).
+ *   optionCheckAllFinancing — the unused-option check also removes earlier (pre-Q7) financing still idle at the Q8 opening.
  *   The shareholder-value component uses companyValuation, whose 1.1 corrections (graded distress, readiness-based
  *   strategy premium, AI premium half-gated by AI-native revenue) are in engineV3Financing.
  */
@@ -182,7 +185,7 @@ export function scoreV2Company(s: V2TeamState): V2TerminalScore {
     comp('growth', 'Revenue growth since Q0', growth, ramp(growth, -0.1, 0.3), 0.2),
     comp('quality', 'Revenue quality (recurring share, client concentration)', recurring, 0.7 * ramp(recurring, 0.2, 0.45) + 0.3 * (1 - ramp(conc, 0.15, 0.4)), 0.1),
     comp('margin', 'Operating margin (Q8)', margin, ramp(margin, 0, 0.25), 0.15),
-    comp('liquidity', 'Net cash (cash − debt)', netCash, ramp(V3_ECONOMICS.mechanisms.liquidityNeedBasedRecentEquity ? netCash - recentEquityAdjustment(s).excluded : netCash, -50, 150), 0.15),
+    comp('liquidity', 'Net cash (cash − debt)', netCash, ramp(V3_ECONOMICS.mechanisms.liquidityNeedBasedRecentEquity ? netCash - recentEquityAdjustment(s).excluded : netCash, -50, V3_ECONOMICS.mechanisms.liquidityAdequacyCap ? V3_ECONOMICS.liquidityScore.adequacyCash : 150), 0.15),
     comp('leverage', 'Leverage (debt ÷ annualized OP)', leverage, 1 - ramp(leverage, 1, 4), 0.1),
     comp('ownership', 'Ownership retained (dilution)', s.financing.ownership, ramp(s.financing.ownership, 0.8, 1), 0.1),
     comp('value', sold ? 'Shareholder value (realized sale)' : 'Shareholder value (valuation)', tsr, ramp(tsr, 0.6, 3), 0.2),

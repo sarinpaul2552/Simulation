@@ -5,8 +5,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { V3_ECONOMICS, v3ConfigFor, withV3Version, withV3Economics, ALL_MECHANISMS_OFF } from '../../simulationV3/engineV3Config';
-import { companyValuation, gradedDistressMultiplier, type V2ValuationView } from '../../simulationV3/engineV3Financing';
-import { scoreV2Company, exercisedShare } from '../../simulationV3/engineV3Scoring';
+import { companyValuation, gradedDistressMultiplier, idleEarlierFinancing, type V2ValuationView } from '../../simulationV3/engineV3Financing';
+import { scoreV2Company, exercisedShare, recentEquityAdjustment } from '../../simulationV3/engineV3Scoring';
 import * as V3 from './adapter';
 import * as F from '../v2/engine';
 import { buildLearningReport } from '../v2/insights/report';
@@ -162,6 +162,9 @@ describe('Stage 3C Policy C · recent financing in the liquidity score (1.1 only
   const v3rec = (s: { final: { record: unknown } }) => s.final.record as V3FinalDecisionRecord; // the V3 engine's record type carries the 1.1 metadata
   const sc = (s: unknown) => withV3Version(V11, () => scoreV2Company(s as never));
   const off = (s: unknown) => withV3Version(V11, () => withV3Economics(OFF as never, () => scoreV2Company(s as never)));
+  // the scoring before Policy C and the final liquidity correction (b3f1715's parent economics for these components)
+  const OFF_ALL = { mechanisms: { liquidityNeedBasedRecentEquity: false, liquidityAdequacyCap: false, optionCheckAllFinancing: false } } as const;
+  const offAll = (s: unknown) => withV3Version(V11, () => withV3Economics(OFF_ALL as never, () => scoreV2Company(s as never)));
   const at7 = (id: string, path: 'A' | 'B' | 'C') => { const g = play(S(id), { engine: 'v3', path, version: V11 }); return { g, s6: V3.replayInputs(g.snapshot.inputs.slice(0, 6), path, V11), s7: V3.replayInputs(g.snapshot.inputs.slice(0, 7), path, V11) }; };
   const B5 = ['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const;
   const mix = (a: V2PlayerQuarterInput['allocation'], env: number, invest: number) => {
@@ -184,7 +187,7 @@ describe('Stage 3C Policy C · recent financing in the liquidity score (1.1 only
     const run = (fin: V2PlayerQuarterInput['financing']) => V3.resolveQuarter(s7, { quarter: 8, allocation: al, finalOption: 'continue', financing: fin }).snapshot.state;
     const none = run([]), one = run([{ kind: 'equity', amount: 40 }]), two = run([{ kind: 'equity', amount: 20 }, { kind: 'equity', amount: 20 }]);
     expect(sc(one).overall).toBeLessThan(sc(none).overall);
-    expect(off(one).overall).toBeGreaterThan(off(none).overall); // the exploit that existed before
+    expect(offAll(one).overall).toBeGreaterThan(offAll(none).overall); // the exploit that existed before
     expect(Math.abs(sc(two).overall - sc(one).overall)).toBeLessThan(0.02);
     expect(sc(one).components.financial.find(c => c.id === 'liquidity')!.score).toBeCloseTo(sc(none).components.financial.find(c => c.id === 'liquidity')!.score, 12);
     expect(one.cash - none.cash).toBeCloseTo(40, 9); // cash, ownership and value unchanged by scoring
@@ -215,16 +218,89 @@ describe('Stage 3C Policy C · recent financing in the liquidity score (1.1 only
     expect(opt(held, sc)).toBeLessThan(opt(held, off));
     expect(opt(exercised, sc)).toBeCloseTo(opt(exercised, off), 12); // deployed capital keeps its credit
     const base = V3.resolveQuarter(V3.replayInputs(g.snapshot.inputs.slice(0, 7), 'A', V11), { quarter: 8, allocation: mix(i7.allocation, 30, 30), finalOption: 'continue' }).snapshot.state;
-    expect(sc(held).overall).toBeLessThan(sc(base).overall);
+    expect(sc(held).components.strategic.find(c => c.id === 'decision')!.score).toBeCloseTo(sc(base).components.strategic.find(c => c.id === 'decision')!.score, 12);
   });
 
   it('strategic-partner cash held unused earns no liquidity credit; the partnership itself (stake, revenue share, ROFR) is unchanged', () => {
     const { g, s7 } = at7('consumer-led', 'B'); const al = mix(g.snapshot.inputs[6].allocation, 30, 30);
     const run = (fin: V2PlayerQuarterInput['financing']) => V3.resolveQuarter(s7, { quarter: 8, allocation: al, finalOption: 'continue', financing: fin }).snapshot.state;
     const none = run([]), partner = run([{ kind: 'partner' }]);
-    expect(off(partner).overall).toBeGreaterThan(off(none).overall); // before: idle partner cash scored higher
+    expect(offAll(partner).overall).toBeGreaterThan(offAll(none).overall); // before: idle partner cash scored higher
     expect(sc(partner).overall).toBeLessThan(sc(none).overall);
     expect(partner.financing.partner).not.toBeNull();
     expect(partner.financing.ownership).toBeCloseTo(0.94, 12);
+  });
+});
+
+describe('Stage 3C final liquidity correction · L1 adequacy and the all-quarter unused-option check (1.1 only)', () => {
+  const sc = (s: unknown) => withV3Version(V11, () => scoreV2Company(s as never));
+  const liq = (s: unknown) => sc(s).components.financial.find(c => c.id === 'liquidity')!.score;
+  const opt = (s: unknown) => sc(s).components.strategic.find(c => c.id === 'optionality')!.score;
+  const v3rec = (s: { final: { record: unknown } }) => s.final.record as V3FinalDecisionRecord;
+  const B5 = ['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const;
+  const mix = (a: V2PlayerQuarterInput['allocation'], env: number, invest: number) => {
+    const inv = B5.reduce((t, b) => t + a[b], 0); const o = { ...a };
+    for (const b of B5) o[b] = +(a[b] * invest / inv).toFixed(6);
+    o.cashReserve = +(env - B5.reduce((t, b) => t + o[b], 0)).toFixed(6); return o;
+  };
+  const ramp = (x: number, lo: number, hi: number) => (x <= lo ? 0 : x >= hi ? 1 : (x - lo) / (hi - lo));
+
+  it('is off in 1.0 and ALL_MECHANISMS_OFF ($150M bound), on in 1.1 ($40M)', () => {
+    expect(v3ConfigFor(V10).mechanisms.liquidityAdequacyCap).toBe(false);
+    expect(v3ConfigFor(V10).mechanisms.optionCheckAllFinancing).toBe(false);
+    expect(v3ConfigFor(V10).liquidityScore.adequacyCash).toBe(150);
+    expect(ALL_MECHANISMS_OFF.liquidityAdequacyCap).toBe(false);
+    expect(ALL_MECHANISMS_OFF.optionCheckAllFinancing).toBe(false);
+    expect(v3ConfigFor(V11).mechanisms.liquidityAdequacyCap).toBe(true);
+    expect(v3ConfigFor(V11).mechanisms.optionCheckAllFinancing).toBe(true);
+    expect(v3ConfigFor(V11).liquidityScore).toEqual({ recentEquityFromQuarter: 7, adequacyCash: 40 });
+  });
+
+  it('L1: liquidity = ramp(net cash − Policy C exclusion, −50, 40); continuous at $40M; nothing beyond', () => {
+    for (const id of ['balanced', 'people-only', 'all-reserve']) for (const path of ['A', 'C'] as const) {
+      const s = play(S(id), { engine: 'v3', path, version: V11 }).snapshot.state;
+      const ex = withV3Version(V11, () => recentEquityAdjustment(s as never)).excluded;
+      expect(liq(s)).toBeCloseTo(ramp(s.cash - s.financing.debt - ex, -50, 40), 12);
+    }
+    const s: any = play(S('balanced'), { engine: 'v3', path: 'A', version: V11 }).snapshot.state;
+    const at = (cash: number) => liq({ ...s, cash });
+    expect(at(39.99) - at(40)).toBeLessThan(0.0002); expect(at(40)).toBe(1); expect(at(140)).toBe(1);
+    expect(at(25)).toBeCloseTo(75 / 90, 12);
+  });
+
+  it('attribution: only financing the cash path never needed is idle (rescue, expansion and partner revenue share are not)', () => {
+    const L = (cs: number[], inv: number[] = cs.map(() => 30)) => cs.map((c, i) => ({ quarter: i + 1, closingCash: c, strategicInvestment: inv[i] }));
+    const noShare = (n: number) => Array.from({ length: n }, () => ({ variable: { partnerRevenueShare: 0 } }));
+    // $30M raised in Q3; cash later falls to $20M (Q5): only $5M was never needed above the $15M minimum
+    expect(idleEarlierFinancing([{ quarter: 3, kind: 'equity', amount: 30 }], L([60, 60, 40, 25, 20, 30, 50]), noShare(7), 7, 0, 30, 15)).toBeCloseTo(5, 12);
+    // cash stays high: fully idle; debt never counts
+    expect(idleEarlierFinancing([{ quarter: 3, kind: 'equity', amount: 30 }, { quarter: 4, kind: 'debt', amount: 20 }], L([60, 60, 90, 90, 90, 90, 90]), noShare(7), 7, 0, 30, 15)).toBeCloseTo(30, 12);
+    // financed expansion in the raise quarter ($10M above the base envelope) is deployed, not idle
+    expect(idleEarlierFinancing([{ quarter: 4, kind: 'equity', amount: 30 }], L([60, 60, 60, 80, 80, 80, 80], [30, 30, 30, 40, 30, 30, 30]), noShare(7), 7, 0, 30, 15)).toBeCloseTo(20, 12);
+    // partner cash net of the revenue share already paid
+    const share = noShare(7).map((c, i) => (i >= 4 ? { variable: { partnerRevenueShare: 2 } } : c));
+    expect(idleEarlierFinancing([{ quarter: 5, kind: 'partner', amount: 50 }], L([60, 60, 60, 60, 110, 110, 110]), share, 7, 0, 30, 15)).toBeCloseTo(44, 12);
+    // a later raise is not removed from quarters before it; recent (Q7) idle financing is already removed at the last quarter
+    expect(idleEarlierFinancing([{ quarter: 6, kind: 'equity', amount: 30 }], L([20, 20, 20, 20, 16, 46, 76]), noShare(7), 7, 30, 30, 15)).toBeCloseTo(30, 12);
+    expect(idleEarlierFinancing([], L([60, 60, 60, 60, 60, 60, 60]), noShare(7), 7, 0, 30, 15)).toBe(0);
+  });
+
+  it('idle Q4 equity that unlocks scale earns no option credit unless exercised; options from operating cash keep theirs', () => {
+    const g = play(S('university-led'), { engine: 'v3', path: 'A', version: V11 }); const inputs = g.snapshot.inputs;
+    let snap = V3.replayInputs(inputs.slice(0, 3), 'A', V11);
+    for (let k = 4; k <= 7; k++) snap = V3.resolveQuarter(snap, k === 4 ? { ...inputs[3], financing: [...(inputs[3].financing ?? []), { kind: 'equity', amount: 30 }] } : inputs[k - 1]).snapshot;
+    const i8 = inputs[7];
+    const held = V3.resolveQuarter(snap, { quarter: 8, allocation: mix(i8.allocation, 30, 30), finalOption: 'continue' }).snapshot.state;
+    const exercised = V3.resolveQuarter(snap, { quarter: 8, allocation: mix(i8.allocation, 45, 45), finalOption: 'scale-independently' }).snapshot.state;
+    expect(held.final.record!.availability.some(o => o.id === 'scale-independently' && o.available)).toBe(true); // still offered: eligibility unchanged
+    expect(v3rec(held).optionsWithoutRecentFinancing).not.toContain('scale-independently');
+    const base = V3.resolveQuarter(V3.replayInputs(inputs.slice(0, 7), 'A', V11), { quarter: 8, allocation: mix(i8.allocation, 30, 30), finalOption: 'continue' }).snapshot.state;
+    expect(opt(held)).toBeCloseTo(opt(base), 12);           // the idle raise adds no option credit
+    expect(sc(held).components.strategic.find(c => c.id === 'decision')!.score).toBeCloseTo(sc(base).components.strategic.find(c => c.id === 'decision')!.score, 12);
+    expect(opt(exercised)).toBeGreaterThan(opt(held));        // exercising keeps legitimate credit
+    expect(held.financing.ownership).toBeLessThan(1); expect(held.cash - base.cash).toBeCloseTo(30, 0); // accounting untouched
+    // a company whose Q8 options come from its own operating cash keeps them
+    const own = play(S('adaptive'), { engine: 'v3', path: 'B', version: V11 }).snapshot.state;
+    expect(v3rec(own).optionsWithoutRecentFinancing).toEqual(own.final.record!.availability.filter(o => o.available).map(o => o.id));
   });
 });

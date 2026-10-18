@@ -184,6 +184,53 @@ export function idleRecentFinancing(rounds: { quarter: number; kind: string; amo
   return idle;
 }
 
+/**
+ * Stage 3C final liquidity correction (v3-econ-1.1, optionCheckAllFinancing): financing raised before `beforeQuarter`
+ * (equity and partner cash) that was still idle when `beforeQuarter` opens.
+ *   F_q   = proceeds raised in quarter q − what funded that quarter's financed expansion (strategic investment above the base
+ *           envelope); partner proceeds are also net of the revenue share paid to the partner in every completed quarter.
+ *   c_t   = closing cash of each completed quarter t (from the first raise to the last completed quarter) − floor (minimum
+ *           operating cash), less `alreadyIdle` (idle recent financing) at the last completed quarter.
+ *   idle  = max(0, min(Σ F_q, min over t ≥ first raise of (c_t + Σ_{q > t} F_q)))
+ * i.e. the largest amount that could be removed from the cash path, each raise only from its own quarter on, without the
+ * company falling below minimum operating cash in any completed quarter. Financing the cash path needed (rescue, operating
+ * losses, later investment) is not idle.
+ */
+export function idleEarlierFinancing(
+  rounds: { quarter: number; kind: string; amount: number }[],
+  ledger: { quarter: number; strategicInvestment: number; closingCash: number }[],
+  costs: { variable: { partnerRevenueShare: number } }[],
+  beforeQuarter: number,
+  alreadyIdle: number,
+  baseEnvelope: number,
+  floor: number,
+): number {
+  const F = new Map<number, number>();
+  for (const r of rounds) if (r.quarter < beforeQuarter && (r.kind === 'equity' || r.kind === 'partner')) F.set(r.quarter, (F.get(r.quarter) ?? 0) + r.amount);
+  if (F.size === 0) return 0;
+  const partnerQuarter = rounds.find(r => r.kind === 'partner' && r.quarter < beforeQuarter)?.quarter;
+  if (partnerQuarter !== undefined) {
+    let paid = 0;
+    ledger.forEach((l, i) => { if (l.quarter >= partnerQuarter) paid += costs[i]?.variable.partnerRevenueShare ?? 0; });
+    F.set(partnerQuarter, Math.max(0, F.get(partnerQuarter)! - paid));
+  }
+  for (const l of ledger) {
+    const f = F.get(l.quarter);
+    if (f !== undefined) F.set(l.quarter, f - Math.min(f, Math.max(0, l.strategicInvestment - baseEnvelope)));
+  }
+  const quarters = [...F.keys()].filter(q => F.get(q)! > 0);
+  if (quarters.length === 0) return 0;
+  const first = Math.min(...quarters);
+  const last = Math.max(...ledger.map(l => l.quarter));
+  let idle = quarters.reduce((t, q) => t + F.get(q)!, 0);
+  for (const l of ledger) {
+    if (l.quarter < first) continue;
+    const later = quarters.filter(q => q > l.quarter).reduce((t, q) => t + F.get(q)!, 0);
+    idle = Math.min(idle, l.closingCash - floor - (l.quarter === last ? alreadyIdle : 0) + later);
+  }
+  return Math.max(0, idle);
+}
+
 // ============ VALUATION ============
 
 export interface V2ValuationView {

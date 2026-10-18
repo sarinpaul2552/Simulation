@@ -102,6 +102,7 @@ import {
   companyValuation,
   debtCapacity,
   idleRecentFinancing,
+  idleEarlierFinancing,
 } from './engineV3Financing';
 export type { V2FinancingAction, V2FinancingState, V2SolvencyState, V2FinancingOptions } from './engineV3Financing';
 import { destinationStrength, destinationReadiness } from './engineV3Destination';
@@ -977,8 +978,12 @@ function collectDecisionEffects(
     const invested = input.allocation.consumer + input.allocation.enterprise + input.allocation.aiProduct + input.allocation.people + input.allocation.universityCredentials;
     const fd = finalDecisionEffects(option, finalView(opening, input.quarter), input.quarter, invested);
     if (V3_ECONOMICS.mechanisms.liquidityNeedBasedRecentEquity) {
-      // Stage 3C Policy C (1.1): which options would exist without unspent Q7+ financing — scoring metadata only.
-      const idle = idleRecentFinancing(opening.financing.rounds, opening.ledgerHistory, V3_ECONOMICS.liquidityScore.recentEquityFromQuarter, input.quarter, V3_ECONOMICS.financing.baseEnvelope);
+      // Stage 3C Policy C (1.1): which options would exist without unspent financing — scoring metadata only.
+      const recentIdle = idleRecentFinancing(opening.financing.rounds, opening.ledgerHistory, V3_ECONOMICS.liquidityScore.recentEquityFromQuarter, input.quarter, V3_ECONOMICS.financing.baseEnvelope);
+      // Stage 3C final liquidity correction (1.1): plus earlier financing (before Q7) still idle at the Q8 opening.
+      const idle = recentIdle + (V3_ECONOMICS.mechanisms.optionCheckAllFinancing
+        ? idleEarlierFinancing(opening.financing.rounds, opening.ledgerHistory, opening.costHistory, V3_ECONOMICS.liquidityScore.recentEquityFromQuarter, recentIdle, V3_ECONOMICS.financing.baseEnvelope, V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash)
+        : 0);
       const cfCash = opening.cash - idle;
       const cf = idle > 0
         ? { ...opening, cash: cfCash, solvency: { ...opening.solvency, status: cfCash < 0 ? 'insolvent' as const : cfCash < V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash ? 'warning' as const : opening.solvency.status, distressed: opening.solvency.distressed || cfCash < V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash } }
