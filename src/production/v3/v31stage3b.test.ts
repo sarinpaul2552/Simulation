@@ -2,7 +2,7 @@
  * NexLearn V3.1 Stage 3B — Enterprise deal conversion follows enterprise demand (v3-econ-1.1 only) and
  * engine-backed investment effectiveness indicators.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { V3_ECONOMICS, v3ConfigFor, withRegisteredV3Config } from '../../simulationV3/engineV3Config';
 import * as V3 from './adapter';
 import * as F from '../v2/engine';
@@ -17,7 +17,7 @@ const OFF = { mechanisms: { enterpriseDemandConversion: false } };
 type Ind = { indicator: string; capabilityContribution: number; drivers: { label: string; value: number }[] };
 const winInd = (c: unknown) => (c as { commercial: { indicators: Ind[] } }).commercial.indicators.find(i => i.indicator === 'enterpriseWinRate')!;
 /** Snapshot of a played game after `n` quarters (replayed from its own inputs). */
-const after = (g: PlayedGame, path: 'A' | 'B' | 'C', n: number, version = V11) => V3.replayInputs(g.snapshot.inputs.slice(0, n), path, version);
+const after = (g: PlayedGame, path: 'A' | 'B' | 'C', n: number, version: string = V11) => V3.replayInputs(g.snapshot.inputs.slice(0, n), path, version);
 
 describe('Stage 3B · Enterprise deal conversion (1.1 only)', () => {
   it('is off in 1.0 and on in 1.1 with unit elasticity and [0.5, 1.5] bounds', () => {
@@ -149,5 +149,84 @@ describe('Stage 3B · investment effectiveness preview (engine-backed)', () => {
     const v3 = F.initializeGame(F.v3Config('A', V11));
     expect(F.investmentPreview(v3, { quarter: 1, allocation: { consumer: 50, enterprise: 0, aiProduct: 0, people: 0, universityCredentials: 0, cashReserve: 0 } })).toBeNull();
     expect(F.investmentPreview(v3, { quarter: 1, allocation: { consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 5, cashReserve: 5 } })).not.toBeNull();
+  });
+});
+
+describe('Stage 3B · indicators are version-specific (v3-econ-1.1 only)', () => {
+  const plan: V2PlayerQuarterInput = { quarter: 1, allocation: { consumer: 5, enterprise: 5, aiProduct: 5, people: 5, universityCredentials: 5, cashReserve: 5 } };
+  it('V2 and v3-econ-1.0 games get no preview (original investment interface); v3-econ-1.1 games do', () => {
+    expect(F.INVESTMENT_INDICATOR_VERSIONS).toEqual(['v3-econ-1.1']);
+    const v2 = F.initializeGame();
+    const v10 = F.initializeGame(F.v3Config('B', V10));
+    const v11 = F.initializeGame(F.v3Config('B', V11));
+    expect([F.showsInvestmentIndicators(v2), F.showsInvestmentIndicators(v10), F.showsInvestmentIndicators(v11)]).toEqual([false, false, true]);
+    expect(F.investmentPreview(v2, plan)).toBeNull();
+    expect(F.investmentPreview(v10, plan)).toBeNull();
+    expect(F.investmentPreview(v11, plan)).not.toBeNull();
+    // later in a 1.0 game, too
+    const g10 = play(S('balanced'), { engine: 'v3', path: 'B', version: V10 });
+    for (let q = 1; q <= 8; q++) expect(F.investmentPreview(after(g10, 'B', q - 1, V10), g10.snapshot.inputs[q - 1])).toBeNull();
+  });
+});
+
+describe('Stage 3B · investment preview safety', () => {
+  const deepFreeze = <T>(o: T): T => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
+  const g = play(S('adaptive'), { engine: 'v3', path: 'C', version: V11 });
+
+  it('persists nothing and does not advance time: works on a deep-frozen snapshot, which is unchanged afterwards', () => {
+    for (let q = 1; q <= 8; q++) {
+      const snap = after(g, 'C', q - 1);
+      const before = structuredClone(snap);
+      const p = V3.investmentPreview(deepFreeze(snap), g.snapshot.inputs[q - 1]);
+      expect(p, `Q${q}`).not.toBeNull(); // a write to the frozen snapshot would throw and return null
+      expect(snap).toEqual(before);
+      expect(snap.completedQuarter).toBe(q - 1);
+      expect(snap.inputs).toHaveLength(q - 1);
+      expect(F.workingQuarter(snap)).toBe(q);
+      expect(V3_ECONOMICS.version).toBe(V10); // the session's version is applied only for the call, then restored
+    }
+  });
+
+  it('is deterministic and uses no randomness: identical inputs give identical results, also from a rebuilt game', () => {
+    const rnd = vi.spyOn(Math, 'random');
+    for (const q of [1, 4, 5, 8]) {
+      const input = g.snapshot.inputs[q - 1];
+      const a = V3.investmentPreview(after(g, 'C', q - 1), input);
+      const b = V3.investmentPreview(after(g, 'C', q - 1), structuredClone(input));
+      expect(b).toEqual(a);
+      expect(V3.investmentPreview(after(g, 'C', q - 1), input)).toEqual(a);
+    }
+    expect(rnd).not.toHaveBeenCalled();
+    rnd.mockRestore();
+  });
+
+  it('does not change the game that is then played: resolving after previewing equals resolving without it', () => {
+    for (const q of [2, 5, 7]) {
+      const snap = after(g, 'C', q - 1);
+      const input = g.snapshot.inputs[q - 1];
+      const plain = V3.resolveQuarter(after(g, 'C', q - 1), input);
+      V3.investmentPreview(snap, input); V3.investmentPreview(snap, { ...input, allocation: { ...input.allocation, consumer: 0, cashReserve: input.allocation.cashReserve + input.allocation.consumer } });
+      expect(V3.resolveQuarter(snap, input)).toEqual(plain);
+    }
+  });
+
+  it('returns only capability and workload fields — nothing revenue-, market- or competitor-dependent', () => {
+    const p = V3.investmentPreview(after(g, 'C', 4), g.snapshot.inputs[4])!;
+    expect(Object.keys(p).sort()).toEqual(['buckets', 'workload']);
+    expect(Object.keys(p.workload).sort()).toEqual(['absorption', 'coordinationLoad', 'cultureLoss', 'level', 'ratio']);
+    for (const b of Object.values(p.buckets)) expect(Object.keys(b).sort()).toEqual(['bucket', 'ceiling', 'current', 'effectiveGain', 'headroom', 'lostToWorkload', 'projected', 'target', 'usableGain', 'wastedGain']);
+  });
+
+  it('reveals nothing about the market path: the same state and plan give the same preview under A, B and C data, every quarter', () => {
+    for (const id of ['adaptive', 'enterprise-only', 'balanced']) for (const path of ['A', 'B', 'C'] as const) {
+      const gp = play(S(id), { engine: 'v3', path, version: V11 });
+      for (let q = 1; q <= 8; q++) {
+        const snap = after(gp, path, q - 1);
+        const plan: V2PlayerQuarterInput = { quarter: q, allocation: gp.snapshot.inputs[q - 1].allocation };
+        const [a, b, c] = (['A', 'B', 'C'] as const).map(m => V3.investmentPreview({ ...snap, marketPath: m }, plan));
+        expect(b, `${id} ${path} Q${q}`).toEqual(a);
+        expect(c, `${id} ${path} Q${q}`).toEqual(a);
+      }
+    }
   });
 });

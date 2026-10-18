@@ -88,12 +88,19 @@ export function validateQuarterInput(snap: V2GameSnapshot, input: V2PlayerQuarte
 export const forecastQuarter = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Forecast =>
   (isV3(snap) ? V3.forecastQuarter(snap, input) : V2.forecastQuarter(snap, input));
 /**
- * V3.1 Stage 3B: investment effectiveness for the planned quarter, from the engine's own calculation (V3 games only;
- * V2 games return null and keep their original estimates).
+ * V3.1 Stage 3B: engine versions whose decision screen shows the investment effectiveness indicators and workload
+ * gauge. V2 and v3-econ-1.0 games keep their original investment interface.
+ */
+export const INVESTMENT_INDICATOR_VERSIONS: readonly string[] = ['v3-econ-1.1'];
+export const showsInvestmentIndicators = (snap: V2GameSnapshot): boolean =>
+  isV3(snap) && INVESTMENT_INDICATOR_VERSIONS.includes(snap.engineVersion);
+/**
+ * V3.1 Stage 3B: investment effectiveness for the planned quarter, from the engine's own calculation. Only for engine
+ * versions in INVESTMENT_INDICATOR_VERSIONS; every other game (V2, v3-econ-1.0) gets null and its original estimates.
  */
 export type V3InvestmentPreview = V3.V3InvestmentPreview;
 export const investmentPreview = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): V3InvestmentPreview | null =>
-  (isV3(snap) ? V3.investmentPreview(snap, input) : null);
+  (showsInvestmentIndicators(snap) ? V3.investmentPreview(snap, input) : null);
 export const resolveQuarter = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Resolution =>
   (isV3(snap) ? V3.resolveQuarter(snap, input) : V2.resolveQuarter(snap, input));
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Term } from '../ds/glossary';
-import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, economicsOf, investmentPreview, V2Forecast, type V3InvestmentPreview } from '../../engine';
+import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, economicsOf, investmentPreview, showsInvestmentIndicators, V2Forecast, type V3InvestmentPreview } from '../../engine';
 import { saturationStatus } from '../../insights/saturation';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
 import type { V2Allocation } from '../../../../simulation/engineV2';
@@ -107,11 +107,13 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
     } catch { return null; }
   }, [snap, input, invested, envelope]);
 
-  // V3.1 Stage 3B: investment effectiveness from the engine's own calculation of this plan (V3 games, within budget).
+  // V3.1 Stage 3B: investment effectiveness from the engine's own calculation of this plan (v3-econ-1.1 games only,
+  // within budget). Without a preview the original investment interface is shown unchanged.
+  const indicators = showsInvestmentIndicators(snap);
   const preview: V3InvestmentPreview | null = useMemo(() => {
-    if (!v3 || invested > envelope + 1e-9) return null;
+    if (!indicators || invested > envelope + 1e-9) return null;
     try { return investmentPreview(snap, input); } catch { return null; }
-  }, [v3, snap, input, invested, envelope]);
+  }, [indicators, snap, input, invested, envelope]);
 
   const beliefs = BELIEFS[q] ?? [];
   const risks = RISKS[q] ?? [];
@@ -218,7 +220,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
             </div>
           )}
           {prefillAfterFinal && <p className="ds-muted" data-testid="v2-prefill-after-final" style={{ margin: 0 }}>Choose your final strategic decision first: the budget depends on it. You can then start from last quarter’s allocation.</p>}
-          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} v3={v3} preview={preview} />
+          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} preview={preview} />
           <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode}
             expansion={v3 && econ.financing.quarters.includes(q) && !spec.final ? { value: input.expansion ?? 0, max: econ.financing.maxExpansion, floor: econ.financing.cashFloor, onChange: x => set({ expansion: x > 0 ? x : undefined }) } : undefined} />
         </div>
@@ -297,7 +299,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 /** The resource-allocation workspace: budget, visual mix, per-bucket guidance and an execution-capacity estimate. */
-function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast, expansion = 0, v3 = false, preview = null }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null; expansion?: number; v3?: boolean; preview?: V3InvestmentPreview | null }) {
+function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast, expansion = 0, preview = null }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null; expansion?: number; preview?: V3InvestmentPreview | null }) {
   const q = workingQuarter(snap)!;
   const invested = BUCKETS.reduce((t, b) => t + (allocation[b] || 0), 0);
   const kept = envelope - invested;
@@ -331,7 +333,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
           const tti = timeToImpact(b);
           const gain = nominalGain(b, amt);
           const sat = saturationStatus(snap.state, b);
-          const pv = v3 ? preview?.buckets[b] : undefined;
+          const pv = preview?.buckets[b];
           const capName = CAP_SHORT[b];
           const nearCeiling = !!pv && (pv.wastedGain >= 0.5 || (amt > 0 ? pv.headroom < pv.effectiveGain : pv.headroom <= 5));
           return (
@@ -354,7 +356,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
                 <summary>Competing executive considerations</summary>
                 <dl>{PERSPECTIVE_ORDER.filter(r => BUCKET_PERSPECTIVES[b][r]).map(r => <div key={r} style={{ display: 'contents' }}><dt title={ROLE_TITLES[r]}>{ROLE_SHORT[r]}</dt><dd>{pick(mode, BUCKET_PERSPECTIVES[b][r]!)}</dd></div>)}</dl>
               </details>
-              {amt > 0 && !v3 && (
+              {amt > 0 && !pv && (
                 <div className="ds-bucket-meta" data-testid={`v2-bucket-est-${b}`}>
                   <span><b>Builds:</b> {info.builds}.</span>
                   <span><b>Lands:</b> {tti.schedule.map((share, i) => `${calendarShort(q + i)} ${(share * 100).toFixed(0)}%`).join(' · ')}.</span>
@@ -384,7 +386,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
         </div>
       </div>
 
-      {v3 && preview ? <WorkloadGauge w={preview.workload} /> : (!v3 && <div className="ds-gauge" data-testid="v2-capacity" data-level={est.level}>
+      {preview ? <WorkloadGauge w={preview.workload} /> : (<div className="ds-gauge" data-testid="v2-capacity" data-level={est.level}>
         <div className="ds-row" style={{ justifyContent: 'space-between' }}>
           <span className="ds-small" style={{ fontWeight: 650 }}><Term id="execution-capacity">Execution capacity</Term> (estimate)</span>
           <span className={`ds-small ds-tone-${levelTone}`} style={{ fontWeight: 700 }}><Icon name={levelTone === 'good' ? 'check' : 'alert'} size={12} /> {levelText} · {pct(est.ratio)}</span>

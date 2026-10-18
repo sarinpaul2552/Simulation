@@ -52,3 +52,21 @@ test('V3 decision screen shows engine-backed capability, effective gain and work
   });
   await expectPhase(page, 'briefing', 2);
 });
+
+for (const [label, market, econ] of [['V2', 'v2', undefined], ['v3-econ-1.0', 'B', '1.0']] as const) {
+  test(`${label} decision screen keeps the original investment interface (no Stage 3B indicators)`, async ({ browser }) => {
+    const { page: fac } = await newPage(browser);
+    const s = await createSession(fac, ['Original'], { pacing: 'self', market, econ });
+    const { page } = await newPage(browser);
+    await joinTeam(page, s.sessionCode, s.teamCodes[0]);
+    const plan: V2PlayerQuarterInput = { quarter: 1, allocation: alloc({ consumer: 5, aiProduct: 3 }) };
+    await playQuarter(page, plan, {
+      onDecide: async p => {
+        await expect(p.getByTestId('v2-capacity')).toHaveAttribute('data-level', /comfortable|busy|stretched|overloaded/);
+        await expect(p.getByTestId('v2-bucket-est-consumer')).toContainText('Estimate:');
+        for (const id of ['v2-workload-level', 'v2-cap-consumer', 'v2-eff-consumer']) await expect(p.getByTestId(id)).toHaveCount(0);
+      },
+    });
+    await expectPhase(page, 'briefing', 2);
+  });
+}
