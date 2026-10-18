@@ -44,6 +44,12 @@ export interface V3Mechanisms {
    * tightens with recession pressure.
    */
   creditCycle: boolean;
+  /**
+   * Stage 3B (v3-econ-1.1) · Enterprise deal conversion follows enterprise demand: the win-rate contribution of the
+   * company's Enterprise capability (what Enterprise investment buys) is scaled by
+   * clamp(1 + winCapDemandSensitivity × (enterpriseDemand − 1), winCapDemandBounds). Win rate → bookings → recognition.
+   */
+  enterpriseDemandConversion: boolean;
 }
 
 /** Every V3 engine version, oldest first. A version, once released, is never edited — later economics get a new version. */
@@ -66,6 +72,7 @@ export const V3_ECONOMICS = {
     // Stage 3A mechanisms: explicitly off in 1.0 (explicit keys so a version switch always restores them)
     installedBaseDemand: false,
     creditCycle: false,
+    enterpriseDemandConversion: false,
   } as V3Mechanisms,
   /** E1 — AI-native revenue level. target = base + perPoint × (adoption − 10) × demand × quality × macro; moves `speed` of the gap per quarter. */
   ai: {
@@ -83,6 +90,9 @@ export const V3_ECONOMICS = {
     recognition: [[1, 0.5], [2, 0.5]] as readonly (readonly [number, number])[],
     /** Multiplier on the Enterprise investment's recurring delivery commitment (V2: 4% of the investment per quarter for 6 quarters). */
     deliveryCommitmentScale: 0.5,
+    /** Stage 3B (enterpriseDemandConversion only; inactive in 1.0): demand sensitivity of the capability win-rate term. */
+    winCapDemandSensitivity: 0,
+    winCapDemandBounds: [1, 1] as readonly number[],
   },
   /** E3 — University conversion. win rate = base × (1 + perTrust × (trust − 70)) + perRelCredential × relative Credential (bounded). */
   university: {
@@ -222,7 +232,7 @@ const V3_ECON_1_0: V3EconomicsConfig = deepFreeze(cloneConfig(V3_ECONOMICS));
  */
 export const V3_1_1_CHANGES: DeepPartial<V3EconomicsConfig> = {
   // Stage 3A — recession sensitivity of existing customers (Moderate calibration, Stage 3 design C1)
-  mechanisms: { installedBaseDemand: true, creditCycle: true },
+  mechanisms: { installedBaseDemand: true, creditCycle: true, enterpriseDemandConversion: true },
   demand: {
     consumerDemandLoss: 0.10,
     consumerMacroLoss: 0.02,
@@ -236,6 +246,9 @@ export const V3_1_1_CHANGES: DeepPartial<V3EconomicsConfig> = {
     expansionDemandBounds: [0.6, 1.3],
   },
   ai: { macroMonetization: 0.25 },
+  // Stage 3B — Enterprise deal conversion follows enterprise demand: unit elasticity (s = 1.0), matching the existing
+  // demand scaling of enterprise pipeline inflow; the [0.5, 1.5] bounds never bind on the authored paths (0.80–1.42).
+  enterprise: { winCapDemandSensitivity: 1.0, winCapDemandBounds: [0.5, 1.5] },
   // Stage 3A — credit cycle (middle spread setting S2, Stage 3 design C2)
   credit: {
     leverageSpreadPerTurn: 0.005,
@@ -294,5 +307,5 @@ export function withRegisteredV3Config<T>(version: V3EngineVersion, overrides: D
 
 export const ALL_MECHANISMS_OFF: V3Mechanisms = {
   aiRevenueLevel: false, enterpriseConversion: false, universityConversion: false, organizationalHealth: false, contractEnvelopeClaim: false, recessionStance: false, financingExpansion: false,
-  installedBaseDemand: false, creditCycle: false,
+  installedBaseDemand: false, creditCycle: false, enterpriseDemandConversion: false,
 };

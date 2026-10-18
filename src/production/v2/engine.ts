@@ -87,6 +87,13 @@ export function validateQuarterInput(snap: V2GameSnapshot, input: V2PlayerQuarte
 }
 export const forecastQuarter = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Forecast =>
   (isV3(snap) ? V3.forecastQuarter(snap, input) : V2.forecastQuarter(snap, input));
+/**
+ * V3.1 Stage 3B: investment effectiveness for the planned quarter, from the engine's own calculation (V3 games only;
+ * V2 games return null and keep their original estimates).
+ */
+export type V3InvestmentPreview = V3.V3InvestmentPreview;
+export const investmentPreview = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): V3InvestmentPreview | null =>
+  (isV3(snap) ? V3.investmentPreview(snap, input) : null);
 export const resolveQuarter = (snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Resolution =>
   (isV3(snap) ? V3.resolveQuarter(snap, input) : V2.resolveQuarter(snap, input));
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Term } from '../ds/glossary';
-import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, economicsOf, V2Forecast } from '../../engine';
+import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, economicsOf, investmentPreview, V2Forecast, type V3InvestmentPreview } from '../../engine';
 import { saturationStatus } from '../../insights/saturation';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
 import type { V2Allocation } from '../../../../simulation/engineV2';
@@ -107,6 +107,12 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
     } catch { return null; }
   }, [snap, input, invested, envelope]);
 
+  // V3.1 Stage 3B: investment effectiveness from the engine's own calculation of this plan (V3 games, within budget).
+  const preview: V3InvestmentPreview | null = useMemo(() => {
+    if (!v3 || invested > envelope + 1e-9) return null;
+    try { return investmentPreview(snap, input); } catch { return null; }
+  }, [v3, snap, input, invested, envelope]);
+
   const beliefs = BELIEFS[q] ?? [];
   const risks = RISKS[q] ?? [];
   // Batch 10A: one biggest risk (older drafts with two risks still display the first and remain valid).
@@ -212,7 +218,7 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
             </div>
           )}
           {prefillAfterFinal && <p className="ds-muted" data-testid="v2-prefill-after-final" style={{ margin: 0 }}>Choose your final strategic decision first: the budget depends on it. You can then start from last quarter’s allocation.</p>}
-          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} />
+          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} v3={v3} preview={preview} />
           <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode}
             expansion={v3 && econ.financing.quarters.includes(q) && !spec.final ? { value: input.expansion ?? 0, max: econ.financing.maxExpansion, floor: econ.financing.cashFloor, onChange: x => set({ expansion: x > 0 ? x : undefined }) } : undefined} />
         </div>
@@ -291,7 +297,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 /** The resource-allocation workspace: budget, visual mix, per-bucket guidance and an execution-capacity estimate. */
-function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast, expansion = 0 }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null; expansion?: number }) {
+function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast, expansion = 0, v3 = false, preview = null }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null; expansion?: number; v3?: boolean; preview?: V3InvestmentPreview | null }) {
   const q = workingQuarter(snap)!;
   const invested = BUCKETS.reduce((t, b) => t + (allocation[b] || 0), 0);
   const kept = envelope - invested;
@@ -325,13 +331,22 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
           const tti = timeToImpact(b);
           const gain = nominalGain(b, amt);
           const sat = saturationStatus(snap.state, b);
+          const pv = v3 ? preview?.buckets[b] : undefined;
+          const capName = CAP_SHORT[b];
+          const nearCeiling = !!pv && (pv.wastedGain >= 0.5 || (amt > 0 ? pv.headroom < pv.effectiveGain : pv.headroom <= 5));
           return (
             <div className="ds-bucket" key={b} data-bucket={b}>
               <span className="ds-bucket-swatch" style={{ background: BUCKET_COLOR[b] }} />
               <div>
-                <label className="ds-bucket-name" htmlFor={`alloc-${b}`}>{info.name}<span className="ds-muted" style={{ fontWeight: 500 }} title="From the engine’s maturation schedule">· {tti.schedule[0] >= 0.5 ? 'pays off sooner' : 'pays off later'}</span></label>
+                <label className="ds-bucket-name" htmlFor={`alloc-${b}`}>{info.name}<span className="ds-muted" style={{ fontWeight: 500 }} title="From the engine’s maturation schedule">· {tti.schedule[0] >= 0.5 ? 'pays off sooner' : 'pays off later'}</span>
+                  {pv && <span className="ds-badge" data-testid={`v2-cap-${b}`} title={`Current ${capName} capability (ceiling ${r0(pv.ceiling)})`}>{capName} {r0(pv.current)}/{r0(pv.ceiling)}</span>}</label>
                 <div className="ds-bucket-desc">{mode === 'mba' ? info.mba : info.ug}</div>
-                {sat.near && <div className="ds-small ds-tone-caution" data-testid={`v2-saturation-${b}`}><Icon name="alert" size={12} /> Close to what the organization can use: {info.builds.split(',')[0]} is near its ceiling once earlier investment lands. More here is likely to be wasted.</div>}
+                {pv && amt > 0 && (
+                  <div className="ds-small" data-testid={`v2-eff-${b}`} data-usable={pv.usableGain.toFixed(2)} data-wasted={pv.wastedGain.toFixed(2)}>
+                    Expected <b>+{r0(pv.usableGain)}</b> → {r0(pv.projected)}{pv.wastedGain >= 0.5 && <span className="ds-tone-caution"> · {r0(pv.wastedGain)} wasted</span>} <span className="ds-muted" title="Estimate from the engine: earlier investment lands as scheduled; later events can change it">(est.)</span>
+                  </div>
+                )}
+                {(pv ? nearCeiling : sat.near) && <div className="ds-small ds-tone-caution" data-testid={`v2-saturation-${b}`}><Icon name="alert" size={12} /> {pv ? 'Near ceiling: more here adds little.' : <>Close to what the organization can use: {info.builds.split(',')[0]} is near its ceiling once earlier investment lands. More here is likely to be wasted.</>}</div>}
               </div>
               <input id={`alloc-${b}`} data-testid={`v2-alloc-${b}`} type="number" min={0} step={0.5} inputMode="decimal" value={allocation[b]} onChange={e => onChange(b, parseFloat(e.target.value))} aria-label={`${info.name} ($M)`} />
               <input type="range" min={0} max={Math.min(30, envelope)} step={0.5} value={Math.min(amt, 30)} onChange={e => onChange(b, parseFloat(e.target.value))} aria-label={`${info.name} slider`} tabIndex={-1} />
@@ -339,13 +354,25 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
                 <summary>Competing executive considerations</summary>
                 <dl>{PERSPECTIVE_ORDER.filter(r => BUCKET_PERSPECTIVES[b][r]).map(r => <div key={r} style={{ display: 'contents' }}><dt title={ROLE_TITLES[r]}>{ROLE_SHORT[r]}</dt><dd>{pick(mode, BUCKET_PERSPECTIVES[b][r]!)}</dd></div>)}</dl>
               </details>
-              {amt > 0 && (
+              {amt > 0 && !v3 && (
                 <div className="ds-bucket-meta" data-testid={`v2-bucket-est-${b}`}>
                   <span><b>Builds:</b> {info.builds}.</span>
                   <span><b>Lands:</b> {tti.schedule.map((share, i) => `${calendarShort(q + i)} ${(share * 100).toFixed(0)}%`).join(' · ')}.</span>
                   <span><b>Workload:</b> +{bucketTransformationLoad(b, Math.min(amt, 30)).toFixed(0)} load points.</span>
                   <span><b>Estimate:</b> up to about +{gain.toFixed(1)} {info.builds.split(',')[0]} points before workload losses (not guaranteed).</span>
                 </div>
+              )}
+              {amt > 0 && pv && (
+                <details className="ds-perspectives" data-testid={`v2-bucket-est-${b}`}>
+                  <summary>Details</summary>
+                  <div className="ds-bucket-meta" style={{ padding: '4px 0' }}>
+                    <span><b>Builds:</b> {info.builds}.</span>
+                    <span><b>Lands:</b> {tti.schedule.map((share, i) => `${calendarShort(q + i)} ${(share * 100).toFixed(0)}%`).join(' · ')}.</span>
+                    <span><b>New gain:</b> +{pv.effectiveGain.toFixed(1)} after workload (−{pv.lostToWorkload.toFixed(1)} lost to workload).</span>
+                    <span><b>Room under ceiling:</b> {pv.headroom.toFixed(1)} after earlier investment lands{pv.wastedGain >= 0.05 ? `; ${pv.wastedGain.toFixed(1)} would be wasted` : ''}.</span>
+                    <span className="ds-muted">Estimate from the engine; not a guaranteed return.</span>
+                  </div>
+                </details>
               )}
             </div>
           );
@@ -357,7 +384,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
         </div>
       </div>
 
-      <div className="ds-gauge" data-testid="v2-capacity" data-level={est.level}>
+      {v3 && preview ? <WorkloadGauge w={preview.workload} /> : (!v3 && <div className="ds-gauge" data-testid="v2-capacity" data-level={est.level}>
         <div className="ds-row" style={{ justifyContent: 'space-between' }}>
           <span className="ds-small" style={{ fontWeight: 650 }}><Term id="execution-capacity">Execution capacity</Term> (estimate)</span>
           <span className={`ds-small ds-tone-${levelTone}`} style={{ fontWeight: 700 }}><Icon name={levelTone === 'good' ? 'check' : 'alert'} size={12} /> {levelText} · {pct(est.ratio)}</span>
@@ -367,7 +394,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
         {est.level === 'stretched' || est.level === 'overloaded'
           ? <p className="ds-small ds-tone-bad" style={{ margin: '8px 0 0' }}>Your teams would be {est.level}: only about {pct(est.absorption)} of new investment is likely to turn into capability. Fewer simultaneous initiatives or more People investment reduces the loss.</p>
           : <p className="ds-muted" style={{ margin: '8px 0 0' }}>{est.activeInitiatives} initiative{est.activeInitiatives === 1 ? '' : 's'} at once{est.coordination > 0 ? `, adding ${est.coordination} points of coordination work` : ''}. Strategy commitments, contracts and events can add more.</p>}
-      </div>
+      </div>)}
       {over && <p className="ds-error" style={{ marginTop: 10 }}><Icon name="alert" />You have allocated {money(invested)} — more than the {money(envelope, 0)} budget.</p>}
       <p className="ds-muted" style={{ marginTop: 10, marginBottom: 0 }}>Investment builds capability over one to three quarters (<Term id="maturation">capability maturation</Term>). Returns are not guaranteed: they depend on your teams’ capacity and on the market.</p>
     </section>
@@ -444,6 +471,29 @@ function ManagementCard({ spec, value, onChange, mode, cutsAllowed = true, peopl
 }
 
 interface ExpansionControl { value: number; max: number; floor: number; onChange: (x: number) => void }
+
+const CAP_SHORT: Record<string, string> = { consumer: 'Consumer', enterprise: 'Enterprise', aiProduct: 'AI', people: 'Talent', universityCredentials: 'Credential' };
+const r0 = (x: number) => String(Math.round(x));
+
+/** V3.1 Stage 3B: organizational workload from the engine's calculation of this plan (Low / Moderate / High). */
+function WorkloadGauge({ w }: { w: V3InvestmentPreview['workload'] }) {
+  const label = { low: 'Low', moderate: 'Moderate', high: 'High' }[w.level];
+  const tone = w.level === 'high' ? 'bad' : w.level === 'moderate' ? 'caution' : 'good';
+  return (
+    <div className="ds-gauge" data-testid="v2-capacity" data-level={w.level} data-ratio={w.ratio.toFixed(3)}>
+      <div className="ds-row" style={{ justifyContent: 'space-between' }}>
+        <span className="ds-small" style={{ fontWeight: 650 }}><Term id="execution-capacity">Workload</Term> (estimate)</span>
+        <span className={`ds-small ds-tone-${tone}`} style={{ fontWeight: 700 }} data-testid="v2-workload-level"><Icon name={tone === 'good' ? 'check' : 'alert'} size={12} /> {label} · {pct(w.ratio)} of capacity</span>
+      </div>
+      <div className="ds-gauge-track ds-gauge-track-v3"><span className="ds-gauge-mark" style={{ left: `${Math.min(100, (w.ratio / 1.25) * 100)}%` }} /></div>
+      {w.level !== 'low' && (
+        <p className={`ds-small ds-tone-${tone}`} style={{ margin: '6px 0 0' }} data-testid="v2-workload-note">
+          About {pct(w.absorption)} of new investment becomes capability{w.cultureLoss > 0 ? `; culture −${w.cultureLoss.toFixed(1)} this quarter` : ''}. Fewer initiatives or People investment ease it.
+        </p>
+      )}
+    </div>
+  );
+}
 
 function FinancingCard({ forecast, value, debt, ownership, onChange, mode, expansion }: { forecast: V2Forecast | null; value: V2FinancingAction[]; debt: number; ownership: number; onChange: (f: V2FinancingAction[]) => void; mode: V2PresentationMode; expansion?: ExpansionControl }) {
   const amt = (kind: 'debt' | 'equity' | 'repay') => value.filter(a => a.kind === kind).reduce((t, a) => t + ('amount' in a ? a.amount : 0), 0);

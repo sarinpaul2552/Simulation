@@ -309,6 +309,8 @@
 @media (max-width: 520px) { .ds-perspectives dl { grid-template-columns: minmax(0, 1fr); } .ds-perspectives dd { border-top: none; padding-top: 0; } }
 .ds-gauge { margin-top: 14px; padding: 12px 0 0; border-top: 1px solid var(--ds-line); }
 .ds-gauge-track { position: relative; height: 8px; background: linear-gradient(90deg, var(--nx-teal-tint) 0 50%, var(--nx-amber-tint) 50% 80%, var(--nx-negative-tint) 80% 100%); margin: 8px 0 4px; }
+/* V3.1 Stage 3B workload bands on a 0–125% scale: Low < 50%, Moderate 50–60%, High > 60% (engine organizational-health thresholds) */
+.ds-gauge-track-v3 { background: linear-gradient(90deg, var(--nx-teal-tint) 0 40%, var(--nx-amber-tint) 40% 48%, var(--nx-negative-tint) 48% 100%); }
 .ds-gauge-mark { position: absolute; top: -4px; width: 3px; height: 16px; background: var(--ds-ink); transform: translateX(-1px); }
 .ds-gauge-scale { display: flex; justify-content: space-between; font-size: var(--fs-method); color: var(--ds-ink-3); }
 .ds-input { font: inherit; padding: 8px 10px; border: 1px solid var(--ds-line-2); border-radius: 3px; width: 100%; background: var(--nx-paper); color: var(--ds-ink); }

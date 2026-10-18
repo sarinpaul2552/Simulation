@@ -407,6 +407,82 @@ export interface V2Forecast {
 }
 
 /** CFO forecast: the quarter as planned WITHOUT financing actions, plus the financing terms on offer (same as the Test Lab). */
+// ============ INVESTMENT EFFECTIVENESS PREVIEW (V3.1 Stage 3B) ============
+
+export type V3InvestmentBucket = 'consumer' | 'enterprise' | 'aiProduct' | 'people' | 'universityCredentials';
+/** The capability each investment bucket mainly builds (its first calibrated target in the engine's bucket curves). */
+export const PRIMARY_TARGET: Record<V3InvestmentBucket, 'consumer' | 'enterprise' | 'ai' | 'talent' | 'credential'> = {
+  consumer: 'consumer', enterprise: 'enterprise', aiProduct: 'ai', people: 'talent', universityCredentials: 'credential',
+};
+
+export interface V3BucketEffectiveness {
+  bucket: V3InvestmentBucket;
+  target: string;
+  /** Capability at the start of the quarter. */
+  current: number;
+  /** Ceiling the engine applies this quarter (100 unless a destination raises it). */
+  ceiling: number;
+  /** Gain this quarter's investment creates after workload absorption (it matures over one to three quarters). */
+  effectiveGain: number;
+  /** Part of effectiveGain lost to workload (nominal − effective). */
+  lostToWorkload: number;
+  /** Part of effectiveGain that fits under the ceiling once earlier investment has landed. */
+  usableGain: number;
+  /** Part of effectiveGain that would exceed the ceiling (wasted). */
+  wastedGain: number;
+  /** Where the capability is heading once all investment made so far (including this quarter's) has landed. */
+  projected: number;
+  /** Room left under the ceiling before this quarter's investment (after earlier investment lands). */
+  headroom: number;
+}
+
+export interface V3InvestmentPreview {
+  buckets: Record<V3InvestmentBucket, V3BucketEffectiveness>;
+  workload: {
+    /** Transformation load ÷ effective capacity, as the engine computes it for this plan. */
+    ratio: number;
+    /** Share of new investment that becomes capability (engine absorption factor). */
+    absorption: number;
+    /** Culture points this plan's overload would cost this quarter (engine organizational health; 0 when none). */
+    cultureLoss: number;
+    level: 'low' | 'moderate' | 'high';
+    coordinationLoad: number;
+  };
+}
+
+/**
+ * Investment effectiveness for a planned quarter, read from the engine's own calculation of that quarter (the same
+ * calculation `resolveQuarter` uses — maturation, absorption, execution load, destination focus, events and ceilings).
+ * Only capability and workload fields are returned: nothing market- or revenue-dependent, so no hidden market
+ * information is revealed. "Projected" values assume earlier investment lands as scheduled (estimate: later shocks,
+ * culture strain and future decisions are not known yet). Returns null when the plan cannot be computed (e.g. invalid).
+ *
+ * Workload level uses the engine's thresholds: high = overload erodes culture this quarter; moderate = more than 5% of
+ * new investment is lost to workload; otherwise low.
+ */
+function investmentPreviewImpl(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V3InvestmentPreview | null {
+  let cap: ReturnType<typeof calculateV2QuarterConsequence>['capability'];
+  try { cap = calculateV2QuarterConsequence(snap.state, toEngineInput(snap, { ...input, financing: [] })).capability; } catch { return null; }
+  const buckets = {} as Record<V3InvestmentBucket, V3BucketEffectiveness>;
+  for (const b of Object.keys(PRIMARY_TARGET) as V3InvestmentBucket[]) {
+    const target = PRIMARY_TARGET[b];
+    const t = cap.targets.find(x => x.target === target)!;
+    const ceiling = cap.ceilings[target];
+    const eventualUncapped = t.opening + t.maturedThisQuarter + t.pendingAfter;
+    const withoutNew = eventualUncapped - t.effectiveNew;
+    const headroom = Math.max(0, ceiling - withoutNew);
+    const usableGain = Math.min(t.effectiveNew, headroom);
+    buckets[b] = {
+      bucket: b, target, current: t.opening, ceiling,
+      effectiveGain: t.effectiveNew, lostToWorkload: t.absorptionLoss, usableGain, wastedGain: t.effectiveNew - usableGain,
+      projected: Math.min(ceiling, eventualUncapped), headroom,
+    };
+  }
+  const cultureLoss = cap.organization?.overloadLoss ?? 0;
+  const level = cultureLoss > 0 ? 'high' : cap.absorptionFactor < 0.95 ? 'moderate' : 'low';
+  return { buckets, workload: { ratio: cap.loadToCapacityRatio, absorption: cap.absorptionFactor, cultureLoss, level, coordinationLoad: cap.coordinationLoad } };
+}
+
 function forecastQuarterImpl(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Forecast {
   const f = assessLiquidity(snap.state, toEngineInput(snap, input));
   return { projectedClosingCash: f.projectedClosingCash, minimumOperatingCash: f.minimumOperatingCash, gap: f.gap, options: f.options };
@@ -670,6 +746,7 @@ export function envelopeForInput(snap: V2GameSnapshot, input: V2PlayerQuarterInp
 export function toEngineInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2QuarterInput { return inSnapVersion(snap, () => toEngineInputImpl(snap, input)); }
 export function validateQuarterInput(snap: V2GameSnapshot, input: V2PlayerQuarterInput): string[] { return inSnapVersion(snap, () => validateQuarterInputImpl(snap, input)); }
 export function forecastQuarter(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Forecast { return inSnapVersion(snap, () => forecastQuarterImpl(snap, input)); }
+export function investmentPreview(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V3InvestmentPreview | null { return inSnapVersion(snap, () => investmentPreviewImpl(snap, input)); }
 export function resolveQuarter(snap: V2GameSnapshot, input: V2PlayerQuarterInput): V2Resolution { return inSnapVersion(snap, () => resolveQuarterImpl(snap, input)); }
 export function resultForQuarter(snap: V2GameSnapshot, quarter: number): V2QuarterResult { return inSnapVersion(snap, () => resultForQuarterImpl(snap, quarter)); }
 export function headlineOf(snap: V2GameSnapshot): V2Headline { return inSnapVersion(snap, () => headlineOfImpl(snap)); }

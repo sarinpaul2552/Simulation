@@ -678,7 +678,15 @@ export function calculateV2CommercialConsequence(
   const entStrength = ramp(caps.enterprise, ke.enterpriseStrengthRamp[0], ke.enterpriseStrengthRamp[1]);
   const winCapRaw = (M.enterpriseConversion ? V3_ECONOMICS.enterprise.winPerRelCapability : ke.winPerRelCapability) * relativeCapability.enterprise;
   const winAiRaw = ke.winAiSynergy * aiEffect * entStrength;
-  const winCap = posScale(scalePositive(winCapRaw, csLimit) + winAiRaw * csLimit, fc.enterprise);
+  const winCapBase = posScale(scalePositive(winCapRaw, csLimit) + winAiRaw * csLimit, fc.enterprise);
+  // Stage 3B (1.1): the conversion power of the company's Enterprise capability follows enterprise demand — strong
+  // buyers' markets convert more of a sales advantage into wins, weak ones less (bounded). Customer Success still limits
+  // the upside (csLimit, above); the separate market term (winMkt) is unchanged.
+  const edc = V3_ECONOMICS.mechanisms.enterpriseDemandConversion;
+  const winDemandFactor = edc
+    ? Math.min(V3_ECONOMICS.enterprise.winCapDemandBounds[1], Math.max(V3_ECONOMICS.enterprise.winCapDemandBounds[0], 1 + V3_ECONOMICS.enterprise.winCapDemandSensitivity * (market.enterpriseDemand - 1)))
+    : 1;
+  const winCap = edc ? winCapBase * winDemandFactor : winCapBase;
   const winDep =
     ke.winPerProductQuality * (pq - 70) +
     ke.winPerTrust * (trust - 70) +
@@ -701,6 +709,7 @@ export function calculateV2CommercialConsequence(
       { label: 'Trust term', value: ke.winPerTrust * (trust - 70) },
       { label: 'Product Quality term', value: ke.winPerProductQuality * (pq - 70) },
       { label: 'Execution term', value: ke.winPerExecution * (caps.execution - 60) },
+      ...(edc ? [{ label: 'Enterprise demand factor on capability conversion', value: winDemandFactor }] : []),
     ]
   );
 
