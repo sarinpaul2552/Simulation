@@ -103,7 +103,7 @@ import {
   debtCapacity,
 } from './engineV3Financing';
 export type { V2FinancingAction, V2FinancingState, V2SolvencyState, V2FinancingOptions } from './engineV3Financing';
-import { destinationStrength } from './engineV3Destination';
+import { destinationStrength, destinationReadiness } from './engineV3Destination';
 import {
   V2CrisisState,
   V2CrisisResponseId,
@@ -792,7 +792,7 @@ export function finalView(s: V2TeamState, quarter: number): V2FinalView {
     aiCommercialReadiness: s.commercial.aiCommercialReadiness, destinationStrength: fv.destinationStrength,
     destinationId: s.destination?.id ?? null, distressed: s.solvency.distressed, insolvent: s.solvency.status === 'insolvent',
     covenantBreach: last?.covenantBreach ?? false, strategicValue: fv.strategicValue,
-    standaloneEquityValue: companyValuation({ ...fv, status: 'healthy', distressed: false }).preMoney,
+    standaloneEquityValue: companyValuation({ ...fv, status: 'healthy', distressed: false, ignoreDistress: true }).preMoney,
     debtCapacity: debtCapacity(fv, s.financing), partnerROFR: s.financing.partner?.rightOfFirstRefusal ?? false,
     fixedSemiFixed: s.costs.fixedSemiFixed,
   };
@@ -835,7 +835,17 @@ export function financingView(s: V2TeamState, quarter: number, dest: V2Destinati
     distressed: s.solvency.distressed,
     fixedSemiFixed: s.costs.fixedSemiFixed,
     strategicValue: strategicValue(s.capabilities, ds),
+    // Stage 3C-A valuation inputs (used only by the v3-econ-1.1 valuation corrections)
+    aiRevenueShare: aiRevenueShare(s),
+    destinationReadiness: dest ? destinationReadiness(dest.id, s).readiness : 0,
   };
+}
+
+/** AI-native share of segment revenue in the last completed quarter (0 with no revenue). */
+export function aiRevenueShare(s: V2TeamState): number {
+  const g = s.segmentRevenue;
+  const total = g.consumer + g.enterprise + g.university + g.aiNative;
+  return total > 0 ? g.aiNative / total : 0;
 }
 
 function opportunityView(s: V2TeamState) {

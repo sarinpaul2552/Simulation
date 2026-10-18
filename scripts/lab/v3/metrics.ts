@@ -11,6 +11,7 @@ import { verifySnapshot } from '../../../src/production/v2/engine';
 import { scoreV2Company as scoreV2 } from '../../../src/simulation/engineV2Scoring';
 import { scoreV2Company as scoreV3 } from '../../../src/simulationV3/engineV3Scoring';
 import type { PlayedGame } from './player';
+import { withV3Version } from '../../../src/simulationV3/engineV3Config';
 
 export interface GameMetrics {
   strategy: string; engine: string; path: string;
@@ -32,7 +33,8 @@ export function metricsOf(g: PlayedGame): GameMetrics {
   const val = valuationSeries(hist);
   const cards = allScorecards(hist);
   const s = g.snapshot.state;
-  const sc = (g.config.engine === 'v3' ? scoreV3 : scoreV2)(s as never);
+  // V3.1 Stage 3C-A: a V3 game is scored under its own engine version's configuration
+  const sc = g.config.engine === 'v3' ? withV3Version(g.snapshot.engineVersion, () => scoreV3(s as never)) : scoreV2(s as never);
   const ledgers = g.quarters.map(q => q.consequence.ledger);
   const q5 = g.quarters[4]?.input.opportunity;
   const q6 = g.quarters[5]?.input;

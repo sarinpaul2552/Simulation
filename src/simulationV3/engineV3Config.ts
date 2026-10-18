@@ -50,6 +50,29 @@ export interface V3Mechanisms {
    * clamp(1 + winCapDemandSensitivity × (enterpriseDemand − 1), winCapDemandBounds). Win rate → bookings → recognition.
    */
   enterpriseDemandConversion: boolean;
+  /**
+   * Stage 3C-A (v3-econ-1.1) · Q8 decision quality credits a growth option (scale independently, raise growth capital)
+   * only to the extent it is exercised: Q8 strategic investment above the default envelope, as a share of the option's
+   * extra envelope. An unexercised option scores like "continue". Raised cash still counts as cash.
+   */
+  decisionCreditOnExercise: boolean;
+  /**
+   * Stage 3C-A (v3-econ-1.1) · The valuation's distress discount is continuous: a liquidity discount that grows with the
+   * cash shortfall below minimum operating cash (reaching the old insolvency discount at −liquidityRange + minimum), plus a
+   * leverage discount that ramps across the covenant — replacing the step discounts (×0.7 distressed, ×0.4 insolvent).
+   */
+  gradedDistressValuation: boolean;
+  /**
+   * Stage 3C-A (v3-econ-1.1) · The valuation's strategy premium (and the time half of the score's destination coherence)
+   * uses min(destination strength, achieved destination readiness) instead of strength alone, which reaches 1 by Q8 with
+   * elapsed time whatever the company built.
+   */
+  readinessStrategyPremium: boolean;
+  /**
+   * Stage 3C-A (v3-econ-1.1) · The valuation's AI premium is half forward-looking (AI commercial readiness) and half
+   * commercial proof (AI-native share of revenue): 0.8 × ramp(readiness) × (1 − proofShare + proofShare × ramp(AI share)).
+   */
+  aiPremiumOnProof: boolean;
 }
 
 /** Every V3 engine version, oldest first. A version, once released, is never edited — later economics get a new version. */
@@ -73,6 +96,11 @@ export const V3_ECONOMICS = {
     installedBaseDemand: false,
     creditCycle: false,
     enterpriseDemandConversion: false,
+    // Stage 3C-A valuation and scoring corrections: explicitly off in 1.0
+    decisionCreditOnExercise: false,
+    gradedDistressValuation: false,
+    readinessStrategyPremium: false,
+    aiPremiumOnProof: false,
   } as V3Mechanisms,
   /** E1 — AI-native revenue level. target = base + perPoint × (adoption − 10) × demand × quality × macro; moves `speed` of the gap per quarter. */
   ai: {
@@ -187,6 +215,21 @@ export const V3_ECONOMICS = {
     enterpriseRestore: 0,
     expansionDemandBounds: [1, 1] as readonly number[],
   },
+  /**
+   * Stage 3C-A — valuation corrections (inactive in 1.0; every value below is used only when its mechanism is on).
+   *   gradedDistressValuation: discount = min(maxDiscount, liquidity + leverage) where
+   *     liquidity = maxDiscount × min(1, max(0, minimumOperatingCash − cash) ÷ liquidityRange)
+   *     leverage  = covenantDiscount × ramp(net debt ÷ annualized EBIT, covenantRamp)   (∞ when net debt and EBIT ≤ 0)
+   *   aiPremiumOnProof: AI term × (1 − aiProofShare + aiProofShare × ramp(AI-native revenue share, aiShareRamp)).
+   */
+  valuation: {
+    maxDiscount: 0,
+    liquidityRange: 30,
+    covenantDiscount: 0,
+    covenantRamp: [3.5, 4.5] as readonly number[],
+    aiProofShare: 0,
+    aiShareRamp: [0.03, 0.15] as readonly number[],
+  },
 };
 
 export type V3EconomicsConfig = typeof V3_ECONOMICS;
@@ -232,7 +275,10 @@ const V3_ECON_1_0: V3EconomicsConfig = deepFreeze(cloneConfig(V3_ECONOMICS));
  */
 export const V3_1_1_CHANGES: DeepPartial<V3EconomicsConfig> = {
   // Stage 3A — recession sensitivity of existing customers (Moderate calibration, Stage 3 design C1)
-  mechanisms: { installedBaseDemand: true, creditCycle: true, enterpriseDemandConversion: true },
+  mechanisms: {
+    installedBaseDemand: true, creditCycle: true, enterpriseDemandConversion: true,
+    decisionCreditOnExercise: true, gradedDistressValuation: true, readinessStrategyPremium: true, aiPremiumOnProof: true,
+  },
   demand: {
     consumerDemandLoss: 0.10,
     consumerMacroLoss: 0.02,
@@ -249,6 +295,11 @@ export const V3_1_1_CHANGES: DeepPartial<V3EconomicsConfig> = {
   // Stage 3B — Enterprise deal conversion follows enterprise demand: unit elasticity (s = 1.0), matching the existing
   // demand scaling of enterprise pipeline inflow; the [0.5, 1.5] bounds never bind on the authored paths (0.80–1.42).
   enterprise: { winCapDemandSensitivity: 1.0, winCapDemandBounds: [0.5, 1.5] },
+  // Stage 3C-A — valuation and scoring corrections (diagnostic P1-1 … P1-4). The distress discount keeps its old end
+  // points (30% with no cash left, 60% = the old insolvency discount at $15M of negative cash; 30% at a covenant breach
+  // of 4.5× and above) but moves continuously between them. Half of the AI premium requires AI-native revenue (3% → 15%
+  // of sales), mirroring the share-price rule that readiness not yet commercialised earns at most half.
+  valuation: { maxDiscount: 0.6, liquidityRange: 30, covenantDiscount: 0.3, covenantRamp: [3.5, 4.5], aiProofShare: 0.5, aiShareRamp: [0.03, 0.15] },
   // Stage 3A — credit cycle (middle spread setting S2, Stage 3 design C2)
   credit: {
     leverageSpreadPerTurn: 0.005,
@@ -308,4 +359,5 @@ export function withRegisteredV3Config<T>(version: V3EngineVersion, overrides: D
 export const ALL_MECHANISMS_OFF: V3Mechanisms = {
   aiRevenueLevel: false, enterpriseConversion: false, universityConversion: false, organizationalHealth: false, contractEnvelopeClaim: false, recessionStance: false, financingExpansion: false,
   installedBaseDemand: false, creditCycle: false, enterpriseDemandConversion: false,
+  decisionCreditOnExercise: false, gradedDistressValuation: false, readinessStrategyPremium: false, aiPremiumOnProof: false,
 };

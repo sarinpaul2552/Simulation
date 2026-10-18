@@ -17,12 +17,21 @@
  *   terminal insolvency (cash < 0 at the end, or ≥ 2 insolvent quarters) → overall ≤ 30, financial ≤ 20
  *   rescued insolvency (insolvent at some point, recovered)              → overall ≤ 55
  *   organizational collapse (Trust < 40, Culture < 40 or Talent < 30)    → overall ≤ 50
+ *
+ * V3.1 Stage 3C-A (v3-econ-1.1 only, switched by V3_ECONOMICS.mechanisms; 1.0 unchanged):
+ *   decisionCreditOnExercise — a Q8 growth option earns decision credit only as far as it is exercised (Q8 strategic
+ *     investment above the default envelope ÷ the option's extra envelope); unexercised it scores like "continue".
+ *   readinessStrategyPremium — the commitment half of destination coherence is min(strength, readiness now).
+ *   The shareholder-value component uses companyValuation, whose 1.1 corrections (graded distress, readiness-based
+ *   strategy premium, AI premium half-gated by AI-native revenue) are in engineV3Financing.
  */
 
 import type { V2TeamState } from './engineV3';
 import { companyValuation } from './engineV3Financing';
 import { V2_DESTINATIONS, destinationStrength, destinationReadiness } from './engineV3Destination';
 import { contractConcentration } from './engineV3Opportunity';
+import { maxEnvelope, V2_FINAL_CALIBRATION } from './engineV3Final';
+import { V3_ECONOMICS } from './engineV3Config';
 
 export const V2_SCORING_CALIBRATION = {
   weights: { financial: 0.4, strategic: 0.35, organizational: 0.25 },
@@ -73,6 +82,13 @@ export interface V2TerminalScore {
   sold: boolean;
 }
 
+/** Stage 3C-A: share of a Q8 growth option's extra envelope (above the default) actually invested, 0–1. */
+export function exercisedShare(q8StrategicInvestment: number, option: 'scale-independently' | 'raise-growth-capital'): number {
+  const base = V2_FINAL_CALIBRATION.defaultEnvelope;
+  const extra = maxEnvelope(option) - base;
+  return extra > 0 ? Math.max(0, Math.min(1, (q8StrategicInvestment - base) / extra)) : 0;
+}
+
 const sum = (cs: V2ScoreComponent[]) => 100 * cs.reduce((t, c) => t + c.score * c.weight, 0);
 const comp = (id: string, label: string, value: number, score: number, weight: number): V2ScoreComponent => ({ id, label, value, score, weight });
 
@@ -100,9 +116,13 @@ export function scoreV2Company(s: V2TeamState): V2TerminalScore {
   const annualOP = 4 * op;
   const leverage = s.financing.debt > 0 ? (annualOP > 0 ? s.financing.debt / annualOP : 10) : 0;
   const revYearAgo = L.length >= 5 ? L[L.length - 5].revenue : 200;
+  const readinessNow = dest ? destinationReadiness(dest.id, s).readiness : 0;
   const val = companyValuation({
     revenue, operatingProfit: op, cash: s.cash, revenueYearAgo: revYearAgo, aiCommercialReadiness: s.commercial.aiCommercialReadiness,
     destinationStrength: ds, debt: s.financing.debt, status: s.solvency.status, distressed: s.solvency.distressed,
+    // Stage 3C-A inputs (read only by the v3-econ-1.1 valuation corrections)
+    aiRevenueShare: total > 0 ? seg.aiNative / total : 0, destinationReadiness: readinessNow,
+    interestExpense: s.costHistory.length ? s.costHistory[s.costHistory.length - 1].financingCost : 0,
   });
   const equityValue = sold ? final!.saleOffer! : Math.max(0, val.preMoney);
   const shareholderValue = equityValue * s.financing.ownership;
@@ -130,8 +150,9 @@ export function scoreV2Company(s: V2TeamState): V2TerminalScore {
   };
   const top = drivers.map(valueOf).sort((a, b) => b - a).slice(0, 3);
   const capStrength = top.reduce((t, x) => t + Math.min(1, x / 100), 0) / top.length;
-  const readinessNow = dest ? destinationReadiness(dest.id, s).readiness : 0;
-  const coherence = dest ? 0.5 * ds + 0.5 * readinessNow : 0;
+  // Stage 3C-A (1.1): the commitment half of coherence counts only as far as readiness was achieved (time alone reaches 1).
+  const committed = V3_ECONOMICS.mechanisms.readinessStrategyPremium ? Math.min(ds, readinessNow) : ds;
+  const coherence = dest ? 0.5 * committed + 0.5 * readinessNow : 0;
   const bm = s.commercial.competitorBenchmarks;
   const posConsumer = ramp(s.capabilities.consumer - bm.consumer, -20, 40);
   const posEnterprise = ramp(s.capabilities.enterprise - bm.enterprise, -20, 40);
@@ -160,11 +181,16 @@ export function scoreV2Company(s: V2TeamState): V2TerminalScore {
   const largestSegment = total > 0 ? Math.max(seg.consumer, seg.enterprise, seg.university, seg.aiNative) / total : 1;
   const risk = 1 - Math.max(ramp(largestSegment, 0.6, 0.9), ramp(conc, 0.1, 0.35));
   const growthOptionsExisted = final ? final.availability.some(o => o.available && ['scale-independently', 'raise-growth-capital', 'acquire-consolidate'].includes(o.id)) : false;
+  const continueQuality = growthOptionsExisted ? 0.6 : 0.7;
   const decisionQuality = !final ? 0.5
+    : V3_ECONOMICS.mechanisms.decisionCreditOnExercise && (final.option === 'scale-independently' || final.option === 'raise-growth-capital')
+      // Stage 3C-A (1.1): a growth option earns credit only as far as it was exercised — Q8 strategic investment above
+      // the default envelope, as a share of the option's extra envelope. Unexercised, it scores like "continue".
+      ? continueQuality + (1 - continueQuality) * exercisedShare(last.strategicInvestment, final.option)
     : ['scale-independently', 'raise-growth-capital', 'acquire-consolidate'].includes(final.option) ? 1
     : final.option === 'stabilize-restructure' ? 0.8
     : final.option === 'strategic-sale' ? 0.5
-    : growthOptionsExisted ? 0.6 : 0.7;
+    : continueQuality;
   const strategic = [
     comp('capability', 'Capability strength where it competes (top-3 relevant)', capStrength, capStrength, 0.2),
     comp('coherence', 'Destination coherence (strength achieved, readiness now)', coherence, coherence, 0.15),

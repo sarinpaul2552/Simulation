@@ -170,6 +170,16 @@ export interface V2ValuationView {
   debt: number;
   status: V2SolvencyStatus;
   distressed: boolean;
+  /**
+   * Stage 3C-A inputs (read only by the v3-econ-1.1 valuation corrections; ignored when those mechanisms are off).
+   * aiRevenueShare: AI-native share of segment revenue. destinationReadiness: achieved readiness of the committed
+   * destination now (0 without one). interestExpense: last quarter's interest (added back for EBIT leverage).
+   * ignoreDistress: value the company as if healthy (standalone value for a sale offer, which applies its own factor).
+   */
+  aiRevenueShare?: number;
+  destinationReadiness?: number;
+  interestExpense?: number;
+  ignoreDistress?: boolean;
 }
 
 function ramp(x: number, lo: number, hi: number): number {
@@ -191,14 +201,37 @@ export interface V2Valuation {
 
 export function companyValuation(v: V2ValuationView): V2Valuation {
   const K = V2_FINANCING_CALIBRATION.valuation;
+  const M = V3_ECONOMICS.mechanisms;
+  const C = V3_ECONOMICS.valuation;
   const annualRevenue = 4 * v.revenue;
   const growth = v.revenueYearAgo > 0 ? v.revenue / v.revenueYearAgo - 1 : 0;
   const margin = v.revenue > 0 ? v.operatingProfit / v.revenue : 0;
-  const raw = K.baseMultiple + K.growthCoef * growth + K.marginCoef * margin + K.aiCoef * ramp(v.aiCommercialReadiness, 15, 70) + K.destinationCoef * v.destinationStrength;
+  // Stage 3C-A (1.1): half of the AI premium requires AI-native revenue (commercial proof); half rewards readiness.
+  const aiProof = M.aiPremiumOnProof ? 1 - C.aiProofShare + C.aiProofShare * ramp(v.aiRevenueShare ?? 0, C.aiShareRamp[0], C.aiShareRamp[1]) : 1;
+  // Stage 3C-A (1.1): the strategy premium needs achieved readiness, not only time since commitment.
+  const strategy = M.readinessStrategyPremium ? Math.min(v.destinationStrength, v.destinationReadiness ?? 0) : v.destinationStrength;
+  const raw = K.baseMultiple + K.growthCoef * growth + K.marginCoef * margin + K.aiCoef * ramp(v.aiCommercialReadiness, 15, 70) * aiProof + K.destinationCoef * strategy;
   const multiple = Math.min(K.multipleBounds[1], Math.max(K.multipleBounds[0], raw));
   const enterpriseValue = annualRevenue * multiple;
-  const discount = v.status === 'insolvent' ? K.insolvencyDiscount : v.distressed ? K.distressDiscount : 1;
+  const discount = M.gradedDistressValuation ? gradedDistressMultiplier(v) : v.status === 'insolvent' ? K.insolvencyDiscount : v.distressed ? K.distressDiscount : 1;
   return { annualRevenue, growth, margin, multiple, enterpriseValue, preMoney: (enterpriseValue + v.cash - v.debt) * discount, discount };
+}
+
+/**
+ * Stage 3C-A (v3-econ-1.1): continuous distress multiplier replacing the ×0.7 / ×0.4 steps.
+ *   liquidity = maxDiscount × min(1, max(0, minimum operating cash − cash) ÷ liquidityRange)
+ *               ($15M → 0; $0 → 30%, the old distress discount; −$15M → 60%, the old insolvency discount)
+ *   leverage  = covenantDiscount × ramp(net debt ÷ annualized EBIT, covenantRamp)   (30% from 4.5×; ∞ = net debt, EBIT ≤ 0)
+ *   multiplier = 1 − min(maxDiscount, liquidity + leverage)
+ */
+export function gradedDistressMultiplier(v: V2ValuationView): number {
+  if (v.ignoreDistress) return 1;
+  const C = V3_ECONOMICS.valuation;
+  const shortfall = Math.max(0, V2_FINANCING_CALIBRATION.liquidity.minimumOperatingCash - v.cash);
+  const liquidity = C.maxDiscount * Math.min(1, shortfall / C.liquidityRange);
+  const lev = netLeverage(v.debt, v.cash, v.operatingProfit, v.interestExpense ?? 0);
+  const leverage = C.covenantDiscount * (lev === Infinity ? 1 : ramp(lev, C.covenantRamp[0], C.covenantRamp[1]));
+  return 1 - Math.min(C.maxDiscount, liquidity + leverage);
 }
 
 // ============ TERMS ============

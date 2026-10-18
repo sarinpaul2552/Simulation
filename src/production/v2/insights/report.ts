@@ -10,7 +10,7 @@ import type { V2TeamState } from '../../../simulation/engineV2';
 import { scoreV2Company, V2TerminalScore } from '../../../simulation/engineV2Scoring';
 import { V2_DESTINATIONS } from '../../../simulation/engineV2Destination';
 import type { V2CrisisResponseId } from '../../../simulation/engineV2Crisis';
-import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter, configOf, type GameConfig } from '../engine';
+import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter, configOf, isV3, getFinalOutcome, type GameConfig } from '../engine';
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2PlayerQuarterInput } from '../types';
 import { quarterCardFor, contractShort, CONTRACT_LABEL } from '../content/paths';
@@ -217,7 +217,8 @@ function tradeoffs(snap: V2GameSnapshot, mode: V2PresentationMode): { title: str
 
 export function buildLearningReport(snap: V2GameSnapshot, mode: V2PresentationMode): LearningReport {
   const s = snap.state;
-  const score = scoreV2Company(s);
+  // V3 games are scored by their own engine version (V3.1 Stage 3C-A: v3-econ-1.1 scoring differs from 1.0); V2 unchanged.
+  const score = isV3(snap) ? getFinalOutcome(snap).score : scoreV2Company(s);
   const h = gameHistory(snap);
   const dims: DimensionExplain[] = (['financial', 'strategic', 'organizational'] as const).map(id => ({
     id, label: id === 'financial' ? 'Financial' : id === 'strategic' ? 'Strategic' : 'Organizational', score: score[id], measures: pick(mode, DIM_MEASURES[id]),
