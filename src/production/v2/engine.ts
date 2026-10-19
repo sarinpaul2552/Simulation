@@ -118,3 +118,16 @@ export const headlineOf = (snap: V2GameSnapshot) => (isV3(snap) ? V3.headlineOf(
 export const getFinalOutcome = (snap: V2GameSnapshot): V2FinalOutcome => (isV3(snap) ? V3.getFinalOutcome(snap) : V2.getFinalOutcome(snap));
 
 export type { V2FinancingAction } from './adapter';
+
+/**
+ * V3.1 Stage 4B: engine versions whose student journey uses the redesigned experience (Meet Your Company, the combined
+ * Leadership Team Brief, decision guides, the compact commit and results summary, career metrics, accuracy fixes).
+ * V2 and v3-econ-1.0 games keep the original journey unchanged.
+ */
+export const STAGE4_EXPERIENCE_VERSIONS: readonly string[] = ['v3-econ-1.1'];
+export const usesStage4Experience = (snap: V2GameSnapshot): boolean =>
+  isV3(snap) && STAGE4_EXPERIENCE_VERSIONS.includes(snap.engineVersion);
+/** Stage 4B: the engine valuation of a company state (V3 games only; see v3/adapter companyValueOf). */
+export type V3CompanyValue = V3.V3CompanyValue;
+export const companyValueOf = (snap: V2GameSnapshot, state: V2GameSnapshot['state']): V3CompanyValue | null =>
+  (isV3(snap) ? V3.companyValueOf(snap, state) : null);

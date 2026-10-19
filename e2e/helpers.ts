@@ -149,8 +149,19 @@ export async function fillDiscussion(page: Page, q: number) {
   await expect(page.locator('[data-testid^="v2-risk-"] input:checked')).toHaveCount(1);
 }
 
-/** Walk through the five private briefings on the shared device. */
+/** Stage 4B: v3-econ-1.1 games use the redesigned journey (combined brief, compact commit, results summary). */
+export async function isStage4(page: Page): Promise<boolean> {
+  return (await page.getByTestId('v2-team-game').getAttribute('data-experience')) === 'stage4';
+}
+
+/** Walk through the five private briefings on the shared device (Stage 4B: one combined Leadership Team Brief). */
 export async function readBriefings(page: Page, opts: { refreshAt?: V2Role; quarter?: number } = {}) {
+  if (await isStage4(page)) {
+    await expect(page.locator('[data-testid^="v2-exec-"]')).toHaveCount(5);
+    await expect(page.getByTestId('v2-pass-device')).toHaveCount(0);
+    if (opts.refreshAt) await refreshAndExpect(page, 'briefing', opts.quarter!);
+    return;
+  }
   for (const role of ROLES) {
     await expect(page.getByTestId('v2-next-role')).toHaveText(role);
     await expect(page.getByTestId('v2-role-brief')).toHaveCount(0);
@@ -223,13 +234,22 @@ export async function playQuarter(page: Page, input: V2PlayerQuarterInput, opts:
   await expectPhase(page, 'results', q);
   await expect(page.getByTestId('ds-stepper')).toHaveAttribute('data-stage', '3');
   await r('results');
-  await expect(page.getByTestId('v2-explanation')).toBeVisible();
-  await expect(page.getByTestId('v2-figures')).toBeVisible();
+  const stage4 = await isStage4(page);
+  if (stage4) {
+    // Stage 4B: four headline KPIs, three outcomes and one chart; the full board paper is behind View Details
+    await expect(page.getByTestId('v2-s4-kpis')).toBeVisible();
+    await expect(page.getByTestId('v2-s4-outcomes')).toBeVisible();
+    await expect(page.getByTestId('v2-results-details')).not.toHaveAttribute('open', '');
+    for (const id of ['v2-explanation', 'v2-figures', 'v2-consequence', 'v2-developments', 'v2-board-question']) await expect(page.getByTestId(id)).toBeAttached();
+  } else {
+    await expect(page.getByTestId('v2-explanation')).toBeVisible();
+    await expect(page.getByTestId('v2-figures')).toBeVisible();
+    await expect(page.getByTestId('v2-consequence')).toBeVisible();
+    // Batch 8.1: Level 1 briefing is visible; the sequence, attribution and reconciling bridges are on demand (Level 3)
+    await expect(page.getByTestId('v2-developments')).toBeVisible();
+    await expect(page.getByTestId('v2-board-question')).toBeVisible();
+  }
   await expect(page.getByTestId('v2-cash-bridge')).toHaveAttribute('data-reconciles', 'true');
-  await expect(page.getByTestId('v2-consequence')).toBeVisible();
-  // Batch 8.1: Level 1 briefing is visible; the sequence, attribution and reconciling bridges are on demand (Level 3)
-  await expect(page.getByTestId('v2-developments')).toBeVisible();
-  await expect(page.getByTestId('v2-board-question')).toBeVisible();
   await expect(page.getByTestId('v2-deep')).not.toHaveAttribute('open', '');
   await expect(page.getByTestId('v2-sequence')).toBeAttached();
   await expect(page.getByTestId('v2-attribution')).toBeAttached();

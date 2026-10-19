@@ -13,7 +13,7 @@
  *  - hidden market truth is never used.
  */
 import type { V2Role } from '../../../simulation/engineV2Scenario';
-import { getRoleBrief, workingQuarter, initializeGame, replayInputs, configOf, type GameConfig } from '../engine';
+import { getRoleBrief, workingQuarter, initializeGame, replayInputs, configOf, usesStage4Experience, type GameConfig } from '../engine';
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2Signal } from '../types';
 import { V2PresentationMode, ModeText, mt, pick } from './modes';
@@ -95,10 +95,12 @@ const labelOf = (s: V2Signal) => {
   return l.replace(/\s*\(last quarter\)/, ''); // the column headers carry the quarter
 };
 
-function changeOf(cur: V2Signal, prev: V2Signal | undefined): PositionRow['change'] {
+function changeOf(cur: V2Signal, prev: V2Signal | undefined, accurate = false): PositionRow['change'] {
   if (cur.id === 'cfo-runway') return undefined;
   if (!prev || cur.value === undefined || prev.value === undefined || cur.value === null || prev.value === null) return undefined;
-  const d = cur.value - prev.value;
+  // Stage 4B (v3-econ-1.1, defect C7): the change is taken between the values as displayed, so "74 → 76" reads +2.
+  const shown = (v: number) => (cur.unit === '$M' || cur.unit === '%' || cur.unit === 'quarters' ? Math.round(v * 10) / 10 : Math.round(v));
+  const d = accurate ? shown(cur.value) - shown(prev.value) : cur.value - prev.value;
   const eps = cur.unit === '$M' ? 0.05 : 0.5;
   if (Math.abs(d) < eps) return { text: 'no change', direction: 'flat' };
   const t = cur.unit === '$M' ? `$${Math.abs(d).toFixed(1)}M` : cur.unit === '%' ? `${Math.abs(d).toFixed(1)} pts` : `${Math.abs(d).toFixed(0)}`;
@@ -111,6 +113,9 @@ function startSignals(role: V2Role, cfg: GameConfig): V2Signal[] {
   if (!startCache.has(key)) startCache.set(key, getRoleBrief(initializeGame(cfg), role).signals);
   return startCache.get(key)!;
 }
+
+/** The first six words, lower-cased without punctuation (Stage 4B duplicate check). */
+const opening = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 6).join(' ');
 
 function priorityRows(role: V2Role, position: PositionRow[]): PositionRow[] {
   const picked = PRIORITY_KPIS[role].map(id => position.find(p => p.id === id)).filter((p): p is PositionRow => !!p);
@@ -125,6 +130,7 @@ export function briefingWords(b: RoleBriefing): number {
 }
 
 export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2PresentationMode): RoleBriefing {
+  const accurate = usesStage4Experience(snap); // Stage 4B wording fixes (C6, C7), v3-econ-1.1 only
   const q = workingQuarter(snap) ?? snap.completedQuarter;
   const brief = getRoleBrief(snap, role);
   const cfg = configOf(snap);
@@ -140,7 +146,7 @@ export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2Pr
       id: m.id, label: labelOf(m), glossary: KPI_GLOSSARY[m.id], value: fmtVal(m),
       start: st ? fmtVal(st) : undefined,
       previous: pv ? fmtVal(pv) : undefined,
-      change: changeOf(m, pv ?? st),
+      change: changeOf(m, pv ?? st, accurate),
     };
   });
   const scenario = brief.signals.filter(x => x.kind !== 'measured');
@@ -149,7 +155,8 @@ export function buildRoleBriefing(snap: V2GameSnapshot, role: V2Role, mode: V2Pr
   return {
     role, title: ROLE_TITLES[role], perspective: PERSPECTIVE[role], responsibility: pick(mode, RESPONSIBILITY[role]),
     position, priority: priorityRows(role, position), evidence,
-    suggests: (qb?.suggests ?? []).map(t => pick(mode, t)),
+    // Stage 4B (C6): a reading that restates an intelligence line (same opening six words) is not repeated.
+    suggests: (qb?.suggests ?? []).map(t => pick(mode, t)).filter(t => !accurate || !evidence.some(e => opening(e.text) === opening(t))),
     uncertain: (qb?.uncertain ?? []).map(t => pick(mode, t)),
     objectives: ROLE_OBJECTIVES[role].map(t => pick(mode, t)),
     discuss: (qb?.discuss ?? []).map(d => ({ with: d.with, ask: pick(mode, d.ask) })),

@@ -5,8 +5,8 @@ import { commitmentModeOf } from '../api';
 import type { V2Role } from '../types';
 import { useV2Team } from './useV2Team';
 import { normalizeMode, MODE_LABEL } from '../content/modes';
-import { destinationName, money } from './format';
-import { V2_TOTAL_QUARTERS } from '../engine';
+import { destinationName, money, moneyG } from './format';
+import { V2_TOTAL_QUARTERS, usesStage4Experience, companyValueOf } from '../engine';
 import { ErrorBanner, Icon, Stepper } from './ds/components';
 import { ChallengeStage } from './stages/ChallengeStage';
 import { DecisionStage } from './stages/DecisionStage';
@@ -14,8 +14,10 @@ import { CommitStage } from './stages/CommitStage';
 import { ResultsStage } from './stages/ResultsStage';
 import { FinalStage } from './stages/FinalStage';
 import './ds/ds.css';
+import './ds/stage4.css';
 import { GlossaryMode, GlossaryPanel } from './ds/glossary';
 import { CompanyIntro } from './stages/CompanyIntro';
+import { MeetYourCompany } from './stages/MeetYourCompany';
 import { valuationSeries, fmtPrice } from '../insights/valuation';
 import { gameHistory } from '../insights/history';
 import { COMPANY } from '../content/company';
@@ -75,9 +77,12 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
   const quarterShown = completedPhases.includes(phase!) ? game.record.completed_quarter : game.record.completed_quarter + 1;
   const stage = stageOf(phase!, commitment === 'team_commitment');
   const price = valuationSeries(gameHistory(game.snapshot)).points[game.snapshot.completedQuarter].price;
+  // Stage 4B (v3-econ-1.1): one company-value measure during play, the engine valuation; the NXLN index stays in View Details.
+  const stage4 = usesStage4Experience(game.snapshot);
+  const value = stage4 ? companyValueOf(game.snapshot, s) : null;
   return (
     <GlossaryMode.Provider value={mode}>
-    <div className="ds-root" data-testid="v2-team-game" data-phase={phase} data-quarter={quarterShown} data-mode={mode} data-commitment={commitment} data-chapter={phase === 'final' ? 8 : quarterShown}>
+    <div className="ds-root" data-testid="v2-team-game" data-phase={phase} data-quarter={quarterShown} data-mode={mode} data-commitment={commitment} data-chapter={phase === 'final' ? 8 : quarterShown} data-experience={stage4 ? 'stage4' : undefined}>
       <header className="ds-topbar" data-testid="v2-company-strip">
         <div className="ds-topbar-inner">
           <span className="ds-company">{COMPANY.name} <span className="ds-meta" style={{ fontFamily: 'var(--ds-font)' }}>· {game.teamName}</span></span>
@@ -86,7 +91,7 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
             <span className="ds-sr">Completed <b data-testid="v2-completed">{game.snapshot.completedQuarter}</b>/8</span>
             <span>Revenue <b>{money(s.revenue)}</b></span>
             <span>Cash <b data-testid="v2-cash">{money(s.cash)}</b></span>
-            <span>{COMPANY.ticker} <b data-testid="v2-topbar-price">{fmtPrice(price)}</b></span>
+            {value ? <span>Company value <b data-testid="v2-topbar-value">{moneyG(value.equityValue, 0)}</b></span> : <span>{COMPANY.ticker} <b data-testid="v2-topbar-price">{fmtPrice(price)}</b></span>}
             <span>Strategy <b data-testid="v2-destination">{destinationName(s.destination?.id)}</b></span>
             {s.solvency.distressed && <span className="ds-badge ds-badge-bad" data-testid="v2-distressed"><Icon name="alert" size={12} />Distressed</span>}
             {s.solvency.status === 'insolvent' && <span className="ds-badge ds-badge-bad"><Icon name="alert" size={12} />Insolvent</span>}
@@ -102,7 +107,7 @@ export function V2TeamGame({ api, teamCode, deviceRole, onExit }: { api: V2Api; 
       {panel === 'company' && (
         <div className="ds-dialog-backdrop" onClick={e => { if (e.target === e.currentTarget) setPanel(null); }}>
           <div className="ds-dialog" style={{ maxWidth: 1100, maxHeight: '92vh', overflowY: 'auto', background: 'var(--ds-paper)' }} role="dialog" aria-modal="true" aria-label={`About ${COMPANY.name}`}>
-            <CompanyIntro mode={mode} onClose={() => setPanel(null)} />
+            {stage4 ? <MeetYourCompany mode={mode} onClose={() => setPanel(null)} /> : <CompanyIntro mode={mode} onClose={() => setPanel(null)} />}
           </div>
         </div>
       )}

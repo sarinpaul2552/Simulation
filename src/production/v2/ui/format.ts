@@ -3,6 +3,8 @@ import { V2_DESTINATIONS } from '../../../simulation/engineV2Destination';
 import type { V2Signal } from '../types';
 
 export const money = (x: number, d = 1) => `${x < 0 ? '−' : ''}$${Math.abs(x).toFixed(d)}M`;
+/** Stage 4B (v3-econ-1.1 screens, defect C4): as money(), with thousands separators ("$2,846M"). */
+export const moneyG = (x: number, d = 1) => `${x < 0 ? '−' : ''}$${Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })}M`;
 export const pct = (x: number, d = 0) => `${(x * 100).toFixed(d)}%`;
 export const num = (x: number, d = 0) => x.toFixed(d);
 

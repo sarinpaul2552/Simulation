@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { getQuarterBriefing, V2_ROLES, workingQuarter, configOf } from '../../engine';
+import { getQuarterBriefing, V2_ROLES, workingQuarter, configOf, usesStage4Experience } from '../../engine';
+import { LeadershipBrief } from './LeadershipBrief';
 import type { V2Role } from '../../types';
 import type { V2TeamController } from '../useV2Team';
 import { evidenceKind } from '../../content/scenarioContent';
@@ -13,6 +14,12 @@ import { CompanyIntro } from './CompanyIntro';
 
 /** Stage 1 — The Challenge: the quarter-opening chapter, what changed, the evidence, and the private role briefings. */
 export function ChallengeStage({ ctl, mode, deviceRole }: { ctl: V2TeamController; mode: V2PresentationMode; deviceRole?: V2Role }) {
+  // Stage 4B: v3-econ-1.1 games use the combined Leadership Team Brief; V2 and v3-econ-1.0 keep this stage unchanged.
+  if (usesStage4Experience(ctl.game!.snapshot)) return <LeadershipBrief ctl={ctl} mode={mode} deviceRole={deviceRole} />;
+  return <ChallengeStageOriginal ctl={ctl} mode={mode} deviceRole={deviceRole} />;
+}
+
+function ChallengeStageOriginal({ ctl, mode, deviceRole }: { ctl: V2TeamController; mode: V2PresentationMode; deviceRole?: V2Role }) {
   const game = ctl.game!;
   const q = workingQuarter(game.snapshot)!;
   const path = contentPath(game.snapshot);
@@ -121,7 +128,7 @@ function PositionTable({ rows, q }: { rows: ReturnType<typeof buildRoleBriefing>
 }
 
 /** Confidential role briefing — a 60–90 second read: mandate, position, intelligence, concerns, questions. */
-function RoleBriefingView({ ctl, role, mode }: { ctl: V2TeamController; role: V2Role; mode: V2PresentationMode }) {
+export function RoleBriefingView({ ctl, role, mode }: { ctl: V2TeamController; role: V2Role; mode: V2PresentationMode }) {
   const brief = buildRoleBriefing(ctl.game!.snapshot, role, mode);
   const q = workingQuarter(ctl.game!.snapshot)!;
   const more = brief.position.length - brief.priority.length;

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Term } from '../ds/glossary';
-import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, economicsOf, investmentPreview, showsInvestmentIndicators, V2Forecast, type V3InvestmentPreview } from '../../engine';
+import { getDecisionSpec, validateQuarterInput, forecastQuarter, envelopeForInput, workingQuarter, configOf, isV3, economicsOf, investmentPreview, showsInvestmentIndicators, usesStage4Experience, V2Forecast, type V3InvestmentPreview } from '../../engine';
+import { ALLOCATION_GUIDE, DESTINATION_COMMON_RISK, DESTINATION_GUIDE, EVENT_GUIDE, FINAL_GUIDE, FINANCING_GUIDE, PACE_NOTE, readinessLabel, type DecisionGuide } from '../../content/stage4Content';
+import { readinessRows } from '../../insights/leadershipBrief';
 import { saturationStatus } from '../../insights/saturation';
 import type { V2Deliberation, V2PlayerQuarterInput } from '../../types';
 import type { V2Allocation } from '../../../../simulation/engineV2';
@@ -17,7 +19,7 @@ import { canPrefill, prefillAllocation, prefillLimit } from '../../insights/pref
 import { pick, V2PresentationMode } from '../../content/modes';
 import { chapterFor, contentPath, contractShort } from '../../content/paths';
 import { calendarLabel } from '../../content/calendar';
-import { FINAL_LABELS, money, pct } from '../format';
+import { FINAL_LABELS, money, moneyG, pct } from '../format';
 import { Card, ChoiceList, Fold, Icon, Section, Segmented } from '../ds/components';
 import { DecisionSummary } from './DecisionSummary';
 import { BUCKET_PERSPECTIVES, PERSPECTIVE_ORDER } from '../../content/bucketPerspectives';
@@ -141,32 +143,55 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
     : commitment === 'private_vote' ? ['decide', 'belief', 'risk', 'vote'] as const : ['decide', 'belief', 'risk', 'commit'] as const;
   const cta = commitment === 'team_commitment' ? 'Review and commit' : commitment === 'private_vote' ? 'Go to the private vote' : 'Go to commit';
   const hasEvent = !!(spec.final || spec.destination || spec.opportunity || spec.management || spec.crisis);
+  // Stage 4B (v3-econ-1.1): decision guides, Q4 option cards with readiness, accuracy fixes and no repeated summary.
+  const stage4 = usesStage4Experience(snap);
+  const readiness = useMemo(() => (stage4 && spec.destination ? readinessRows(snap) : []), [stage4, spec.destination, snap]);
+  const fm = stage4 ? moneyG : money;
 
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-decide">
       <header >
         <p className="ds-eyebrow">{calendarLabel(q)} · {chapterFor(q, contentPath(snap)).title} · Discuss and decide</p>
         <h1 className="ds-title" style={{ fontSize: 'var(--fs-page)' }} data-testid="v2-decision-heading">{hasEvent ? (EVENT_HEADING[q] ?? 'Make the call, then fund it.') : (framing?.heading ?? `How will you deploy ${money(envelope, 0)}?`)}</h1>
-        {framing && <p className="ds-muted" style={{ margin: '4px 0 0' }} data-testid="v2-decision-prompt">{pick(mode, framing.prompt)} <span className="ds-small" data-testid="v2-pace" data-pace={framing.pace}>{framing.pace === 'fast' ? 'Fast quarter' : 'Major decision'} · about {framing.minutes} minutes for the whole quarter.</span></p>}
+        {framing && <p className="ds-muted" style={{ margin: '4px 0 0' }} data-testid="v2-decision-prompt">{pick(mode, framing.prompt)} <span className="ds-small" data-testid="v2-pace" data-pace={framing.pace}>{stage4 ? PACE_NOTE : `${framing.pace === 'fast' ? 'Fast quarter' : 'Major decision'} · about ${framing.minutes} minutes for the whole quarter.`}</span></p>}
       </header>
 
       {hasEvent && (
         <Section eyebrow="This quarter’s strategic decision" >
           <div className="ds-stack">
+            {stage4 && EVENT_GUIDE[q] && <Guide guide={EVENT_GUIDE[q]} testId="v2-guide-event" />}
             {spec.final && (
-              <Card title="Final strategic decision" sub="Options depend on what you built" icon="flag" testId="v2-final-options">
+              <Card title="Final strategic decision" sub={stage4 ? <span>Options depend on what you built · <span className="s4-irrev" data-testid="v2-irreversible">Irreversible</span></span> : 'Options depend on what you built'} icon="flag" testId="v2-final-options">
                 <ChoiceList name="final" testIdPrefix="v2-final-choice" value={input.finalOption ? [input.finalOption] : []}
                   onChange={v => set({ finalOption: v[0] as V2FinalOptionId })}
                   options={spec.final.options.map(o => ({
                     id: o.id, disabled: !o.available,
                     label: <span data-testid={`v2-final-${o.id}`} data-available={o.available}>{FINAL_LABELS[o.id]}</span>,
-                    detail: o.available
-                      ? [o.terms.envelope !== undefined && `investment budget ${money(o.terms.envelope, 0)}`, o.terms.amount !== undefined && `raises ${money(o.terms.amount, 0)}`, o.terms.price !== undefined && `price ${money(o.terms.price, 0)}`, o.terms.offer !== undefined && `offer ${money(o.terms.offer, 0)}`, o.terms.investmentCap !== undefined && `investment capped at ${money(o.terms.investmentCap, 0)}`].filter(Boolean).join(' · ')
-                      : `Locked: ${o.reasons.join('; ')}`,
+                    detail: (stage4 && FINAL_GUIDE[o.id] ? `${FINAL_GUIDE[o.id]} ` : '') + (o.available
+                      ? [o.terms.envelope !== undefined && `investment budget ${fm(o.terms.envelope, 0)}`, o.terms.amount !== undefined && `raises ${fm(o.terms.amount, 0)}`, o.terms.price !== undefined && `price ${fm(o.terms.price, 0)}`, o.terms.offer !== undefined && `offer ${fm(o.terms.offer, 0)}`, o.terms.investmentCap !== undefined && `investment capped at ${fm(o.terms.investmentCap, 0)}`].filter(Boolean).join(' · ')
+                      : `Locked: ${o.reasons.join('; ')}`),
                   }))} />
               </Card>
             )}
-            {spec.destination && (
+            {spec.destination && stage4 && (
+              <Card title="Choose the company’s strategy" sub={<span className="s4-irrev" data-testid="v2-irreversible">Irreversible · cannot be changed later</span>} icon="target" testId="v2-destinations">
+                <div className="s4-dest">
+                  <ChoiceList name="destination" testIdPrefix="v2-dest-choice" value={input.destination ? [input.destination] : []} onChange={v => set({ destination: v[0] as V2PlayerQuarterInput['destination'] })}
+                    options={spec.destination.options.map(d => {
+                      const g = DESTINATION_GUIDE[d.id as keyof typeof DESTINATION_GUIDE];
+                      const r = readiness.find(x => x.id === d.id);
+                      const l = r ? readinessLabel(r.readiness) : null;
+                      return {
+                        id: d.id,
+                        label: <span data-testid={`v2-dest-${d.id}`}>{d.name}{r && l && <span className={`s4-tone-${l.tone}`} style={{ display: 'block', fontSize: 'var(--fs-note)' }} data-testid={`v2-dest-readiness-${d.id}`}>Readiness {r.readiness.toFixed(0)}% · {l.text}</span>}</span>,
+                        detail: g && <dl className="s4-dest-dl"><dt>What it means</dt><dd>{g.means}</dd><dt>Why it might help</dt><dd>{g.help}</dd><dt>What could go wrong</dt><dd>{g.risk}</dd></dl>,
+                      };
+                    })} />
+                </div>
+                <p className="s4-note" data-testid="v2-dest-transition">{DESTINATION_COMMON_RISK} Readiness is the board’s assessment from the CEO’s brief; it does not limit your choice.</p>
+              </Card>
+            )}
+            {spec.destination && !stage4 && (
               <Card title="Choose the company’s future" sub="This cannot be changed later" icon="target" testId="v2-destinations">
                 <ChoiceList name="destination" testIdPrefix="v2-dest-choice" value={input.destination ? [input.destination] : []} onChange={v => set({ destination: v[0] as V2PlayerQuarterInput['destination'] })}
                   options={spec.destination.options.map(d => ({ id: d.id, label: <span data-testid={`v2-dest-${d.id}`}>{d.name}</span>, detail: mode === 'mba' ? `${d.personality} Exposed to: ${d.exposures.join(', ')}.` : d.personality }))} />
@@ -176,13 +201,13 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
               <Card title={spec.opportunity.name} icon="star" testId="v2-opportunity">
                 <div className="ds-grid ds-grid-3" style={{ marginBottom: 14, gap: 14 }}>
                   <Fact label="Contract value per year" value={money(spec.opportunity.acv, 0)} />
-                  <Fact label="Upfront cost now" value={money(spec.opportunity.upfrontCash)} />
+                  <Fact label="Upfront cost now" value={stage4 ? money(up1(spec.opportunity.upfrontCash)) : money(spec.opportunity.upfrontCash)} />
                   <Fact label="Delivery team per quarter" value={money(spec.opportunity.deliveryCostPerQuarter)} />
                   <Fact label="Extra workload" value={`${spec.opportunity.orgLoadPerQuarter.toFixed(0)} pts × ${spec.opportunity.loadQuarters} qtrs`} />
                   <Fact label="Product team time diverted" value={pct(spec.opportunity.roadmapDiversion)} />
                   <Fact label="Our delivery readiness" value={pct(spec.opportunity.deliveryFit)} />
                 </div>
-                <p className="ds-muted">{spec.opportunity.aligned ? 'This contract fits your chosen strategy.' : `This contract does not fit your chosen strategy: it would reduce your strategic focus by ${pct(spec.opportunity.focusDilution)}.`}</p>
+                <p className="ds-muted" data-testid="v2-opp-fit">{spec.opportunity.aligned ? 'This contract fits your chosen strategy.' : stage4 && spec.opportunity.focusDilution < 0.0005 ? 'Your strategy has no single focus, so this contract neither fits it nor dilutes it.' : `This contract does not fit your chosen strategy: it would reduce your strategic focus by ${pct(spec.opportunity.focusDilution)}.`}</p>
                 {v3 && <ContractClaim upfront={spec.opportunity.upfrontCash} envelope={envelope} accepted={input.opportunity?.accept === true} reserve={input.allocation.cashReserve}
                   onMakeRoom={() => set({ allocation: freeCash(input.allocation, up1(spec.opportunity!.upfrontCash) - input.allocation.cashReserve) })} />}
                 <ChoiceList name="opp" testIdPrefix="v2-opp-choice" value={input.opportunity ? [input.opportunity.accept ? 'accept' : 'decline'] : []}
@@ -214,20 +239,21 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
             <div className="ds-callout" data-testid="v2-prefill-offer">
               <Icon name="clock" />
               <span>Last quarter you invested {BUCKETS.filter(b => previous[b] > 0).map(b => `${BUCKET_INFO[b].short} ${money(previous[b])}`).join(' · ')}. You can start from that allocation and adjust it.{' '}
-                <button className="ds-btn ds-btn-secondary" data-testid="v2-prefill" onClick={() => set({ allocation: prefillAllocation(previous, envelope, investCap) })}>Start from last quarter’s allocation</button>
+                <button className="ds-btn ds-btn-secondary" data-testid="v2-prefill" onClick={() => set({ allocation: stage4 ? roundDown(prefillAllocation(previous, envelope, investCap)) : prefillAllocation(previous, envelope, investCap) })}>Start from last quarter’s allocation</button>
                 <span className="ds-muted" style={{ display: 'block', marginTop: 4 }}>Copies the five investment amounts only{investedTotalOf(previous) > prefillMax ? `, scaled down to ${investCap !== undefined && investCap < envelope ? `the ${money(investCap, 0)} investment cap of your chosen option` : `this quarter’s ${money(envelope, 0)} budget`}` : ''}. Nothing is committed until the team commits.</span>
               </span>
             </div>
           )}
+          {stage4 && <Guide guide={ALLOCATION_GUIDE} testId="v2-guide-allocation" />}
           {prefillAfterFinal && <p className="ds-muted" data-testid="v2-prefill-after-final" style={{ margin: 0 }}>Choose your final strategic decision first: the budget depends on it. You can then start from last quarter’s allocation.</p>}
-          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} preview={preview} />
-          <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode}
+          <AllocationWorkspace snap={snap} allocation={input.allocation} envelope={envelope} onChange={setBucket} mode={mode} forecast={invested <= envelope + 1e-9 ? forecast : null} expansion={input.expansion ?? 0} preview={preview} compact={stage4} />
+          <FinancingCard forecast={forecast} value={input.financing ?? []} debt={snap.state.financing.debt} ownership={snap.state.financing.ownership} onChange={f => set({ financing: f })} mode={mode} guide={stage4}
             expansion={v3 && econ.financing.quarters.includes(q) && !spec.final ? { value: input.expansion ?? 0, max: econ.financing.maxExpansion, floor: econ.financing.cashFloor, onChange: x => set({ expansion: x > 0 ? x : undefined }) } : undefined} />
         </div>
 
         <div className="ds-stack" data-testid="v2-discussion">
           <p className="ds-eyebrow" style={{ marginBottom: 0 }}>Leadership discussion</p>
-          <p className="ds-muted" style={{ margin: 0 }}>Share what each of you saw in your brief. Where do your objectives pull in different directions? Three quick picks; nothing is graded.</p>
+          <p className="ds-muted" style={{ margin: 0 }}>{stage4 ? 'Discuss where the executives disagree, then record the team’s view. Nothing is graded.' : 'Share what each of you saw in your brief. Where do your objectives pull in different directions? Three quick picks; nothing is graded.'}</p>
           {framing && (
             <div data-testid="v2-priority">
               <p className="ds-h4" style={{ marginBottom: 6 }}>1 · {framing.priorityQuestion}</p>
@@ -271,8 +297,9 @@ export function DecisionStage({ ctl, mode, commitment }: { ctl: V2TeamController
               ) : <button className="ds-btn ds-btn-ghost" onClick={() => setShowNote(true)}>+ Add a note</button>}
             </div>
           </details>
-          <Fold title="4 · Decision summary" hint={ready ? 'ready' : `${errors.length + discussionMissing.length + finErrors.length} to complete`} open testId="v2-ready">
-            <DecisionSummary input={input} deliberation={delib} quarter={q} mode={mode} config={configOf(snap)} />
+          <Fold title={stage4 ? (ready ? 'Ready to commit' : 'Still to complete') : '4 · Decision summary'} hint={ready ? 'ready' : `${errors.length + discussionMissing.length + finErrors.length} to complete`} open testId="v2-ready">
+            {!stage4 && <DecisionSummary input={input} deliberation={delib} quarter={q} mode={mode} config={configOf(snap)} />}
+            {stage4 && ready && <p className="ds-small" style={{ margin: 0 }} data-testid="v2-ready-note">Everything is complete. Review the decision on the next screen.</p>}
             {(errors.length > 0 || discussionMissing.length > 0 || finErrors.length > 0) && (
               <ul className="ds-list ds-small" data-testid="v2-validation" style={{ marginTop: 10 }}>
                 {[...errors, ...finErrors, ...discussionMissing].map(e => <li key={e} className="ds-tone-bad">{e}</li>)}
@@ -299,7 +326,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 /** The resource-allocation workspace: budget, visual mix, per-bucket guidance and an execution-capacity estimate. */
-function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast, expansion = 0, preview = null }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null; expansion?: number; preview?: V3InvestmentPreview | null }) {
+function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forecast, expansion = 0, preview = null, compact = false }: { snap: V2GameSnapshot; allocation: V2PlayerQuarterInput['allocation']; envelope: number; onChange: (b: keyof V2Allocation, v: number) => void; mode: V2PresentationMode; forecast: V2Forecast | null; expansion?: number; preview?: V3InvestmentPreview | null; compact?: boolean }) {
   const q = workingQuarter(snap)!;
   const invested = BUCKETS.reduce((t, b) => t + (allocation[b] || 0), 0);
   const kept = envelope - invested;
@@ -398,7 +425,7 @@ function AllocationWorkspace({ snap, allocation, envelope, onChange, mode, forec
           : <p className="ds-muted" style={{ margin: '8px 0 0' }}>{est.activeInitiatives} initiative{est.activeInitiatives === 1 ? '' : 's'} at once{est.coordination > 0 ? `, adding ${est.coordination} points of coordination work` : ''}. Strategy commitments, contracts and events can add more.</p>}
       </div>)}
       {over && <p className="ds-error" style={{ marginTop: 10 }}><Icon name="alert" />You have allocated {money(invested)} — more than the {money(envelope, 0)} budget.</p>}
-      <p className="ds-muted" style={{ marginTop: 10, marginBottom: 0 }}>Investment builds capability over one to three quarters (<Term id="maturation">capability maturation</Term>). Returns are not guaranteed: they depend on your teams’ capacity and on the market.</p>
+      {!compact && <p className="ds-muted" style={{ marginTop: 10, marginBottom: 0 }}>Investment builds capability over one to three quarters (<Term id="maturation">capability maturation</Term>). Returns are not guaranteed: they depend on your teams’ capacity and on the market.</p>}
     </section>
   );
 }
@@ -497,7 +524,7 @@ function WorkloadGauge({ w }: { w: V3InvestmentPreview['workload'] }) {
   );
 }
 
-function FinancingCard({ forecast, value, debt, ownership, onChange, mode, expansion }: { forecast: V2Forecast | null; value: V2FinancingAction[]; debt: number; ownership: number; onChange: (f: V2FinancingAction[]) => void; mode: V2PresentationMode; expansion?: ExpansionControl }) {
+function FinancingCard({ forecast, value, debt, ownership, onChange, mode, expansion, guide = false }: { forecast: V2Forecast | null; value: V2FinancingAction[]; debt: number; ownership: number; onChange: (f: V2FinancingAction[]) => void; mode: V2PresentationMode; expansion?: ExpansionControl; guide?: boolean }) {
   const amt = (kind: 'debt' | 'equity' | 'repay') => value.filter(a => a.kind === kind).reduce((t, a) => t + ('amount' in a ? a.amount : 0), 0);
   const partner = value.some(a => a.kind === 'partner');
   const restructure = (value.find(a => a.kind === 'restructure') as { depth?: 'moderate' | 'deep' } | undefined)?.depth ?? 'none';
@@ -533,6 +560,7 @@ function FinancingCard({ forecast, value, debt, ownership, onChange, mode, expan
       ) : <p className="ds-muted">Complete the investment plan to see the cash forecast.</p>}
       {showAdvanced && o && (
         <div className="ds-stack" style={{ marginTop: 12 }} data-testid="v2-fin-advanced">
+          {guide && <Guide guide={FINANCING_GUIDE} testId="v2-guide-financing" />}
           <table className="ds-table ds-table-compact">
             <caption>Terms on offer this quarter</caption>
             <tbody>
@@ -567,4 +595,22 @@ function FinancingCard({ forecast, value, debt, ownership, onChange, mode, expan
       )}
     </section>
   );
+}
+
+/** Stage 4B: the three questions asked of every major decision. */
+function Guide({ guide, testId }: { guide: DecisionGuide; testId: string }) {
+  return (
+    <div className="s4-guide" data-testid={testId}>
+      <div><span className="s4-label">What are we deciding?</span><p>{guide.deciding}</p></div>
+      <div><span className="s4-label">What might improve?</span><p>{guide.improve}</p></div>
+      <div><span className="s4-label">What could go wrong?</span><p>{guide.risk}</p></div>
+    </div>
+  );
+}
+
+/** Stage 4B (defect C9): prefilled amounts are shown to $0.1M, rounded down so the plan stays within budget and cap. */
+function roundDown(a: V2Allocation): V2Allocation {
+  const out = { ...a };
+  for (const b of BUCKETS) out[b] = Math.floor(a[b] * 10 + 1e-9) / 10;
+  return out;
 }

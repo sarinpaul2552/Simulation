@@ -10,7 +10,7 @@ import type { V2TeamState } from '../../../simulation/engineV2';
 import { scoreV2Company, V2TerminalScore } from '../../../simulation/engineV2Scoring';
 import { V2_DESTINATIONS } from '../../../simulation/engineV2Destination';
 import type { V2CrisisResponseId } from '../../../simulation/engineV2Crisis';
-import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter, configOf, isV3, getFinalOutcome, type GameConfig } from '../engine';
+import { replayInputs, validateQuarterInput, initializeGame, resolveQuarter, configOf, isV3, getFinalOutcome, usesStage4Experience, type GameConfig } from '../engine';
 import type { V2GameSnapshot } from '../snapshot';
 import type { V2PlayerQuarterInput } from '../types';
 import { quarterCardFor, contractShort, CONTRACT_LABEL } from '../content/paths';
@@ -61,11 +61,28 @@ function managementText(m: NonNullable<V2PlayerQuarterInput['management']>): str
   return out.join(', ') || 'none';
 }
 
-export function decisionSummary(input: V2PlayerQuarterInput): string {
+/**
+ * Stage 4B (v3-econ-1.1 student screens, defect C1): the allocation described without claiming a lead that does not
+ * exist. Leaders are the areas tied at the largest amount (to $0.05M); an all-equal split is described as even.
+ */
+export function allocationText(a: V2PlayerQuarterInput['allocation']): string {
+  const ranked = (['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const).filter(b => a[b] > 0).sort((x, y) => a[y] - a[x]);
+  if (!ranked.length) return '';
+  if (ranked.length === 1) return `Invested only in ${BUCKETS[ranked[0]]} (${fmtM(a[ranked[0]])})`;
+  const top = ranked.filter(b => Math.abs(a[b] - a[ranked[0]]) < 0.05);
+  const total = ranked.reduce((t, b) => t + a[b], 0);
+  if (top.length === ranked.length) return `Spread ${fmtM(total)} evenly across ${ranked.length === 5 ? 'all five areas' : ranked.map(b => BUCKETS[b]).join(', ')} (${fmtM(a[ranked[0]])} each)`;
+  if (top.length > 1) return `Invested most in ${top.map(b => BUCKETS[b]).join(' and ')} (${fmtM(a[top[0]])} each)`;
+  const next = ranked[1];
+  return `Invested most in ${BUCKETS[ranked[0]]} (${fmtM(a[ranked[0]])}), then ${BUCKETS[next]} (${fmtM(a[next])})`;
+}
+
+export function decisionSummary(input: V2PlayerQuarterInput, opts: { accurate?: boolean } = {}): string {
   const a = input.allocation;
   const ranked = (['consumer', 'enterprise', 'aiProduct', 'people', 'universityCredentials'] as const).filter(b => a[b] > 0).sort((x, y) => a[y] - a[x]);
   const parts: string[] = [];
-  if (ranked.length) parts.push(`Invested mostly in ${ranked.slice(0, 2).map(b => `${BUCKETS[b]} (${fmtM(a[b])})`).join(' and ')}`);
+  if (opts.accurate) { const t = allocationText(a); if (t) parts.push(t); }
+  else if (ranked.length) parts.push(`Invested mostly in ${ranked.slice(0, 2).map(b => `${BUCKETS[b]} (${fmtM(a[b])})`).join(' and ')}`);
   if (a.cashReserve > 0.05) parts.push(`kept ${fmtM(a.cashReserve)} in reserve`);
   if (input.destination) parts.push(`committed to ${V2_DESTINATIONS[input.destination].name}`);
   if (input.opportunity) parts.push(`${input.opportunity.accept ? 'accepted' : 'declined'} the ${contractShort(input.opportunity.offerId)}`);
@@ -220,6 +237,7 @@ export function buildLearningReport(snap: V2GameSnapshot, mode: V2PresentationMo
   // V3 games are scored by their own engine version (V3.1 Stage 3C-A: v3-econ-1.1 scoring differs from 1.0); V2 unchanged.
   const score = isV3(snap) ? getFinalOutcome(snap).score : scoreV2Company(s);
   const h = gameHistory(snap);
+  const accurate = usesStage4Experience(snap); // Stage 4B wording fixes (C1), v3-econ-1.1 only
   const dims: DimensionExplain[] = (['financial', 'strategic', 'organizational'] as const).map(id => ({
     id, label: id === 'financial' ? 'Financial' : id === 'strategic' ? 'Strategic' : 'Organizational', score: score[id], measures: pick(mode, DIM_MEASURES[id]),
     components: score.components[id].map(c => ({ label: c.label, score: c.score * 100 })),
@@ -227,7 +245,7 @@ export function buildLearningReport(snap: V2GameSnapshot, mode: V2PresentationMo
   const timeline = h.map(x => {
     const top = quarterImpacts(x.consequence, x.after, mode)[0];
     return {
-      quarter: x.quarter, event: pick(mode, quarterCardFor(x.quarter, x.path).headline), decision: decisionSummary(x.input),
+      quarter: x.quarter, event: pick(mode, quarterCardFor(x.quarter, x.path).headline), decision: decisionSummary(x.input, { accurate }),
       revenue: x.after.revenue, operatingProfit: x.after.operatingProfit, cash: x.after.cash,
       consequence: top ? top.text : `Revenue ${fmtM(x.after.revenue)}, cash ${fmtM(x.after.cash)}.`,
     };

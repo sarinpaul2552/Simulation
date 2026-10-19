@@ -18,7 +18,7 @@ export const NOT_RECORDED = 'Not recorded';
 export const ACCOUNTABILITY_CAVEAT =
   'Results reflect market conditions, earlier investments and your teams’ capacity as well as this quarter’s choices. Compare them with what you expected; one quarter rarely proves a call right or wrong.';
 
-export function accountabilityRows(quarter: number, d: V2Deliberation | null | undefined, input: V2PlayerQuarterInput, mode: V2PresentationMode): AccountabilityRow[] {
+export function accountabilityRows(quarter: number, d: V2Deliberation | null | undefined, input: V2PlayerQuarterInput, mode: V2PresentationMode, opts: { accurate?: boolean } = {}): AccountabilityRow[] {
   const prio = priorityLabel(quarter, d?.priorityId);
   const belief = BELIEFS[quarter]?.find(b => b.id === d?.beliefId);
   const conf = CONFIDENCE_LEVELS.find(c => c.value === d?.confidence)?.label;
@@ -30,7 +30,7 @@ export function accountabilityRows(quarter: number, d: V2Deliberation | null | u
   ];
   if (signals.length) rows.push({ id: 'signals', label: 'Signals we weighted most', text: signals.map(s => pick(mode, s!)).join(' · ') });
   rows.push({ id: 'risk', label: risks.length > 1 ? 'Risks we named' : 'Our biggest risk', text: risks.length ? risks.map(r => pick(mode, r!.label)).join(' · ') : NOT_RECORDED });
-  const decided = decisionSummary(input);
+  const decided = decisionSummary(input, opts);
   rows.push({ id: 'decided', label: 'What we decided', text: decided ? decided.charAt(0).toUpperCase() + decided.slice(1) + '.' : 'Kept the whole budget as cash.' });
   return rows;
 }

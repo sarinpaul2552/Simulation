@@ -17,7 +17,8 @@ import {
 } from '../../simulationV3/engineV3';
 import { getScenarioMarket as scenarioMarket, getScenarioQuarter as scenarioQuarter, lastAuthoredQuarter, V2Role, V2_ROLES, type V2ScenarioQuarter } from '../../simulationV3/engineV3Scenario';
 import { pathArc, type V3MarketPathId } from '../../simulationV3/engineV3Paths';
-import { V2_DESTINATIONS, V2_DESTINATION_IDS, V2DestinationId, destinationReadiness } from '../../simulationV3/engineV3Destination';
+import { V2_DESTINATIONS, V2_DESTINATION_IDS, V2DestinationId, destinationReadiness, destinationStrength } from '../../simulationV3/engineV3Destination';
+import { companyValuation } from '../../simulationV3/engineV3Financing';
 import { opportunityTerms, V2_OPPORTUNITIES, V2OpportunityTerms } from '../../simulationV3/engineV3Opportunity';
 import { assessCrisis, V2CrisisAssessment, V2CrisisResponseId } from '../../simulationV3/engineV3Crisis';
 import { finalOptions, maxEnvelope, V2FinalOptionAvailability, V2FinalOptionId, V2_FINAL_CALIBRATION, V2_FINAL_OPTION_IDS } from '../../simulationV3/engineV3Final';
@@ -755,3 +756,40 @@ export function getQuarterBriefing(quarter: number, path: V3MarketPathId, versio
 export function envelopeFor(quarter: number, finalOption?: V2FinalOptionId, path: V3MarketPathId = 'A', version?: string): number { return inVersion(version, () => envelopeForImpl(quarter, finalOption, path)); }
 export function budgetForInput(input: V2PlayerQuarterInput, path: V3MarketPathId = 'A', version?: string): number { return inVersion(version, () => budgetForInputImpl(input, path)); }
 export function storedInput(input: V2PlayerQuarterInput, path: V3MarketPathId, version?: string): V2PlayerQuarterInput { return inVersion(version, () => storedInputImpl(input, path)); }
+
+// ============ COMPANY VALUE (Stage 4B presentation, v3-econ-1.1 student screens) ============
+
+export interface V3CompanyValue {
+  /** Equity value of the whole company: engine valuation (EV + cash − debt, after any distress discount), floored at 0; the sale offer once sold. */
+  equityValue: number;
+  /** Original shareholders' ownership. */
+  ownership: number;
+  /** equityValue × ownership — the terminal score's shareholder value at the end of the game. */
+  shareholderValue: number;
+  sold: boolean;
+}
+
+/**
+ * The engine's own valuation of a company state, built from exactly the inputs the terminal score uses
+ * (engineV3Scoring.scoreV2Company) and evaluated under the game's engine version. Presentation only: nothing here feeds
+ * back into the simulation. A unit test proves the end-of-game value equals the score's shareholder value.
+ */
+export function companyValueOf(snap: V2GameSnapshot, s: V2TeamState): V3CompanyValue {
+  return inSnapVersion(snap, () => {
+    const L = s.ledgerHistory;
+    const last = L[L.length - 1];
+    const seg = s.segmentRevenue;
+    const total = seg.consumer + seg.enterprise + seg.university + seg.aiNative;
+    const dest = s.destination;
+    const val = companyValuation({
+      revenue: last ? last.revenue : s.revenue, operatingProfit: last ? last.operatingProfit : s.operatingProfit, cash: s.cash,
+      revenueYearAgo: L.length >= 5 ? L[L.length - 5].revenue : 200, aiCommercialReadiness: s.commercial.aiCommercialReadiness,
+      destinationStrength: dest ? destinationStrength(dest, s.quarter) : 0, debt: s.financing.debt, status: s.solvency.status, distressed: s.solvency.distressed,
+      aiRevenueShare: total > 0 ? seg.aiNative / total : 0, destinationReadiness: dest ? destinationReadiness(dest.id, s).readiness : 0,
+      interestExpense: s.costHistory.length ? s.costHistory[s.costHistory.length - 1].financingCost : 0,
+    });
+    const sold = s.final.record?.option === 'strategic-sale';
+    const equityValue = sold ? s.final.record!.saleOffer! : Math.max(0, val.preMoney);
+    return { equityValue, ownership: s.financing.ownership, shareholderValue: equityValue * s.financing.ownership, sold };
+  });
+}

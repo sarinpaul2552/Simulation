@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { calendarLabel } from '../../content/calendar';
-import { V2_ROLES, workingQuarter, budgetFor, configOf, type GameConfig } from '../../engine';
+import { V2_ROLES, workingQuarter, budgetFor, configOf, usesStage4Experience, type GameConfig } from '../../engine';
 import type { V2Deliberation, V2PlayerQuarterInput, V2Role, V2VoteValue } from '../../types';
 import type { V2Agreement, V2CommitmentMode, V2VotesResponse } from '../../api';
 import type { V2TeamController } from '../useV2Team';
@@ -33,6 +33,29 @@ export function CommitStage({ ctl, mode, deviceRole, commitment }: { ctl: V2Team
   const phase = game.record.phase;
   const input = ctl.draft?.input as V2PlayerQuarterInput | undefined;
   const testId = phase === 'vote' ? 'v2-phase-vote' : phase === 'commit' ? 'v2-phase-commit' : 'v2-phase-review';
+  // Stage 4B (v3-econ-1.1): a short confirmation; the full board resolution stays behind View Details.
+  if (usesStage4Experience(game.snapshot)) {
+    return (
+      <div className="ds-stack-lg" data-testid={testId}>
+        <div className="ds-grid ds-grid-main">
+          <div className="ds-stack">
+            {input && <Recap input={input} quarter={q} config={configOf(game.snapshot)} />}
+            {input && (
+              <details className="s4-details" data-testid="v2-resolution-details">
+                <summary>View details: the full board resolution</summary>
+                <div className="s4-details-body"><Resolution input={input} deliberation={ctl.draft?.deliberation} quarter={q} mode={mode} config={configOf(game.snapshot)} /></div>
+              </details>
+            )}
+          </div>
+          {commitment === 'team_commitment'
+            ? <TeamCommitment ctl={ctl} deviceRole={deviceRole} quarter={q} compact />
+            : commitment === 'private_vote'
+              ? <PrivateVote ctl={ctl} deviceRole={deviceRole} quarter={q} />
+              : <LegacyCommit ctl={ctl} quarter={q} />}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ds-stack-lg" data-testid={testId}>
       <div className="ds-grid ds-grid-main">
@@ -91,7 +114,41 @@ function Resolution({ input, deliberation, quarter, mode, config }: { input: V2P
   );
 }
 
-function TeamCommitment({ ctl, deviceRole, quarter }: { ctl: V2TeamController; deviceRole?: V2Role; quarter: number }) {
+/** Stage 4B: the decision in a few lines, with irreversible choices named. */
+function Recap({ input, quarter, config }: { input: V2PlayerQuarterInput; quarter: number; config?: GameConfig }) {
+  const env = budgetFor(input, config);
+  const invested = BUCKETS.filter(b => input.allocation[b] > 0);
+  const event = [
+    input.destination && `Commit to ${destinationName(input.destination)}`,
+    input.opportunity && `${input.opportunity.accept ? 'Accept' : 'Decline'} the ${contractShort(input.opportunity.offerId)}`,
+    input.recessionStance && `Recession stance: ${({ protect: 'protect investment', slow: 'slow investment', cut: 'cut costs' })[input.recessionStance]}`,
+    input.management && Object.keys(input.management).length > 0 && 'with recession actions',
+    input.crisisResponse && `Crisis response: ${input.crisisResponse}`,
+    input.finalOption && `Final decision: ${FINAL_LABELS[input.finalOption]}`,
+  ].filter(Boolean) as string[];
+  const fin = (input.financing ?? []).map(f => f.kind === 'debt' ? `borrow ${money(f.amount)}` : f.kind === 'equity' ? `sell shares for ${money(f.amount)}` : f.kind === 'repay' ? `repay ${money(f.amount)}` : f.kind === 'partner' ? 'strategic partner' : `${f.depth} restructuring`);
+  const irreversible = [input.destination && 'the strategy cannot be changed later', input.finalOption && input.finalOption !== 'continue' && 'the final move cannot be undone', input.finalOption === 'strategic-sale' && 'the company is sold at the end of the quarter'].filter(Boolean) as string[];
+  return (
+    <section className="s4-card" data-testid="v2-decision-recap">
+      <p className="ds-eyebrow" style={{ marginBottom: 6 }}>Your decision · {calendarLabel(quarter)}</p>
+      <dl className="s4-recap">
+        <dt>Invest {money(env, env % 1 ? 1 : 0)}</dt>
+        <dd>
+          <div className="ds-alloc-bar" style={{ height: 8, marginBottom: 6 }} aria-hidden>
+            {invested.map(b => <span key={b} style={{ flex: `${input.allocation[b]} 0 0`, background: BUCKET_COLOR[b] }} />)}
+            {input.allocation.cashReserve > 0.005 && <span className="ds-hatch" style={{ flex: `${input.allocation.cashReserve} 0 0` }} />}
+          </div>
+          <span className="ds-small">{invested.length ? invested.map(b => `${BUCKET_INFO[b].short} ${money(input.allocation[b])}`).join(' · ') : 'Nothing invested'}{input.allocation.cashReserve > 0.005 ? ` · cash ${money(input.allocation.cashReserve)}` : ''}</span>
+        </dd>
+        {event.length > 0 && <><dt>Strategic decision</dt><dd>{event.join(' · ')}</dd></>}
+        {(fin.length > 0 || (input.expansion ?? 0) > 0) && <><dt>Financing</dt><dd className="ds-small">{[...fin, ...((input.expansion ?? 0) > 0 ? [`${money(input.expansion!)} added to the budget`] : [])].join(' · ')}</dd></>}
+      </dl>
+      {irreversible.length > 0 && <p className="s4-warning caution" style={{ marginTop: 12 }} data-testid="v2-irreversible-notice"><Icon name="alert" size={16} /><span><b>Irreversible:</b> {irreversible.join('; ')}.</span></p>}
+    </section>
+  );
+}
+
+function TeamCommitment({ ctl, deviceRole, quarter, compact = false }: { ctl: V2TeamController; deviceRole?: V2Role; quarter: number; compact?: boolean }) {
   const game = ctl.game!;
   const phase = game.record.phase;
   const recorded = game.record.commitment?.agreement ?? null;
@@ -112,7 +169,7 @@ function TeamCommitment({ ctl, deviceRole, quarter }: { ctl: V2TeamController; d
           options={AGREEMENTS.map(a => ({ id: a.id, disabled: !authorized, label: <span><b>{a.letter}.</b> {a.label}</span>, detail: a.detail }))} />
       )}
       {!authorized && <p className="ds-callout" data-testid="v2-waiting-commit"><Icon name="clock" />Waiting for the CEO to commit the team’s decision.</p>}
-      <p className="ds-muted" style={{ margin: 0 }}>Your answer is recorded for reflection and the facilitator debrief. It does not change the economics.</p>
+      <p className="ds-muted" style={{ margin: 0 }}>{compact ? 'Recorded for the debrief; it does not change the results.' : 'Your answer is recorded for reflection and the facilitator debrief. It does not change the economics.'}</p>
       <div className="ds-actions" style={{ marginTop: 4 }}>
         <button className="ds-btn ds-btn-secondary" data-testid="v2-revise" disabled={ctl.busy} onClick={() => void ctl.go('decide')}>Revise the decision</button>
         <button className="ds-btn ds-btn-decision ds-btn-lg" data-testid="v2-commit-team" disabled={ctl.busy || !authorized || (!pending && !agreement)}
@@ -125,6 +182,8 @@ function TeamCommitment({ ctl, deviceRole, quarter }: { ctl: V2TeamController; d
           onCancel={() => setConfirming(false)}
           onConfirm={() => { setConfirming(false); void ctl.commitTeam(agreement, deviceRole); }}>
           <p style={{ marginTop: 0 }}>The quarter will be resolved with this investment and decision. It cannot be undone.</p>
+          {compact && ctl.draft?.input?.destination && <p data-testid="v2-confirm-irreversible">You are committing to <b>{destinationName(ctl.draft.input.destination)}</b>. The strategy cannot be changed later.</p>}
+          {compact && ctl.draft?.input?.finalOption && ctl.draft.input.finalOption !== 'continue' && <p data-testid="v2-confirm-irreversible">Final decision: <b>{FINAL_LABELS[ctl.draft.input.finalOption]}</b>.</p>}
           <p style={{ marginBottom: 0 }}>Team agreement: <b>{AGREEMENTS.find(a => a.id === agreement)!.label}</b></p>
         </ConfirmDialog>
       )}

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Termed } from '../ds/glossary';
 import { calendarLabel } from '../../content/calendar';
-import { V2_TOTAL_QUARTERS } from '../../engine';
+import { V2_TOTAL_QUARTERS, usesStage4Experience, companyValueOf } from '../../engine';
+import { moneyG } from '../format';
 import type { V2TeamController } from '../useV2Team';
 import type { V2PresentationMode } from '../../content/modes';
 import { pick } from '../../content/modes';
@@ -35,6 +36,8 @@ export function ResultsStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Pre
   const q = game.record.completed_quarter;
   const history = useMemo(() => gameHistory(game.snapshot), [game.snapshot]);
   const rec = history[q - 1];
+  // Stage 4B (v3-econ-1.1): a short results summary; the full dashboard, analysis and signal review are behind View Details.
+  if (usesStage4Experience(game.snapshot)) return <Stage4Results ctl={ctl} mode={mode} history={history} quarter={q} />;
   return (
     <div className="ds-stack-lg" data-testid="v2-phase-results" data-results-quarter={q}>
       <QuarterDashboard history={history} quarter={q} mode={mode} />
@@ -373,7 +376,7 @@ function DeepAnalysis({ history, quarter, mode, consequences, cards }: { history
 }
 
 
-function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mode: V2PresentationMode; rec: ReturnType<typeof gameHistory>[number]; history: QuarterRecord[] }) {
+function ReflectionCard({ ctl, mode, rec, history, compact = false }: { ctl: V2TeamController; mode: V2PresentationMode; rec: ReturnType<typeof gameHistory>[number]; history: QuarterRecord[]; compact?: boolean }) {
   const game = ctl.game!;
   const q = game.record.completed_quarter;
   const saved = game.resolutions.find(r => r.quarter === q);
@@ -387,7 +390,7 @@ function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mo
   const { reload, advance, error, setError } = ctl;
   const delib = saved?.deliberation as V2Deliberation | null | undefined;
   const evidence = reflectionEvidence(delib?.beliefId, rec.before, rec.after);
-  const intent = accountabilityRows(q, delib, rec.input, mode);
+  const intent = accountabilityRows(q, delib, rec.input, mode, { accurate: compact });
   const { persistReflection } = ctl;
 
   // Batch 10A: save the reflection shortly after each change so a refresh keeps it (existing RPC, no migration).
@@ -412,10 +415,7 @@ function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mo
 
   const proceed = () => void advance(['results', 'reflect', last ? 'final' : 'briefing'], { reflection: encoded });
 
-  return (
-    <Card title="Reflect and learn" sub="Expected → decided → happened → learned" icon="bulb" testId="v2-phase-reflect">
-      <SegmentReflection rec={rec} history={history} quarter={q} />
-      <div className="ds-grid ds-grid-2" style={{ marginTop: 18 }}>
+  const recordBlock = (
         <div className="ds-stack">
           <div data-testid="v2-accountability">
             <p className="ds-h4">What we expected and decided</p>
@@ -437,16 +437,18 @@ function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mo
             <p className="ds-muted" style={{ marginTop: 6 }}>{ACCOUNTABILITY_CAVEAT}</p>
           </div>
         </div>
+  );
+  const learnBlock = (
         <div className="ds-stack">
-          <p className="ds-h4">Knowing what you know now, what would you do differently?</p>
+          <p className="ds-h4" data-testid="v2-reflection-question">Knowing what you know now, what would you do differently?</p>
           <p className="ds-muted" style={{ margin: 0 }}>Choose at least one that fits. A written line is optional.</p>
           <ChoiceList multi name="learning" testIdPrefix="v2-learn" value={learning} onChange={setLearning} options={LEARNING_OPTIONS.map(o => ({ id: o.id, label: pick(mode, o.label) }))} />
           {showNote
             ? <textarea className="ds-input" data-testid="v2-reflection" maxLength={3000} value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder={mode === 'mba' ? 'Optional: what would you do differently, and why?' : 'Optional: one thing we would do differently'} />
             : <button className="ds-btn ds-btn-ghost" onClick={() => setShowNote(true)}>+ Add one line (optional)</button>}
         </div>
-      </div>
-      {waiting ? (
+  );
+  const footer = waiting ? (
         <div className="ds-callout" data-testid="v2-waiting" style={{ marginTop: 12 }}><Icon name="clock" />Reflection saved. Waiting for the facilitator to open {calendarLabel(q + 1)}…</div>
       ) : (
         <div className="ds-actions">
@@ -454,7 +456,30 @@ function ReflectionCard({ ctl, mode, rec, history }: { ctl: V2TeamController; mo
             {last ? 'Save and see the final report' : `Save and continue to ${calendarLabel(q + 1)}`} <Icon name="arrow" />
           </button>
         </div>
-      )}
+      );
+  if (compact) {
+    // Stage 4B: one reflection question; the record of what was expected, decided and happened is behind View Details.
+    return (
+      <section className="s4-card" data-testid="v2-phase-reflect">
+        <p className="ds-eyebrow" style={{ marginBottom: 4 }}>Reflect</p>
+        {learnBlock}
+        <details className="s4-subdetails" style={{ marginTop: 14 }} data-testid="v2-reflect-details">
+          <summary>View details: what we expected, decided and what happened</summary>
+          <SegmentReflection rec={rec} history={history} quarter={q} />
+          <div style={{ marginTop: 14 }}>{recordBlock}</div>
+        </details>
+        {footer}
+      </section>
+    );
+  }
+  return (
+    <Card title="Reflect and learn" sub="Expected → decided → happened → learned" icon="bulb" testId="v2-phase-reflect">
+      <SegmentReflection rec={rec} history={history} quarter={q} />
+      <div className="ds-grid ds-grid-2" style={{ marginTop: 18 }}>
+        {recordBlock}
+        {learnBlock}
+      </div>
+      {footer}
     </Card>
   );
 }
@@ -489,9 +514,9 @@ function SegmentReflection({ history, quarter }: { rec: QuarterRecord; history: 
 }
 
 /** Batch 10A: "Looking back: which signals mattered?" — shown only once Q4 is completed (gate in insights/signalReveal.ts). */
-function SignalReveal({ history, quarter, cited }: { history: QuarterRecord[]; quarter: number; cited: string[] }) {
+function SignalReveal({ history, quarter, cited, collapsed = false }: { history: QuarterRecord[]; quarter: number; cited: string[]; collapsed?: boolean }) {
   const rows = useMemo(() => buildSignalReveal(history, quarter, cited), [history, quarter, cited]);
-  const [open, setOpen] = useState(quarter === 4);
+  const [open, setOpen] = useState(quarter === 4 && !collapsed);
   if (!rows) return null;
   return (
     <details className="ds-fold" open={open} onToggle={e => setOpen((e.target as HTMLDetailsElement).open)} data-testid="v2-signal-reveal">
@@ -518,5 +543,100 @@ function SignalReveal({ history, quarter, cited }: { history: QuarterRecord[]; q
         <p className="ds-method" style={{ margin: 0 }}>Market statements describe the scenario’s market in {calendarLabel(3)}; the market measure is an index against its normal level. Company statements are calculated from your own records, which reflect both the market and your decisions.</p>
       </div>
     </details>
+  );
+}
+
+// ================================================================ Stage 4B results summary (v3-econ-1.1)
+
+const CHART_FOR: (q: number) => 'revenue' | 'cash' | 'value' = q => (q <= 4 ? 'revenue' : q <= 7 ? 'cash' : 'value');
+
+/**
+ * Four headline KPIs (company value = engine valuation), warnings when relevant, three outcomes with their recorded
+ * causes, one chart and one reflection question. Everything else — the original dashboard, deep analysis, cash and
+ * share-price bridges and the Q4 signal review (collapsed) — is preserved behind View Details.
+ */
+function Stage4Results({ ctl, mode, history, quarter }: { ctl: V2TeamController; mode: V2PresentationMode; history: QuarterRecord[]; quarter: number }) {
+  const game = ctl.game!;
+  const snap = game.snapshot;
+  const rec = history[quarter - 1];
+  const cards = financialCards(history, quarter);
+  const card = (id: KpiCard['id']) => cards.find(c => c.id === id)!;
+  const values = useMemo(() => [history[0].before, ...history.slice(0, quarter).map(h => h.after)].map(st => companyValueOf(snap, st)!), [history, quarter, snap]);
+  const v = values[quarter], pv = values[quarter - 1];
+  const dv = v.equityValue - pv.equityValue;
+  const devs = useMemo(() => materialDevelopments(rec, mode), [rec, mode]);
+  const KIND: Record<string, string> = { commercial: 'Customers and market', decision: 'Your decision', capability: 'Capability and organization' };
+  const a = rec.after;
+  const solv = a.solvency.history[a.solvency.history.length - 1];
+  const warnings: { tone: 'bad' | 'caution'; text: string; id: string }[] = [];
+  if (a.solvency.status === 'insolvent') warnings.push({ id: 'insolvent', tone: 'bad', text: `The company is insolvent: cash is ${fmtM(a.cash)}. Finance the gap or cut spending next quarter.` });
+  else if (a.solvency.distressed) warnings.push({ id: 'distressed', tone: 'bad', text: `The company is in financial distress${a.cash < 15 ? `: cash of ${fmtM(a.cash)} is below the $15M minimum to operate` : ''}. Lenders and investors now value it lower.` });
+  else if (a.cash < 40) warnings.push({ id: 'cash-thin', tone: 'caution', text: `Cash is ${fmtM(a.cash)}, below the $40M comfort level. Little room for a bad quarter.` });
+  if (solv?.covenantBreach && a.solvency.status !== 'insolvent') warnings.push({ id: 'covenant', tone: 'bad', text: 'Debt is high compared with profit: the lenders’ covenant is breached.' });
+  if (v.ownership < 0.9995) warnings.push({ id: 'dilution', tone: 'caution', text: `Original shareholders now own ${(v.ownership * 100).toFixed(1)}% of the company.` });
+  const chart = CHART_FOR(quarter);
+  const states = [history[0].before, ...history.slice(0, quarter).map(h => h.after)];
+  const points = chart === 'value' ? values.map((x, i) => ({ x: i, y: x.equityValue })) : states.map((st, i) => ({ x: i, y: chart === 'revenue' ? st.revenue : st.cash }));
+  const chartLabel = chart === 'revenue' ? 'Quarterly revenue' : chart === 'cash' ? 'Cash at quarter end' : 'Company value';
+  const cited = (game.resolutions.find(r => r.quarter === 3)?.deliberation as V2Deliberation | null | undefined)?.evidenceIds ?? [];
+  const kpi = (testId: string, label: ReactNode, value: string, delta: string, tone: 'good' | 'bad' | 'neutral', sub?: string) => (
+    <div className="s4-kpi" data-testid={testId}>
+      <span className="s4-kpi-label">{label}</span>
+      <span className="s4-kpi-value">{value}</span>
+      <span className={`s4-kpi-sub ${tone === 'good' ? 's4-delta-good' : tone === 'bad' ? 's4-delta-bad' : ''}`}>{delta}</span>
+      {sub && <span className="s4-kpi-sub">{sub}</span>}
+    </div>
+  );
+  const arrow = (d: number, eps = 0.05) => (Math.abs(d) < eps ? '' : d > 0 ? '▲ ' : '▼ ');
+  return (
+    <div className="ds-stack-lg" data-testid="v2-phase-results" data-results-quarter={quarter}>
+      <header className="s4-head">
+        <p className="ds-eyebrow">{calendarLabel(quarter)} results</p>
+        <h1 className="ds-title s4-title" data-testid="v2-results-title">How the quarter went</h1>
+      </header>
+      <section className="s4-kpis" data-testid="v2-s4-kpis">
+        {(['revenue', 'operatingProfit', 'cash'] as const).map(id => { const c = card(id); return kpi(`v2-s4-kpi-${id}`, <Termed label={c.label} />, c.display, `${c.direction === 'up' ? '▲ ' : c.direction === 'down' ? '▼ ' : ''}${deltaText(c)} vs ${calendarShort(quarter - 1)}`, c.tone === 'good' ? 'good' : c.tone === 'bad' ? 'bad' : 'neutral'); })}
+        {kpi('v2-s4-kpi-value', <Term id="shareholder-value">Company value</Term>, moneyG(v.equityValue, 0), `${arrow(dv, 0.5)}${dv >= 0 ? '+' : '−'}${moneyG(Math.abs(dv), 0)} vs ${calendarShort(quarter - 1)}`, Math.abs(dv) < 0.5 ? 'neutral' : dv > 0 ? 'good' : 'bad', v.sold ? 'Sale price agreed' : 'Engine valuation of the whole company')}
+      </section>
+      <span className="ds-sr" data-testid="v2-res-revenue">{fmtM(rec.after.revenue)}</span>
+      <span className="ds-sr" data-testid="v2-res-cash">{fmtM(rec.after.cash)}</span>
+      <span className="ds-sr" data-testid="v2-res-solvency">{rec.after.solvency.status}{rec.after.solvency.distressed ? ' · distressed' : ''}</span>
+      <span className="ds-sr" data-testid="v2-res-value" data-value={v.equityValue.toFixed(3)} data-shareholder-value={v.shareholderValue.toFixed(3)}>{moneyG(v.equityValue, 0)}</span>
+
+      {warnings.length > 0 && (
+        <div className="ds-stack" data-testid="v2-s4-warnings">
+          {warnings.map(w => <p key={w.id} className={`s4-warning ${w.tone === 'caution' ? 'caution' : ''}`} data-warning={w.id} style={{ margin: 0 }}><Icon name="alert" size={16} /><span>{w.text}</span></p>)}
+        </div>
+      )}
+
+      <section data-testid="v2-s4-outcomes">
+        <h2 className="s4-h2">Three things that mattered</h2>
+        <div className="s4-outcomes">
+          {devs.map(d => (
+            <article key={d.kind} className="s4-card" data-kind={d.kind}>
+              <span className="s4-label">{KIND[d.kind]}</span>
+              <p><b>{d.label}</b>{d.movement && <span className={`s4-outcome-move ${d.effect === 'favourable' ? 's4-delta-good' : d.effect === 'unfavourable' ? 's4-delta-bad' : ''}`}> {d.movement}</span>}</p>
+              {d.kind === 'decision' && d.detail && <p className="ds-small">{d.detail}</p>}
+              <p className="s4-muted"><b>Cause:</b> {d.driver}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="s4-card" data-testid="v2-s4-chart" data-chart={chart}>
+        <h2 className="s4-h3">{chartLabel}, {calendarShort(0)}–{calendarShort(quarter)}</h2>
+        <LineChart testId="v2-s4-primary-chart" label={`${chartLabel}, ${calendarShort(0)}–${calendarShort(quarter)}`} points={points} format={x => moneyG(x, 0)} color="var(--nx-forest)" zeroLine={chart === 'cash'} size="lg" />
+      </section>
+
+      <ReflectionCard ctl={ctl} mode={mode} rec={rec} history={history} compact />
+
+      <details className="s4-details" data-testid="v2-results-details">
+        <summary>View details: full dashboard, analysis and share price</summary>
+        <div className="s4-details-body ds-stack-lg">
+          <QuarterDashboard history={history} quarter={quarter} mode={mode} />
+          {signalRevealAvailable(quarter) && <SignalReveal history={history} quarter={quarter} cited={cited} collapsed />}
+        </div>
+      </details>
+    </div>
   );
 }

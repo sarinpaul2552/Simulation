@@ -5,7 +5,8 @@ import type { V2PresentationMode } from '../../content/modes';
 import { buildLearningReport, Finding } from '../../insights/report';
 import { gameHistory, type QuarterRecord } from '../../insights/history';
 import { periodFinancials } from '../../insights/financials';
-import { configOf } from '../../engine';
+import { configOf, usesStage4Experience, companyValueOf } from '../../engine';
+import { CAREER_METRICS, NOT_MEASURED } from '../../content/stage4Content';
 import { PATH_INFO } from '../../content/paths';
 import { fmtM } from '../../insights/dashboard';
 import { kpiDashboard, type KpiDashboardRow } from '../../insights/intelligence';
@@ -14,7 +15,7 @@ import { allScorecards, EXECUTIVE_VERSION } from '../../insights/executive';
 import { V2_DESTINATIONS } from '../../../../simulation/engineV2Destination';
 import { COMPANY } from '../../content/company';
 import { AGREEMENTS } from './CommitStage';
-import { FINAL_LABELS } from '../format';
+import { FINAL_LABELS, moneyG } from '../format';
 import { Icon, LineChart, Meter } from '../ds/components';
 import { Term } from '../ds/glossary';
 import { ScorecardView } from '../ds/intel';
@@ -52,6 +53,10 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
   const agreementOf = (q: number) => game.resolutions.find(r => r.quarter === q)?.agreement;
   const strategy = s.destination ? V2_DESTINATIONS[s.destination.id].name : '—';
   const finalMove = s.final.record ? FINAL_LABELS[s.final.record.option] : '—';
+  // Stage 4B (v3-econ-1.1): engine company value, the conclusion printed once (C5) and the career-metrics section.
+  const stage4 = usesStage4Experience(game.snapshot);
+  const value = stage4 ? companyValueOf(game.snapshot, s) : null;
+  const value0 = stage4 ? companyValueOf(game.snapshot, history[0].before) : null;
   let n = 0;
   const sec = () => ++n;
   return (
@@ -73,7 +78,7 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
 
         <section className="ds-report-section" data-testid="v2-board-verdict">
           <h2>Board verdict: what kind of company did this leadership team build?</h2>
-          <p className="ds-conclusion" style={{ marginBottom: 12 }}>{report.conclusion}</p>
+          <p className="ds-conclusion" style={{ marginBottom: 12 }} data-testid={stage4 ? 'v2-conclusion' : undefined}>{report.conclusion}</p>
           <div className="ds-table-wrap">
             <table className="ds-table">
               <thead><tr><th>Dimension</th><th>Assessment</th><th>Evidence</th><th className="num">{calendarShort(0)}</th><th className="num">{calendarShort(8)}</th><th>Last two quarters</th></tr></thead>
@@ -97,12 +102,13 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
         <section className="ds-report-section" data-testid="v2-report-summary">
           <h2><span className="ds-sec-n">{sec()}</span>Executive summary</h2>
           <div className="ds-figures" data-testid="v2-report-headline">
-            <div className="ds-figure"><span className="ds-fig-label">Share price (simulated)</span><span className="ds-fig-value" data-testid="v2-report-price">{fmtPrice(end.price)}</span><div className="ds-fig-sub">{fmtPctDelta(end.sinceStartPct)} from $100.00</div></div>
+            {value && value0 && <div className="ds-figure" data-testid="v2-report-value"><span className="ds-fig-label">Company value</span><span className="ds-fig-value">{moneyG(value.equityValue, 0)}</span><div className="ds-fig-sub">{value.sold ? 'Sale price' : 'Engine valuation'} · {moneyG(value0.equityValue, 0)} at {calendarShort(0)}{value.ownership < 0.9995 ? ` · owners hold ${(value.ownership * 100).toFixed(1)}%` : ''}</div></div>}
+            <div className="ds-figure"><span className="ds-fig-label">Share price ({stage4 ? 'presentation index' : 'simulated'})</span><span className="ds-fig-value" data-testid="v2-report-price">{fmtPrice(end.price)}</span><div className="ds-fig-sub">{fmtPctDelta(end.sinceStartPct)} from $100.00</div></div>
             <div className="ds-figure"><span className="ds-fig-label">Quarterly revenue</span><span className="ds-fig-value">{fmtM(s.revenue)}</span><div className="ds-fig-sub">{fmtS(s.revenue - history[0].before.revenue)} vs {calendarShort(0)}</div></div>
             <div className="ds-figure"><span className="ds-fig-label"><Term id="operating-profit">Operating profit</Term></span><span className="ds-fig-value">{fmtM(s.operatingProfit)}</span><div className="ds-fig-sub">{fmtS(s.operatingProfit - history[0].before.operatingProfit)} vs {calendarShort(0)}</div></div>
             <div className="ds-figure"><span className="ds-fig-label">Cash</span><span className="ds-fig-value">{fmtM(s.cash)}</span><div className="ds-fig-sub">Debt {fmtM(s.financing.debt)}</div></div>
           </div>
-          <p className="ds-conclusion" style={{ marginTop: 16 }} data-testid="v2-conclusion">{report.conclusion}</p>
+          {!stage4 && <p className="ds-conclusion" style={{ marginTop: 16 }} data-testid="v2-conclusion">{report.conclusion}</p>}
           {gates.length > 0 && <div className="ds-notice ds-notice-bad" style={{ marginTop: 12 }}><Icon name="alert" />{gates.map(g => GATE_TEXT[g.id] ?? g.id).join(' ')}</div>}
           <div style={{ marginTop: 16 }}>
             <p className="ds-h4">Four lenses on the same company — reported separately, never combined</p>
@@ -110,7 +116,8 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
             <table className="ds-table ds-table-compact" data-testid="v2-three-measures">
               <tbody>
                 <tr><td><b>Terminal simulation score</b><span className="ds-method" style={{ display: 'block' }}>The simulation’s own evaluation of the company built: finances, strategic position and organization.</span></td><td className="num"><span className="ds-score-big" data-testid="v2-final-overall">{sc.overall.toFixed(1)}</span><span className="ds-muted"> / 100</span></td></tr>
-                <tr><td><b>Shareholder value</b><span className="ds-method" style={{ display: 'block' }}>The simulated share price, from $100 at {calendarLabel(0)}.</span></td><td className="num"><b>{fmtPrice(end.price)}</b></td></tr>
+                {value ? <tr data-testid="v2-lens-value"><td><b>Shareholder value</b><span className="ds-method" style={{ display: 'block' }}>Engine valuation of the original shareholders’ stake (the measure the simulation score uses). The share price, {fmtPrice(end.price)}, is a presentation index.</span></td><td className="num"><b>{moneyG(value.shareholderValue, 0)}</b></td></tr>
+                  : <tr><td><b>Shareholder value</b><span className="ds-method" style={{ display: 'block' }}>The simulated share price, from $100 at {calendarLabel(0)}.</span></td><td className="num"><b>{fmtPrice(end.price)}</b></td></tr>}
                 <tr><td><b>Executive functional scores</b><span className="ds-method" style={{ display: 'block' }}>How the company performed under each function’s responsibilities (section 8) — not individual students.</span></td><td className="num ds-small ds-wrap">{cards.map(c => `${c.role === 'Product' ? 'CPO' : c.role === 'Growth' ? 'CGO' : c.role === 'People' ? 'CPeO' : c.role} ${c.functional.toFixed(0)}`).join(' · ')}</td></tr>
                 <tr><td><b>Board assessment</b><span className="ds-method" style={{ display: 'block' }}>Rule-based reading of the KPI evidence in the board verdict above.</span></td><td className="num ds-small ds-wrap">{verdict.map(d => `${d.label.split(' ')[0]} ${d.assessment.toLowerCase()}`).join(' · ')}</td></tr>
               </tbody>
@@ -182,6 +189,13 @@ export function FinalStage({ ctl, mode }: { ctl: V2TeamController; mode: V2Prese
           <h2><span className="ds-sec-n">{sec()}</span>Executive scorecards</h2>
           <ScorecardSummary cards={cards} mode={mode} />
         </section>
+
+        {stage4 && (
+          <section className="ds-report-section" data-testid="v2-report-career">
+            <h2><span className="ds-sec-n">{sec()}</span>Business metrics you’ll use in your career</h2>
+            <CareerMetrics s={s} equityValue={value?.equityValue ?? 0} />
+          </section>
+        )}
 
         <section className="ds-report-section" data-testid="v2-report-lessons">
           <h2><span className="ds-sec-n">{sec()}</span>Leadership lessons</h2>
@@ -381,6 +395,44 @@ function IntentOutcome({ rows }: { rows: TimelineRow[] }) {
         </table>
       </div>
       <p className="ds-method" style={{ margin: 0 }}>Recorded intentions and results side by side. Results also reflect market conditions and earlier decisions; one quarter rarely proves a call right or wrong.</p>
+    </div>
+  );
+}
+
+/** Stage 4B: the metrics NexLearn measures, as students will meet them at work, with the team's final values. */
+function CareerMetrics({ s, equityValue }: { s: ReturnType<typeof gameHistory>[number]['after']; equityValue: number }) {
+  const c = s.commercial;
+  const margin = s.revenue > 0 ? (s.operatingProfit / s.revenue) * 100 : 0;
+  const yours: Record<string, string> = {
+    'revenue': `${fmtM(s.revenue)} a quarter`,
+    'operating-profit': `${fmtM(s.operatingProfit)} · ${margin.toFixed(1)}% margin`,
+    'cash': fmtM(s.cash),
+    'fcf': 'See “Where the cash went” under Financial performance',
+    'leverage': s.financing.debt > 0 ? `Debt ${fmtM(s.financing.debt)}` : 'No debt',
+    'company-value': moneyG(equityValue, 0),
+    'dilution': `${(s.financing.ownership * 100).toFixed(1)}% retained`,
+    'retention': `${c.consumerRetention.toFixed(1)}%`,
+    'cac': `Index ${c.consumerCacIndex.toFixed(0)} (100 = start)`,
+    'pipeline': `${fmtM(c.enterprisePipeline)} · win rate ${c.enterpriseWinRate.toFixed(0)}%`,
+    'renewal': `${c.universityRenewalRate.toFixed(0)}%`,
+    'quality': `Quality ${s.productQuality.toFixed(0)} · technical debt ${s.technicalDebt.toFixed(0)}`,
+    'people': `Talent ${s.capabilities.talent.toFixed(0)} · culture ${s.culture.toFixed(0)} · capacity ${s.organizationalCapacity.toFixed(0)}`,
+  };
+  return (
+    <div className="ds-stack">
+      <p className="ds-small" style={{ margin: 0 }}>The measures you managed in NexLearn are the ones businesses run on. Each row shows what the metric means, why it matters, who uses it and how NexLearn measured it.</p>
+      <div className="ds-table-wrap">
+        <table className="ds-table ds-table-compact s4-metrics" data-testid="v2-career-metrics">
+          <thead><tr><th>Metric</th><th>What it means</th><th>Why it matters</th><th className="ds-hide-sm">Roles that use it</th><th>How NexLearn measures it</th><th className="num">Your result</th></tr></thead>
+          <tbody>{CAREER_METRICS.map(m => (
+            <tr key={m.id} data-metric={m.id}><td>{m.name}</td><td>{m.meaning}</td><td>{m.why}</td><td className="ds-hide-sm">{m.roles}</td><td>{m.how}</td><td className="num">{yours[m.id] ?? '—'}</td></tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <div data-testid="v2-career-not-measured">
+        <p className="ds-h4">Common metrics NexLearn does not measure</p>
+        <ul className="ds-list ds-small">{NOT_MEASURED.map(x => <li key={x.name}><b>{x.name}.</b> {x.note}</li>)}</ul>
+      </div>
     </div>
   );
 }
